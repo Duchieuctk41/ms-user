@@ -1,0 +1,35 @@
+include:
+  - project: 'jamalex-ltd/finan/finan-be/ci-image'
+    ref    : 'master'
+    file   : 'ci-templates/base.yml'
+
+variables:
+  SERVICE: "${CI_PROJECT_NAME}"
+  APP_NAME: finan
+  VERSION: "${CI_COMMIT_REF_NAME}"
+
+docker_build:
+  extends: .docker_build
+
+tag_release:
+  extends: .tag_release
+
+.deploy_base:
+  extends: .deploy
+
+deploy:dev:
+  extends: .deploy_base
+  environment:
+    name: dev
+  variables:
+    APP_ENV: dev
+    DB_NAME: "finan_dev_ms_order_management"
+
+deploy:prd:
+  extends: .deploy_base
+  when: manual
+  environment:
+    name: prd
+  variables:
+    APP_ENV: prd
+    DB_NAME: "finan_prd_ms_order_management"
