@@ -56,6 +56,7 @@ type OrderBody struct {
 	Email             string      `json:"email"`
 	ListProductFast   []Product   `json:"list_product_fast"`
 	Debit             *Debit      `json:"debit,omitempty"`
+	BuyerReceived     bool        `json:"buyer_received"`
 	//BuyerId           *uuid.UUID  `json:"buyer_id"`
 
 }
