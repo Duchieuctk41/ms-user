@@ -22,11 +22,11 @@ type PGInterface interface {
 	GetRepo() *gorm.DB
 	CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
 	CreateOrderItem(ctx context.Context, orderItem model.OrderItem, tx *gorm.DB) (rs model.OrderItem, err error)
-	CountOneStateOrder(businessId uuid.UUID, state string) int
-	CreateOrderTracking(ctx context.Context, orderTracking model.OrderTracking) (err error)
-	RevenueBusiness(ctx context.Context, req model.RevenueBusinessParam) (rs model.RevenueBusiness, err error)
-	GetContactHaveOrder(ctx context.Context, businessId uuid.UUID) (string, int, error)
-	GetOneOrder(ctx context.Context, id string) (rs model.Order, err error)
+	CountOneStateOrder(ctx context.Context, businessId uuid.UUID, state string, tx *gorm.DB) int
+	CreateOrderTracking(ctx context.Context, orderTracking model.OrderTracking, tx *gorm.DB) (err error)
+	RevenueBusiness(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (rs model.RevenueBusiness, err error)
+	GetContactHaveOrder(ctx context.Context, businessId uuid.UUID, tx *gorm.DB) (string, int, error)
+	GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs model.Order, err error)
 }
 
 type BaseModel struct {

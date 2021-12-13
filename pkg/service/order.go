@@ -14,6 +14,7 @@ import (
 	"github.com/sendgrid/rest"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/ginext"
+	"gorm.io/gorm"
 	"math"
 	"net/http"
 	"regexp"
@@ -34,7 +35,7 @@ type OrderServiceInterface interface {
 	CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 }
 
-func (s OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
+func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
 	// Check format phone
 	if !s.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -215,8 +216,9 @@ func (s OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
-	if err = s.CreateOrderTracking(ctx, order); err != nil {
+	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
 		logrus.Errorf("Create order tracking error", err.Error())
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	for _, orderItem := range req.ListOrderItem {
@@ -229,6 +231,7 @@ func (s OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res
 		order.OrderItem = append(order.OrderItem, tm)
 	}
 
+	tx.Commit()
 	go s.CountCustomer(ctx, order)
 	go s.OrderProcessing(ctx, order, model.Debit{})
 	go s.UpdateContactUser(order, order.CreatorID)
@@ -236,7 +239,7 @@ func (s OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res
 	return order, nil
 }
 
-func (s OrderService) ValidPhoneFormat(phone string) bool {
+func (s *OrderService) ValidPhoneFormat(phone string) bool {
 	if phone == "" {
 		return false
 	}
@@ -253,7 +256,7 @@ func (s OrderService) ValidPhoneFormat(phone string) bool {
 	return true
 }
 
-func (s OrderService) GetUserList(phoneNumber string, userIDs string) (res []model.User, err error) {
+func (s *OrderService) GetUserList(phoneNumber string, userIDs string) (res []model.User, err error) {
 	param := map[string]string{}
 	if phoneNumber != "" {
 		param["phone_number"] = phoneNumber
@@ -276,7 +279,7 @@ func (s OrderService) GetUserList(phoneNumber string, userIDs string) (res []mod
 	return tmpResUser.Data, nil
 }
 
-func (s OrderService) ProcessPromotion(businessId uuid.UUID, promotionCode string, orderGrandTotal float64, contactID uuid.UUID, currentUser uuid.UUID, isUse bool) (model.Promotion, error) {
+func (s *OrderService) ProcessPromotion(businessId uuid.UUID, promotionCode string, orderGrandTotal float64, contactID uuid.UUID, currentUser uuid.UUID, isUse bool) (model.Promotion, error) {
 	type ProcessPromotionRequest struct {
 		BusinessId    uuid.UUID `json:"business_id" valid:"Required"`
 		PromotionCode string    `json:"promotion_code" valid:"Required"`
@@ -313,7 +316,7 @@ func (s OrderService) ProcessPromotion(businessId uuid.UUID, promotionCode strin
 
 }
 
-func (s OrderService) ConvertVNPhoneFormat(phone string) string {
+func (s *OrderService) ConvertVNPhoneFormat(phone string) string {
 	if phone != "" {
 		if strings.HasPrefix(phone, "84") {
 			phone = "+" + phone
@@ -325,8 +328,14 @@ func (s OrderService) ConvertVNPhoneFormat(phone string) string {
 	return phone
 }
 
-func (s OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit) (err error) {
+func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit) (err error) {
 	log := logrus.WithContext(ctx).WithField("Order", order)
+	tx := s.repo.GetRepo().Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 	//TODO--------Update Business custom_field--------------------------------------------------------------START
 	allState := []string{utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_CANCEL}
 
@@ -342,7 +351,7 @@ func (s OrderService) OrderProcessing(ctx context.Context, order model.Order, de
 	}
 
 	for _, state := range allState {
-		countState := s.repo.CountOneStateOrder(order.BusinessId, state)
+		countState := s.repo.CountOneStateOrder(ctx, order.BusinessId, state, tx)
 		customFieldName := ""
 		switch state {
 		case utils.ORDER_STATE_WAITING_CONFIRM:
@@ -377,7 +386,7 @@ func (s OrderService) OrderProcessing(ctx context.Context, order model.Order, de
 		//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
 		revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
 			BusinessID: order.BusinessId,
-		})
+		}, tx)
 		if err == nil {
 			strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
 			s.UpdateBusinessCustomField(order.BusinessId, "business_revenue", strSumGrandTotal)
@@ -452,17 +461,24 @@ func (s OrderService) OrderProcessing(ctx context.Context, order model.Order, de
 	return nil
 }
 
-func (s OrderService) CountCustomer(ctx context.Context, order model.Order) {
-	_, countCustomer, err := s.repo.GetContactHaveOrder(ctx, order.BusinessId)
+func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
+	tx := s.repo.GetRepo().Begin()
+
+	_, countCustomer, err := s.repo.GetContactHaveOrder(ctx, order.BusinessId, tx)
 	if err != nil {
 		logrus.Errorf("Fail to get contact have order due to %v", err)
 		return
 	}
 
 	s.UpdateBusinessCustomField(order.BusinessId, "customer_count", strconv.Itoa(countCustomer))
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
 }
 
-func (s OrderService) UpdateBusinessCustomField(businessId uuid.UUID, customField string, customValue string) {
+func (s *OrderService) UpdateBusinessCustomField(businessId uuid.UUID, customField string, customValue string) {
 	request := model.CustomFieldsRequest{
 		BusinessID:   businessId,
 		CustomFields: postgres.Hstore{customField: utils.String(customValue)},
@@ -482,7 +498,7 @@ func PushConsumer(value interface{}, topic string) {
 	}
 }
 
-func (s OrderService) UpdateContactUser(order model.Order, user_id uuid.UUID) (err error) {
+func (s *OrderService) UpdateContactUser(order model.Order, user_id uuid.UUID) (err error) {
 	var buyerInfo *model.BuyerInfo
 	values, _ := order.BuyerInfo.MarshalJSON()
 	err = json.Unmarshal(values, &buyerInfo)
@@ -512,16 +528,16 @@ func (s OrderService) UpdateContactUser(order model.Order, user_id uuid.UUID) (e
 	return nil
 }
 
-func (s OrderService) CreateOrderTracking(ctx context.Context, req model.Order) error {
+func (s *OrderService) CreateOrderTracking(ctx context.Context, req model.Order, tx *gorm.DB) error {
 	orderTracking := model.OrderTracking{
 		OrderId: req.ID,
 		State:   req.State,
 	}
 
-	return s.repo.CreateOrderTracking(ctx, orderTracking)
+	return s.repo.CreateOrderTracking(ctx, orderTracking, tx)
 }
 
-func (s OrderService) PushConsumerSendEmail(id string, state string) {
+func (s *OrderService) PushConsumerSendEmail(id string, state string) {
 	request := model.SendEmailRequest{
 		ID:       id,
 		State:    state,
@@ -530,7 +546,7 @@ func (s OrderService) PushConsumerSendEmail(id string, state string) {
 	PushConsumer(request, utils.TOPIC_SEND_EMAIL_ORDER)
 }
 
-func (s OrderService) CreateBusinessTransaction(req model.BusinessTransaction) error {
+func (s *OrderService) CreateBusinessTransaction(req model.BusinessTransaction) error {
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/business-transaction/v2/create", rest.Post, header, nil, req)
@@ -541,7 +557,7 @@ func (s OrderService) CreateBusinessTransaction(req model.BusinessTransaction) e
 	return nil
 }
 
-func (s OrderService) CreateContactTransaction(req model.ContactTransaction) error {
+func (s *OrderService) CreateContactTransaction(req model.ContactTransaction) error {
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v2/contact-transaction/create", rest.Post, header, nil, req)
@@ -552,7 +568,7 @@ func (s OrderService) CreateContactTransaction(req model.ContactTransaction) err
 	return nil
 }
 
-func (s OrderService) CreatePo(ctx context.Context, order model.Order) (err error) {
+func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err error) {
 	log := logrus.WithContext(ctx)
 	// Make data for push consumer
 	reqCreatePo := model.PurchaseOrderRequest{
@@ -585,8 +601,10 @@ func (s OrderService) CreatePo(ctx context.Context, order model.Order) (err erro
 	return nil
 }
 
-func (s OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
-	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId)
+func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
+	tx := s.repo.GetRepo().Begin()
+
+	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId, tx)
 	if err != nil {
 		logrus.Errorf("Fail to get contact have order due to %v", err)
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: " + err.Error())
@@ -598,10 +616,16 @@ func (s OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderPa
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: " + err.Error())
 	}
 
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
 	return lstContact, nil
 }
 
-func (s OrderService) GetContactList(contactIDs string) (res []model.Contact, err error) {
+func (s *OrderService) GetContactList(contactIDs string) (res []model.Contact, err error) {
 
 	queryParam := make(map[string]string)
 	queryParam["ids"] = contactIDs
@@ -621,7 +645,7 @@ func (s OrderService) GetContactList(contactIDs string) (res []model.Contact, er
 	return tmpResContact.Data, nil
 }
 
-func (s OrderService) SendNotification(userId uuid.UUID, entityKey string, state string, content string) {
+func (s *OrderService) SendNotification(userId uuid.UUID, entityKey string, state string, content string) {
 	notiRequest := model.SendNotificationRequest{
 		UserId:         userId,
 		EntityKey:      entityKey,
@@ -638,7 +662,7 @@ func (s OrderService) SendNotification(userId uuid.UUID, entityKey string, state
 	}
 }
 
-func (s OrderService) UpdateStock(ctx context.Context, order model.Order, trackingType string) (err error) {
+func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, trackingType string) (err error) {
 	log := logrus.WithContext(ctx).WithField("order Items", order.OrderItem)
 
 	// Make data for push consumer
@@ -662,10 +686,12 @@ func (s OrderService) UpdateStock(ctx context.Context, order model.Order, tracki
 	return nil
 }
 
-func (s OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string) {
+func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string) {
 
 	time.AfterFunc(60*time.Minute, func() {
-		order, err := s.repo.GetOneOrder(ctx, orderId.String())
+		tx := s.repo.GetRepo().Begin()
+
+		order, err := s.repo.GetOneOrder(ctx, orderId.String(), tx)
 		if err != nil {
 			logrus.Errorf("ReminderProcessOrder get order "+orderId.String()+" error %v", err.Error())
 		}
@@ -673,5 +699,11 @@ func (s OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUI
 		if order.State == stateCheck {
 			s.SendNotification(sellerID, utils.NOTIFICATION_ENTITY_KEY_ORDER, "reminder_"+order.State, order.OrderNumber)
 		}
+
+		defer func() {
+			if err != nil {
+				tx.Rollback()
+			}
+		}()
 	})
 }
