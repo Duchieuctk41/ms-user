@@ -171,6 +171,11 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền không hợp lệ")
 	}
 
+	// check buyer received or not
+	if req.BuyerReceived {
+		req.State = utils.ORDER_STATE_COMPLETE
+	}
+
 	order := model.Order{
 		BusinessId:        *req.BusinessId,
 		ContactId:         info.Data.Contact.ID,
