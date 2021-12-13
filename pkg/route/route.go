@@ -39,7 +39,7 @@ func NewService() *Service {
 	v1Api.GET("/get-one-oder", ginext.WrapHandler(orderHandle.GetOneOrder))
 
 	// 08/12/21 - Create order fast & create product fast for seller - version app 1.0.34.1.1
-	v1Api.POST("/create-order-fast", ginext.WrapHandler(orderHandle.CreateOrderFast))
+	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

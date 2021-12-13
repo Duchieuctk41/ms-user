@@ -21,7 +21,13 @@ func (r *RepoPG) CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 	return order, nil
 }
 
-func (r *RepoPG) CountOneStateOrder(businessId uuid.UUID, state string) int {
+func (r *RepoPG) CountOneStateOrder(ctx context.Context, businessId uuid.UUID, state string, tx *gorm.DB) int {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
 	query := ""
 	query += "SELECT COUNT(*) count_state " +
 		" FROM orders " +
@@ -39,7 +45,13 @@ func (r *RepoPG) CountOneStateOrder(businessId uuid.UUID, state string) int {
 	return data.CountState
 }
 
-func (r *RepoPG) RevenueBusiness(ctx context.Context, req model.RevenueBusinessParam) (model.RevenueBusiness, error) {
+func (r *RepoPG) RevenueBusiness(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (model.RevenueBusiness, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
 	query := ""
 	query += "SELECT SUM(grand_total) AS sum_grand_total " +
 		" FROM orders " +
@@ -60,11 +72,17 @@ func (r *RepoPG) RevenueBusiness(ctx context.Context, req model.RevenueBusinessP
 			return model.RevenueBusiness{}, err
 		}
 	}
-	
+
 	return rs, nil
 }
 
-func (r *RepoPG) GetContactHaveOrder(ctx context.Context, businessId uuid.UUID) (string, int, error) {
+func (r *RepoPG) GetContactHaveOrder(ctx context.Context, businessId uuid.UUID, tx *gorm.DB) (string, int, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
 	query := ""
 	query += "SELECT contact_id " +
 		" FROM orders " +
@@ -91,7 +109,13 @@ func (r *RepoPG) GetContactHaveOrder(ctx context.Context, businessId uuid.UUID) 
 	return contactIds, len(lstData), nil
 }
 
-func (r *RepoPG) GetOneOrder(ctx context.Context, id string) (rs model.Order, err error) {
+func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs model.Order, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
 	if len(id) == 9 {
 		if err = r.DB.Model(&model.Order{}).Where("order_number = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 			return db.Order("order_item.created_at ASC")
