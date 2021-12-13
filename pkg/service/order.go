@@ -568,7 +568,7 @@ func (s *OrderService) CreateContactTransaction(req model.ContactTransaction) er
 	return nil
 }
 
-func (s OrderService) CreatePo(ctx context.Context, order model.Order) (err error) {
+func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err error) {
 	log := logrus.WithContext(ctx)
 	// Make data for push consumer
 	reqCreatePo := model.PurchaseOrderRequest{
@@ -601,7 +601,7 @@ func (s OrderService) CreatePo(ctx context.Context, order model.Order) (err erro
 	return nil
 }
 
-func (s OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
+func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
 	tx := s.repo.GetRepo().Begin()
 
 	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId, tx)
@@ -625,7 +625,7 @@ func (s OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderPa
 	return lstContact, nil
 }
 
-func (s OrderService) GetContactList(contactIDs string) (res []model.Contact, err error) {
+func (s *OrderService) GetContactList(contactIDs string) (res []model.Contact, err error) {
 
 	queryParam := make(map[string]string)
 	queryParam["ids"] = contactIDs
@@ -645,7 +645,7 @@ func (s OrderService) GetContactList(contactIDs string) (res []model.Contact, er
 	return tmpResContact.Data, nil
 }
 
-func (s OrderService) SendNotification(userId uuid.UUID, entityKey string, state string, content string) {
+func (s *OrderService) SendNotification(userId uuid.UUID, entityKey string, state string, content string) {
 	notiRequest := model.SendNotificationRequest{
 		UserId:         userId,
 		EntityKey:      entityKey,
@@ -662,7 +662,7 @@ func (s OrderService) SendNotification(userId uuid.UUID, entityKey string, state
 	}
 }
 
-func (s OrderService) UpdateStock(ctx context.Context, order model.Order, trackingType string) (err error) {
+func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, trackingType string) (err error) {
 	log := logrus.WithContext(ctx).WithField("order Items", order.OrderItem)
 
 	// Make data for push consumer
@@ -686,7 +686,7 @@ func (s OrderService) UpdateStock(ctx context.Context, order model.Order, tracki
 	return nil
 }
 
-func (s OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string) {
+func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string) {
 
 	time.AfterFunc(60*time.Minute, func() {
 		tx := s.repo.GetRepo().Begin()
