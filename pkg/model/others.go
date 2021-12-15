@@ -235,23 +235,44 @@ type StockRequest struct {
 }
 
 type Product struct {
-	Name         string         `json:"name" valid:"Required"`
-	Description  string         `json:"description"`
-	IsActive     bool           `json:"is_active"`
-	Images       pq.StringArray `json:"images"`
-	Priority     int            `json:"priority"`
-	SellingPrice float64        `json:"selling_price"`
-	Capital      float64        `json:"capital"`
-	NormalPrice  float64        `json:"normal_price" valid:"Required"`
-	Uom          string         `json:"uom"`
-	SkuCode      string         `json:"sku_code"`
-	Type         string         `json:"type"`
-	Barcode      string         `json:"barcode,omitempty"`
-	CategoryID   uuid.UUID      `json:"category_id"`
-	IsCreate     bool           `json:"is_create"`
+	Name           string         `json:"name" valid:"Required"`
+	Description    string         `json:"description"`
+	IsActive       bool           `json:"is_active"`
+	Images         pq.StringArray `json:"images"`
+	Priority       int            `json:"priority"`
+	SellingPrice   float64        `json:"selling_price"`
+	HistoricalCost float64        `json:"historical_cost" valid:"Required"`
+	NormalPrice    float64        `json:"normal_price" valid:"Required"`
+	Uom            string         `json:"uom"`
+	SkuCode        string         `json:"sku_code"`
+	Type           string         `json:"type"`
+	Barcode        string         `json:"barcode,omitempty"`
+	CategoryID     uuid.UUID      `json:"category_id"`
+	IsProductFast  bool           `json:"is_product_fast"`
 }
 
 type CreateProductFast struct {
 	BusinessID      *uuid.UUID `json:"business_id" valid:"Required"`
 	ListProductFast []Product  `json:"list_product_fast"`
+}
+
+type BusinessMainInfo struct {
+	ID               uuid.UUID      `json:"id"`
+	Domain           string         `json:"domain"`
+	Name             string         `json:"name"`
+	Description      string         `json:"description" `
+	Avatar           string         `json:"avatar"`
+	PhoneNumber      string         `json:"phone_number"`
+	Background       pq.StringArray `json:"background"`
+	Address          string         `json:"address"`
+	OpenTime         time.Time      `json:"open_time"`
+	CloseTime        time.Time      `json:"close_time"`
+	DeliveryFee      float64        `json:"delivery_fee"`
+	MinPriceFreeShip float64        `json:"min_price_free_ship"`
+	BusinessType     interface{}    `json:"business_type,omitempty"`
+}
+
+type ProcessConsumerRequest struct {
+	Topic   string `json:"topic"`
+	Payload string `json:"payload"`
 }

@@ -18,11 +18,11 @@ func NewPoCategoryHandlers(service service.OrderServiceInterface) *OrderHandlers
 	return &OrderHandlers{service: service}
 }
 
-
 func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error) {
 	return ginext.NewResponseData(http.StatusOK, "hello world"), nil
 }
 
+// CreateOrderFast Create order for Web POS combine with create product fast
 func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "CheckInventoryWarning")
 
@@ -47,7 +47,6 @@ func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, er
 		return nil, err
 	}
 
-
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
@@ -56,3 +55,18 @@ func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, er
 	}, nil
 }
 
+// ProcessConsumer Receive message from rabbitmq
+func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, error) {
+	req := model.ProcessConsumerRequest{}
+	r.MustBind(&req)
+	res, err := h.service.ProcessConsumer(r.Context(), req)
+	if err != nil {
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: res,
+		},
+	}, nil
+}

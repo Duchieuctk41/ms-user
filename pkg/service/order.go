@@ -12,6 +12,7 @@ import (
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/praslar/lib/common"
 	"github.com/sendgrid/rest"
+	sendinblue "github.com/sendinblue/APIv3-go-library/lib"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gorm.io/gorm"
@@ -33,6 +34,7 @@ func NewOrderService(repo repo.PGInterface) OrderServiceInterface {
 
 type OrderServiceInterface interface {
 	CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error)
+	ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error)
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
@@ -70,7 +72,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	// call create product
 	listProductFast := model.CreateProductFast{
-		BusinessID: req.BusinessId,
+		BusinessID:      req.BusinessId,
 		ListProductFast: req.ListProductFast,
 	}
 
@@ -82,12 +84,27 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		logrus.Errorf("Get contact error: %v", err.Error())
 		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
 	}
+	lstOrderItem := []model.OrderItem{}
+
+	if err = json.Unmarshal([]byte(bodyResponse), &lstOrderItem); err != nil {
+		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+	fmt.Println(lstOrderItem)
+
+	// append ListOrderItem from request to listOrderItem received from createMultiProduct
+	for _, v := range req.ListOrderItem {
+		if v.SkuID == uuid.Nil {
+			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		lstOrderItem = append(lstOrderItem, v)
+	}
 
 	// Check valid order item
 	logrus.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity, Bỏ qua với trường hợp sku_id == nil (sản phẩm )
-	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), req.ListOrderItem, nil); err != nil {
+	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), lstOrderItem, nil); err != nil {
 		logrus.Errorf("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
@@ -201,7 +218,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	buyerInfo, err := json.Marshal(req.BuyerInfo)
 	if err != nil {
 		logrus.Errorf("Error when parse buyerInfo: %v", err.Error())
-		return nil,  ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
 	order.BuyerInfo.RawMessage = buyerInfo
@@ -310,11 +327,11 @@ func (s *OrderService) ProcessPromotion(businessId uuid.UUID, promotionCode stri
 	promotion := PromotionResponse{}
 	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSPromotionManagement+"/api/v2/promotion/process", rest.Post, header, nil, req)
 	if err != nil {
-		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Get promotion info error: " + err.Error())
+		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Get promotion info error: "+err.Error())
 	}
 
 	if err = json.Unmarshal([]byte(bodyResponse), &promotion); err != nil {
-		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Get promotion info error: " + err.Error())
+		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Get promotion info error: "+err.Error())
 	}
 
 	return promotion.Data, nil
@@ -612,13 +629,13 @@ func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderP
 	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId, tx)
 	if err != nil {
 		logrus.Errorf("Fail to get contact have order due to %v", err)
-		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: " + err.Error())
+		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
 	}
 
 	lstContact, err := s.GetContactList(contactIds)
 	if err != nil {
 		logrus.Errorf("Fail to get contact list due to %v", err)
-		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: " + err.Error())
+		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
 	}
 
 	defer func() {
@@ -711,4 +728,188 @@ func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UU
 			}
 		}()
 	})
+}
+
+func (s *OrderService) RevertBeginPhone(phone string) string {
+	if phone != "" {
+		if strings.HasPrefix(phone, "+84") {
+			phone = "0" + phone[3:]
+		}
+	}
+	return phone
+}
+
+func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (rs interface{}, err error) {
+	userRoles, _ := strconv.Atoi(req.UserRole)
+	if !((userRoles&utils.ADMIN_ROLE > 0) || (userRoles&utils.ADMIN_ROLE == utils.ADMIN_ROLE)) {
+		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
+	}
+
+	tx := s.repo.GetRepo().Begin()
+	order, err := s.repo.GetOneOrder(ctx, req.ID, tx)
+	if err != nil || order.Email == "" {
+		return
+	}
+
+	cfg := sendinblue.NewConfiguration()
+	cfg.AddDefaultHeader("api-key", conf.LoadEnv().ApiKeySendinblue)
+	cfg.AddDefaultHeader("partner-key", conf.LoadEnv().ApiKeySendinblue)
+	sib := sendinblue.NewAPIClient(cfg)
+
+	var orderItems []model.OrderItemForSendEmail
+	for _, item := range order.OrderItem {
+		var orderItem = model.OrderItemForSendEmail{
+			ProductId:           item.ProductId,
+			ProductName:         item.ProductName,
+			Quantity:            item.Quantity,
+			TotalAmount:         item.TotalAmount,
+			SkuID:               item.SkuID,
+			SkuCode:             item.SkuCode,
+			Note:                item.Note,
+			UOM:                 item.UOM,
+			ProductNormalPrice:  item.ProductNormalPrice,
+			ProductSellingPrice: item.ProductSellingPrice,
+		}
+		if len(item.ProductImages) > 0 {
+			orderItem.ProductImages = item.ProductImages[0]
+		}
+		orderItems = append(orderItems, orderItem)
+	}
+
+	tmpBuyerInfo := order.BuyerInfo.RawMessage
+	buyerInfo := model.BuyerInfo{}
+	if err = json.Unmarshal(tmpBuyerInfo, &buyerInfo); err != nil {
+		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+		return nil, ginext.NewError(http.StatusInternalServerError, err.Error())
+	}
+
+	businessInfo, err := s.GetDetailBusiness(order.BusinessId.String())
+	if err != nil {
+		logrus.Errorf("Fail to get business detail due to %v", err)
+		return nil, ginext.NewError(http.StatusInternalServerError, err.Error())
+	}
+
+	to := sendinblue.SendSmtpEmailTo{
+		Email: order.Email,
+		Name:  buyerInfo.Name,
+	}
+
+	tParams := map[string]interface{}{
+		// customer
+		"NAME_CUSTOMER":    buyerInfo.Name,
+		"ADDRESS_CUSTOMER": buyerInfo.Address,
+		"PHONE_CUSTOMER":   s.RevertBeginPhone(buyerInfo.PhoneNumber),
+		"EMAIL_CUSTOMER":   order.Email,
+		// order
+		"ORDER_NUMBER":        order.OrderNumber,
+		"ORDERED_GRAND_TOTAL": order.OrderedGrandTotal,
+		"PROMOTION_DISCOUNT":  order.PromotionDiscount,
+		"DELIVERY_FEE":        order.DeliveryFee,
+		"GRAND_TOTAL":         order.GrandTotal,
+		"PAYMENT_METHOD":      order.PaymentMethod,
+		"DELIVERY_METHOD":     order.DeliveryMethod,
+		"ORDER_ITEMS":         orderItems,
+		// seller
+		"NAME_BUSINESS":    businessInfo.Name,
+		"ADDRESS_BUSINESS": businessInfo.Address,
+		"PHONE_BUSINESS":   s.RevertBeginPhone(businessInfo.PhoneNumber),
+		"DOMAIN_BUSINESS":  businessInfo.Domain,
+	}
+
+	switch req.State {
+	case utils.ORDER_STATE_WAITING_CONFIRM:
+		tParams["STATE"] = "Đã đặt hàng, chờ người bán xác nhận"
+		break
+	case utils.ORDER_STATE_DELIVERING:
+		tParams["STATE"] = "Đang giao hàng"
+		break
+	case utils.ORDER_STATE_CANCEL:
+		tParams["STATE"] = "Đã hủy"
+		break
+	case utils.ORDER_STATE_COMPLETE:
+		tParams["STATE"] = "Đã hoàn thành"
+		break
+	default:
+		return nil, nil
+		break
+	}
+
+	var params interface{} = tParams
+	body := sendinblue.SendSmtpEmail{
+		Sender: &sendinblue.SendSmtpEmailSender{
+			Name:  utils.DefaultFromName,
+			Email: utils.DefaultFromEmail,
+		},
+		To:     []sendinblue.SendSmtpEmailTo{to},
+		Params: &params,
+	}
+
+	switch req.State {
+	case utils.ORDER_STATE_WAITING_CONFIRM:
+		body.TemplateId = int64(utils.SEND_EMAIL_WAITING_CONFIRM)
+		break
+	case utils.ORDER_STATE_DELIVERING:
+		body.TemplateId = int64(utils.SEND_EMAIL_DELIVERING)
+		break
+	case utils.ORDER_STATE_CANCEL:
+		body.TemplateId = int64(utils.SEND_EMAIL_COMPLETE)
+		break
+	case utils.ORDER_STATE_COMPLETE:
+		body.TemplateId = int64(utils.SEND_EMAIL_CANCEL)
+		break
+	default:
+		return nil, nil
+		break
+	}
+
+	obj, resp, err := sib.TransactionalEmailsApi.SendTransacEmail(ctx, body)
+	if err != nil {
+		fmt.Println("Error in TransactionalEmailsApi->SendTransacEmail ", err.Error())
+		return nil, err
+	}
+	fmt.Println("SendTransacEmail, response:", resp, "SendTransacEmail object", obj)
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	return rs, err
+}
+
+func (s *OrderService) GetDetailBusiness(businessID string) (res model.BusinessMainInfo, err error) {
+	bodyBusiness, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/business/"+businessID, rest.Get, nil, nil, nil)
+	if err != nil {
+		return res, err
+	}
+	tmpResBusiness := new(struct {
+		Data model.BusinessMainInfo `json:"data"`
+	})
+	if err = json.Unmarshal([]byte(bodyBusiness), &tmpResBusiness); err != nil {
+		return res, err
+	}
+	return tmpResBusiness.Data, nil
+}
+
+func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error) {
+	logger := logrus.WithContext(ctx).WithFields(logrus.Fields{
+		"body":  req.Payload,
+		"topic": req.Topic,
+	})
+	switch req.Topic {
+	case utils.TOPIC_SEND_EMAIL_ORDER:
+		var sendEmailReq model.SendEmailRequest
+		if err := json.Unmarshal([]byte(req.Payload), &sendEmailReq); err != nil {
+			logger.Error("Error send email: %v", err.Error())
+			return nil, err
+		}
+		var sendEmailOrderReq model.SendEmailRequest
+		sendEmailOrderReq = sendEmailReq
+		s.SendEmailOrder(ctx, sendEmailOrderReq)
+		break
+	default:
+		return nil, fmt.Errorf("Topic not found in this service!")
+	}
+	return "Process consumer successfully", nil
 }
