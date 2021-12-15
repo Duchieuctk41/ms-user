@@ -14,3 +14,7 @@ type BaseModel struct {
 	UpdatedAt time.Time  `gorm:"column:updated_at;default:CURRENT_TIMESTAMP" json:"updated_at"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty" sql:"index"`
 }
+
+type ProductFastResponse struct {
+	Data []OrderItem `json:"data"`
+}

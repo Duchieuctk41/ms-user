@@ -75,22 +75,25 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		BusinessID:      req.BusinessId,
 		ListProductFast: req.ListProductFast,
 	}
+	var lstOrderItem []model.OrderItem
+	var productFastResponse model.ProductFastResponse
 
-	header := make(map[string]string)
-	header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
-	header["x-user-id"] = req.UserId.String()
-	bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
-	if err != nil {
-		logrus.Errorf("Get contact error: %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
-	}
-	lstOrderItem := []model.OrderItem{}
+	if len(req.ListProductFast) > 0 {
+		header := make(map[string]string)
+		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
+		header["x-user-id"] = req.UserId.String()
+		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
+		if err != nil {
+			logrus.Errorf("Get contact error: %v", err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+		}
+		if err = json.Unmarshal([]byte(bodyResponse), &productFastResponse); err != nil {
+			logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		lstOrderItem = productFastResponse.Data
 
-	if err = json.Unmarshal([]byte(bodyResponse), &lstOrderItem); err != nil {
-		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
-		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
-	fmt.Println(lstOrderItem)
 
 	// append ListOrderItem from request to listOrderItem received from createMultiProduct
 	for _, v := range req.ListOrderItem {
@@ -780,13 +783,13 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	buyerInfo := model.BuyerInfo{}
 	if err = json.Unmarshal(tmpBuyerInfo, &buyerInfo); err != nil {
 		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
-		return nil, ginext.NewError(http.StatusInternalServerError, err.Error())
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
 	businessInfo, err := s.GetDetailBusiness(order.BusinessId.String())
 	if err != nil {
 		logrus.Errorf("Fail to get business detail due to %v", err)
-		return nil, ginext.NewError(http.StatusInternalServerError, err.Error())
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
 	to := sendinblue.SendSmtpEmailTo{
@@ -809,11 +812,23 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"PAYMENT_METHOD":      order.PaymentMethod,
 		"DELIVERY_METHOD":     order.DeliveryMethod,
 		"ORDER_ITEMS":         orderItems,
+		"TOTAL_ITEMS":         len(orderItems),
 		// seller
 		"NAME_BUSINESS":    businessInfo.Name,
 		"ADDRESS_BUSINESS": businessInfo.Address,
 		"PHONE_BUSINESS":   s.RevertBeginPhone(businessInfo.PhoneNumber),
 		"DOMAIN_BUSINESS":  businessInfo.Domain,
+	}
+
+	if businessInfo.Avatar != "" {
+		tParams["AVATAR_BUSINESS"] = businessInfo.Avatar
+	} else {
+		tParams["AVATAR_BUSINESS"] = "https://jx-central-media-stg.s3.ap-southeast-1.amazonaws.com/finan/default_image/default_avatar_shop.png"
+	}
+	if len(businessInfo.Background) > 0 {
+		tParams["BACKGROUND"] = businessInfo.Background[0]
+	} else {
+		tParams["BACKGROUND"] = businessInfo.Domain + "/_next/static/image/assets/default-cover.9b114bb9b20bbfc62de02a837e18e07a.webp"
 	}
 
 	switch req.State {
