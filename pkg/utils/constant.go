@@ -37,7 +37,7 @@ const (
 )
 
 const (
-	TOPIC_SEND_EMAIL_ORDER = "ms-order-management:send-email-order"
+	TOPIC_SEND_EMAIL_ORDER = "finan-order:send-email-order"
 )
 
 // Some type mess
@@ -60,4 +60,17 @@ const (
 	NOTIFICATION_DEEP_LINK_ORDER_WAITING_CONFIRM = "orderManagement_1"
 	NOTIFICATION_DEEP_LINK_ORDER_DELIVERING      = "orderManagement_2"
 	NOTIFICATION_DEEP_LINK_ORDER_COMPLETE        = "orderManagement_3"
+)
+
+//Order send email state
+const (
+	SEND_EMAIL_WAITING_CONFIRM = 1
+	SEND_EMAIL_DELIVERING      = 1
+	SEND_EMAIL_COMPLETE        = 1
+	SEND_EMAIL_CANCEL          = 1
+)
+
+const (
+	DefaultFromName  = "Sổ bán hàng"
+	DefaultFromEmail = "admin@sobanhang.com"
 )

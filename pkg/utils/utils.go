@@ -34,10 +34,6 @@ func CheckCanPickQuantity(userID string, req []model.OrderItem, mapItem map[stri
 				v.Quantity = v.Quantity - item.Quantity
 			}
 		}
-		// check neu sku trong order_item nil thi ko gui qua product
-		if v.SkuID == uuid.Nil {
-			continue
-		}
 		tReq = append(tReq, v)
 	}
 	header := make(map[string]string)
