@@ -41,6 +41,15 @@ func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, er
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
+	// Check Permission
+	if req.BusinessId == nil {
+		return nil, ginext.NewError(http.StatusUnauthorized, "You need input your business ID")
+	}
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
+	if err = utils.CheckPermission(r.GinCtx, userID.String(), req.BusinessId.String(), role); err != nil {
+		return nil, err
+	}
+
 	// create order
 	rs, err := h.service.CreateOrder(r.Context(), req)
 	if err != nil {

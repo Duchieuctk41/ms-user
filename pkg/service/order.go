@@ -75,22 +75,25 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		BusinessID:      req.BusinessId,
 		ListProductFast: req.ListProductFast,
 	}
+	var lstOrderItem []model.OrderItem
+	var productFastResponse model.ProductFastResponse
 
-	header := make(map[string]string)
-	header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
-	header["x-user-id"] = req.UserId.String()
-	bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
-	if err != nil {
-		logrus.Errorf("Get contact error: %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
-	}
-	lstOrderItem := []model.OrderItem{}
+	if len(req.ListProductFast) > 0 {
+		header := make(map[string]string)
+		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
+		header["x-user-id"] = req.UserId.String()
+		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
+		if err != nil {
+			logrus.Errorf("Get contact error: %v", err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+		}
+		if err = json.Unmarshal([]byte(bodyResponse), &productFastResponse); err != nil {
+			logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		lstOrderItem = productFastResponse.Data
 
-	if err = json.Unmarshal([]byte(bodyResponse), &lstOrderItem); err != nil {
-		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
-		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
-	fmt.Println(lstOrderItem)
 
 	// append ListOrderItem from request to listOrderItem received from createMultiProduct
 	for _, v := range req.ListOrderItem {
