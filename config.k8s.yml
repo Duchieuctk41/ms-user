@@ -1,0 +1,8 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Env.CONFIGMAP_NAME }}"
+  namespace: "{{ .Env.APP_ENV }}"
+data:
+  API_KEY_SENDINBLUE: "{{ .Env.API_KEY_SENDINBLUE }}"
