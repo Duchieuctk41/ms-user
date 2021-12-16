@@ -71,6 +71,6 @@ const (
 )
 
 const (
-	DefaultFromName  = "Sổ bán hàng"
-	DefaultFromEmail = "admin@sobanhang.com"
+	DefaultFromName  = "Auto-reply Sổ bán hàng"
+	DefaultFromEmail = "auto-reply@sobanhang.com"
 )
