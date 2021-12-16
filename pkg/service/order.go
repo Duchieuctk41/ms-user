@@ -14,6 +14,7 @@ import (
 	"github.com/sendgrid/rest"
 	sendinblue "github.com/sendinblue/APIv3-go-library/lib"
 	"github.com/sirupsen/logrus"
+	"github.com/skip2/go-qrcode"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gorm.io/gorm"
 	"math"
@@ -825,24 +826,29 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	} else {
 		tParams["AVATAR_BUSINESS"] = "https://jx-central-media-stg.s3.ap-southeast-1.amazonaws.com/finan/default_image/default_avatar_shop.png"
 	}
-	if len(businessInfo.Background) > 0 {
+	if len(businessInfo.Background) > 0 && businessInfo.Background[0] != "" {
 		tParams["BACKGROUND"] = businessInfo.Background[0]
 	} else {
-		tParams["BACKGROUND"] = businessInfo.Domain + "/_next/static/image/assets/default-cover.9b114bb9b20bbfc62de02a837e18e07a.webp"
+		tParams["BACKGROUND"] = "https://" + businessInfo.Domain + "/_next/static/image/assets/default-cover.9b114bb9b20bbfc62de02a837e18e07a.webp"
 	}
+
+	// generate QR code
+	var png []byte
+	png, _ = qrcode.Encode("https://"+businessInfo.Domain+"/o/"+order.OrderNumber, qrcode.Medium, 256)
+	tParams["QRCODE"] = png
 
 	switch req.State {
 	case utils.ORDER_STATE_WAITING_CONFIRM:
-		tParams["STATE"] = "Đã đặt hàng, chờ người bán xác nhận"
+		tParams["STATE"] = "đã đặt hàng thành công"
 		break
 	case utils.ORDER_STATE_DELIVERING:
-		tParams["STATE"] = "Đang giao hàng"
+		tParams["STATE"] = "đã được xác nhận"
 		break
 	case utils.ORDER_STATE_CANCEL:
-		tParams["STATE"] = "Đã hủy"
+		tParams["STATE"] = "đã hủy"
 		break
 	case utils.ORDER_STATE_COMPLETE:
-		tParams["STATE"] = "Đã hoàn thành"
+		tParams["STATE"] = "đã hoàn thành"
 		break
 	default:
 		return nil, nil

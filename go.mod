@@ -14,6 +14,7 @@ require (
 	github.com/sendgrid/rest v2.6.5+incompatible
 	github.com/sendinblue/APIv3-go-library v2.0.0+incompatible
 	github.com/sirupsen/logrus v1.8.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	gitlab.com/goxp/cloud0 v1.5.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	gorm.io/gorm v1.21.11
