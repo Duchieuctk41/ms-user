@@ -64,10 +64,10 @@ const (
 
 //Order send email state
 const (
-	SEND_EMAIL_WAITING_CONFIRM = 1
-	SEND_EMAIL_DELIVERING      = 1
-	SEND_EMAIL_COMPLETE        = 1
-	SEND_EMAIL_CANCEL          = 1
+	SEND_EMAIL_WAITING_CONFIRM = 3
+	SEND_EMAIL_DELIVERING      = 3
+	SEND_EMAIL_COMPLETE        = 3
+	SEND_EMAIL_CANCEL          = 3
 )
 
 const (
