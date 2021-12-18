@@ -46,3 +46,18 @@ func CheckPermission(ctx context.Context, userId string, businessID string, role
 
 	return nil
 }
+
+func StrDelimitForSum(flt float64, currency string) string {
+	str := strconv.FormatFloat(flt, 'f', 0, 64)
+
+	pos := len(str) - 3
+	for pos > 0 {
+		str = str[:pos] + "." + str[pos:]
+		pos = pos - 3
+	}
+
+	if currency != "" {
+		return str + " " + currency
+	}
+	return str
+}
