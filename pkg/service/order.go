@@ -14,7 +14,6 @@ import (
 	"github.com/sendgrid/rest"
 	sendinblue "github.com/sendinblue/APIv3-go-library/lib"
 	"github.com/sirupsen/logrus"
-	"github.com/skip2/go-qrcode"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gorm.io/gorm"
 	"math"
@@ -744,8 +743,11 @@ func (s *OrderService) RevertBeginPhone(phone string) string {
 }
 
 func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (rs interface{}, err error) {
+	log := logrus.WithContext(ctx)
+
 	userRoles, _ := strconv.Atoi(req.UserRole)
 	if !((userRoles&utils.ADMIN_ROLE > 0) || (userRoles&utils.ADMIN_ROLE == utils.ADMIN_ROLE)) {
+		log.WithError(err).Error("Unauthorized")
 		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
 	}
 
@@ -771,8 +773,8 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 			SkuCode:             item.SkuCode,
 			Note:                item.Note,
 			UOM:                 item.UOM,
-			ProductNormalPrice:  item.ProductNormalPrice,
-			ProductSellingPrice: item.ProductSellingPrice,
+			ProductNormalPrice:  utils.StrDelimitForSum(item.ProductNormalPrice, ""),
+			ProductSellingPrice: utils.StrDelimitForSum(item.ProductNormalPrice, ""),
 		}
 		if len(item.ProductImages) > 0 {
 			orderItem.ProductImages = item.ProductImages[0]
@@ -806,10 +808,10 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"EMAIL_CUSTOMER":   order.Email,
 		// order
 		"ORDER_NUMBER":        order.OrderNumber,
-		"ORDERED_GRAND_TOTAL": order.OrderedGrandTotal,
-		"PROMOTION_DISCOUNT":  order.PromotionDiscount,
-		"DELIVERY_FEE":        order.DeliveryFee,
-		"GRAND_TOTAL":         order.GrandTotal,
+		"ORDERED_GRAND_TOTAL": utils.StrDelimitForSum(order.OrderedGrandTotal, ""),
+		"PROMOTION_DISCOUNT":  utils.StrDelimitForSum(order.PromotionDiscount, ""),
+		"DELIVERY_FEE":        utils.StrDelimitForSum(order.DeliveryFee, ""),
+		"GRAND_TOTAL":         utils.StrDelimitForSum(order.GrandTotal, ""),
 		"PAYMENT_METHOD":      order.PaymentMethod,
 		"DELIVERY_METHOD":     order.DeliveryMethod,
 		"ORDER_ITEMS":         orderItems,
@@ -819,6 +821,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"ADDRESS_BUSINESS": businessInfo.Address,
 		"PHONE_BUSINESS":   s.RevertBeginPhone(businessInfo.PhoneNumber),
 		"DOMAIN_BUSINESS":  businessInfo.Domain,
+		"QRCODE": "https://"+businessInfo.Domain+"/o/"+order.OrderNumber,
 	}
 
 	if businessInfo.Avatar != "" {
@@ -831,11 +834,6 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	} else {
 		tParams["BACKGROUND"] = "https://" + businessInfo.Domain + "/_next/static/image/assets/default-cover.9b114bb9b20bbfc62de02a837e18e07a.webp"
 	}
-
-	// generate QR code
-	var png []byte
-	png, _ = qrcode.Encode("https://"+businessInfo.Domain+"/o/"+order.OrderNumber, qrcode.Medium, 256)
-	tParams["QRCODE"] = png
 
 	switch req.State {
 	case utils.ORDER_STATE_WAITING_CONFIRM:

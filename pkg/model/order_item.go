@@ -36,6 +36,6 @@ type OrderItemForSendEmail struct {
 	SkuCode             string    `json:"sku_code"`
 	SkuName             string    `json:"sku_name"`
 	UOM                 string    `json:"uom"`
-	ProductNormalPrice  float64   `json:"product_normal_price"`
-	ProductSellingPrice float64   `json:"product_selling_price"`
+	ProductNormalPrice  string   `json:"product_normal_price"`
+	ProductSellingPrice string   `json:"product_selling_price"`
 }
