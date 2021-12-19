@@ -1,8 +1,12 @@
 package model
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 )
 
 type OrderItem struct {
@@ -23,6 +27,12 @@ type OrderItem struct {
 	ProductType         *string        `json:"product_type,omitempty" gorm:"-"`
 	CanPickQuantity     *float64       `json:"can_pick_quantity,omitempty" gorm:"-"`
 	SkuActive           *bool          `json:"sku_active,omitempty" gorm:"-"`
+}
+
+func (u *OrderItem) BeforeSave(tx *gorm.DB) (err error) {
+	quantity, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", u.Quantity), 64)
+	u.Quantity = quantity
+	return
 }
 
 type OrderItemForSendEmail struct {

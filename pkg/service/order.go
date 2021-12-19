@@ -8,6 +8,13 @@ import (
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
 	"fmt"
+	"math"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/praslar/lib/common"
@@ -17,12 +24,6 @@ import (
 	"github.com/skip2/go-qrcode"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gorm.io/gorm"
-	"math"
-	"net/http"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type OrderService struct {
@@ -97,18 +98,18 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	}
 
 	// append ListOrderItem from request to listOrderItem received from createMultiProduct
-	for _, v := range req.ListOrderItem {
+	for _, v := range lstOrderItem {
 		if v.SkuID == uuid.Nil {
 			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
-		lstOrderItem = append(lstOrderItem, v)
+		req.ListOrderItem = append(req.ListOrderItem, v)
 	}
 
 	// Check valid order item
 	logrus.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity, Bỏ qua với trường hợp sku_id == nil (sản phẩm )
-	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), lstOrderItem, nil); err != nil {
+	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), req.ListOrderItem, nil); err != nil {
 		logrus.Errorf("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
