@@ -25,6 +25,7 @@ const (
 	TOPIC_UPDATE_SOLD_QUANTITY = "ms-product-management:update_sold_quantity"
 	TOPIC_CREATE_PO            = "ms-warehouse-management:create_po"
 	TOPIC_UPDATE_STOCK         = "ms-warehouse-management:update_stock"
+	TOPIC_PROCESS_MISSION      = "finan-loyalty:process_mission"
 )
 
 const CATEGORY_SELL = "cc8244c0-307f-46fd-be96-34e7c36059de"
