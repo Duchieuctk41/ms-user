@@ -266,6 +266,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	go s.OrderProcessing(ctx, order, debit)
 	go s.UpdateContactUser(order, order.CreatorID)
 
+	// push consumer to complete order mission
+	go CompletedOrderMission(order)
+
 	return order, nil
 }
 
@@ -527,6 +530,25 @@ func PushConsumer(value interface{}, topic string) {
 	if err != nil {
 		logrus.Errorf("Fail to push consumer "+topic+": %", err)
 	}
+}
+
+func CompletedOrderMission(order model.Order) {
+	var userID uuid.UUID
+	if order.CreateMethod == utils.SELLER_CREATE_METHOD {
+		userID = order.CreatorID
+	} else {
+		userHasBusiness, err := utils.GetUserHasBusiness("", order.BusinessId.String())
+		if err != nil {
+			logrus.Errorf("Fail to GetUserHasBusiness : %", err)
+			return
+		}
+		userID = userHasBusiness[0].UserID
+	}
+
+	PushConsumer(map[string]string{
+		"mission_type": "completed_order",
+		"user_id":      userID.String(),
+	}, utils.TOPIC_PROCESS_MISSION)
 }
 
 func (s *OrderService) UpdateContactUser(order model.Order, user_id uuid.UUID) (err error) {
