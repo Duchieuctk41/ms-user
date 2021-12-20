@@ -93,7 +93,6 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
 		lstOrderItem = productFastResponse.Data
-
 	}
 
 	// append ListOrderItem from request to listOrderItem received from createMultiProduct
@@ -257,9 +256,14 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		order.OrderItem = append(order.OrderItem, tm)
 	}
 
+	debit := model.Debit{}
+	if req.Debit != nil {
+		debit = *req.Debit
+	}
+
 	tx.Commit()
 	go s.CountCustomer(ctx, order)
-	go s.OrderProcessing(ctx, order, model.Debit{})
+	go s.OrderProcessing(ctx, order, debit)
 	go s.UpdateContactUser(order, order.CreatorID)
 
 	// push consumer to complete order mission
@@ -401,6 +405,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	go s.PushConsumerSendEmail(order.ID.String(), order.State)
 
 	switch order.State {
+
 	case utils.ORDER_STATE_WAITING_CONFIRM:
 		go s.SendNotification(uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State, order.OrderNumber)
 		go s.ReminderProcessOrder(ctx, order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM)
@@ -449,7 +454,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			return err
 		}
 
-		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_SHOW_INVOICE, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_COMPLETED, order.OrderNumber))
+		//go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_SHOW_INVOICE, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_COMPLETED, order.OrderNumber))
 
 		if debit.BuyerPay != nil && *debit.BuyerPay < order.GrandTotal {
 			contactTransaction := model.ContactTransaction{
@@ -844,7 +849,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"ADDRESS_BUSINESS": businessInfo.Address,
 		"PHONE_BUSINESS":   s.RevertBeginPhone(businessInfo.PhoneNumber),
 		"DOMAIN_BUSINESS":  businessInfo.Domain,
-		"QRCODE": "https://"+businessInfo.Domain+"/o/"+order.OrderNumber,
+		"QRCODE":           "https://" + businessInfo.Domain + "/o/" + order.OrderNumber,
 	}
 
 	if businessInfo.Avatar != "" {
