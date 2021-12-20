@@ -1,12 +1,15 @@
 package model
 
 import (
+	"crypto/rand"
+	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 )
 
 type Order struct {
@@ -30,6 +33,35 @@ type Order struct {
 	Email             string         `json:"email" sql:"index" gorm:"type:varchar(500)"`
 	OtherDiscount     float64        `json:"other_discount" gorm:""`
 	IsPrinted         bool           `json:"is_printed" sql:"index" gorm:"column:is_printed;default:false"`
+}
+
+func GenerateRandomString(n int) string {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	ret := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return ""
+		}
+		ret[i] = letters[num.Int64()]
+	}
+	return string(ret)
+}
+
+func (d *Order) GenRandomKey(tx *gorm.DB) string {
+	res := GenerateRandomString(9)
+	if err := tx.Model(&Order{}).Where("order_number = ?", res).First(&Order{}).Error; err != nil{
+		if err == gorm.ErrRecordNotFound {
+			return res
+		}
+
+	}
+	return d.GenRandomKey(tx)
+}
+
+func (u *Order) BeforeCreate(tx *gorm.DB) (err error) {
+	u.OrderNumber = u.GenRandomKey(tx)
+	return
 }
 
 func (Order) TableName() string {
