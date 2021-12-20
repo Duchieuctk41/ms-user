@@ -856,7 +856,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	var params interface{} = tParams
 	body := sendinblue.SendSmtpEmail{
 		Sender: &sendinblue.SendSmtpEmailSender{
-			Name:  businessInfo.Name,
+			Name:  businessInfo.Name, //
 			Email: utils.DefaultFromEmail,
 		},
 		To:     []sendinblue.SendSmtpEmailTo{to},
