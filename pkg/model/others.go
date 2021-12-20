@@ -1,10 +1,11 @@
 package model
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/lib/pq"
-	"time"
 )
 
 type GetContactRequest struct {
@@ -249,6 +250,8 @@ type Product struct {
 	Barcode        string         `json:"barcode,omitempty"`
 	CategoryID     uuid.UUID      `json:"category_id"`
 	IsProductFast  bool           `json:"is_product_fast"`
+	Quantity       float64        `json:"quantity" gorm:"column:quantity"`
+	TotalAmount    float64        `json:"total_amount" gorm:"column:total_amount"`
 }
 
 type CreateProductFast struct {

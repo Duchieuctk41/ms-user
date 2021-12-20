@@ -1,11 +1,12 @@
 package model
 
 import (
+	"net/http"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/lib/pq"
-	"net/http"
-	"time"
 )
 
 type Order struct {
@@ -47,7 +48,7 @@ type OrderBody struct {
 	State             string      `json:"state"`
 	PaymentMethod     string      `json:"payment_method"`
 	Note              string      `json:"note"`
-	ListOrderItem     []OrderItem `json:"list_order_item" valid:"Required"`
+	ListOrderItem     []OrderItem `json:"list_order_item"`
 	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
 	DeliveryFee       float64     `json:"delivery_fee"`
 	DeliveryMethod    *string     `json:"delivery_method" valid:"Required" schema:"delivery_method"`
