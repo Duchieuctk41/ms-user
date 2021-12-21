@@ -27,6 +27,8 @@ type PGInterface interface {
 	RevenueBusiness(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (rs model.RevenueBusiness, err error)
 	GetContactHaveOrder(ctx context.Context, businessId uuid.UUID, tx *gorm.DB) (string, int, error)
 	GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs model.Order, err error)
+	GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm.DB) (rs model.Order, err error)
+	UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
 }
 
 type BaseModel struct {

@@ -145,3 +145,22 @@ type OrderParam struct {
 	DeliveryMethod *string    `json:"delivery_method" schema:"delivery_method"`
 	IsPrinted      *bool      `json:"is_printed" schema:"is_printed"`
 }
+
+// Define your request body here
+type OrderUpdateBody struct {
+	PromotionCode     *string     `json:"promotion_code"`
+	PromotionDiscount *float64    `json:"promotion_discount"`
+	OrderedGrandTotal *float64    `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
+	GrandTotal        *float64    `json:"grand_total" gorm:"grand_total"`
+	State             *string     `json:"state"`
+	PaymentMethod     *string     `json:"payment_method"`
+	Note              *string     `json:"note"`
+	BuyerId           *uuid.UUID  `json:"buyer_id"`
+	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
+	UpdaterID         *uuid.UUID  `json:"updater_id,omitempty"`
+	UserRole          *string     `json:"user_role"`
+	OtherDiscount     *float64    `json:"other_discount"`
+	Email             *string     `json:"email,omitempty"`
+	ListOrderItem     []OrderItem `json:"list_order_item,omitempty"`
+	Debit             *Debit      `json:"debit,omitempty"`
+}

@@ -132,3 +132,40 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 
 	return rs, nil
 }
+
+func (r *RepoPG) GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm.DB) (rs model.Order, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if err = r.DB.Model(&model.Order{}).Where("buyer_id = ?", buyerID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order.created_at DESC, order_item.created_at ASC")
+	}).First(&rs).Error; err != nil {
+		return model.Order{}, err
+	}
+
+	return rs, nil
+}
+
+
+func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if err := tx.Model(&model.Order{}).Updates(&order).Error; err != nil {
+		return model.Order{}, err
+	}
+
+	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
+		return model.Order{}, err
+	}
+
+	return order, nil
+}
