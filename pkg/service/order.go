@@ -82,7 +82,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		productNormal := make(map[string]string)
 		var lstProduct []string
 		for _, v := range req.ListProductFast {
-			if !v.IsProductFast { // san pham nhanh
+			if v.IsProductFast { // san pham nhanh
 				if productFast[v.Name] == v.Name {
 					log.WithError(err).Errorf("Error when create duplicated product name")
 					return nil, ginext.NewError(http.StatusBadRequest, "Error when create duplicated product name")
@@ -94,8 +94,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 					return nil, ginext.NewError(http.StatusBadRequest, "Error when create duplicated product name")
 				}
 				productNormal[v.Name] = v.Name
+				lstProduct = append(lstProduct, v.Name)
 			}
-			lstProduct = append(lstProduct, v.Name)
 		}
 		checkDuplicateProduct := model.CheckDuplicateProductRequest{
 			BusinessID: req.BusinessId,
@@ -109,7 +109,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, header, nil, checkDuplicateProduct)
 		if err != nil {
 			log.WithError(err).Errorf("Error when create duplicated product name")
-			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên")
 		}
 
 		// call create product
@@ -122,7 +122,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
 		if err != nil {
 			logrus.Errorf("Get contact error: %v", err.Error())
-			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		}
 		if err = json.Unmarshal([]byte(bodyResponse), &productFastResponse); err != nil {
 			logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
@@ -187,7 +187,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		deliveryFee = req.DeliveryFee
 		break
 	default:
-		return nil, ginext.NewError(http.StatusBadRequest, "Create method expected: [buyer, seller]")
+		logrus.Errorf("Error when Create method, expected: [buyer, seller]")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
@@ -201,6 +202,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	// Check valid grand total
 	if req.OtherDiscount > (req.OrderedGrandTotal + req.DeliveryFee - req.PromotionDiscount) {
+		logrus.Errorf("Error when get check valid delivery fee")
 		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không được lớn hơn số tiền phải trả")
 	}
 
