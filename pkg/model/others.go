@@ -259,6 +259,11 @@ type CreateProductFast struct {
 	ListProductFast []Product  `json:"list_product_fast"`
 }
 
+type CheckDuplicateProductRequest struct {
+	BusinessID *uuid.UUID `json:"business_id" valid:"Required"`
+	Names      []string   `json:"names"`
+}
+
 type BusinessMainInfo struct {
 	ID               uuid.UUID      `json:"id"`
 	Domain           string         `json:"domain"`

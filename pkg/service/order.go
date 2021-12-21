@@ -8,6 +8,7 @@ import (
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
 	"fmt"
+	"gitlab.com/goxp/cloud0/logger"
 	"math"
 	"net/http"
 	"regexp"
@@ -39,6 +40,7 @@ type OrderServiceInterface interface {
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "Service.CreateOrder")
 	// Check format phone
 	if !s.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -71,22 +73,56 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	}
 	fmt.Println(info)
 
-	// call create product
-	listProductFast := model.CreateProductFast{
-		BusinessID:      req.BusinessId,
-		ListProductFast: req.ListProductFast,
-	}
 	var lstOrderItem []model.OrderItem
-	var productFastResponse model.ProductFastResponse
 
 	if len(req.ListProductFast) > 0 {
+
+		// Check duplicate name
+		productFast := make(map[string]string)
+		productNormal := make(map[string]string)
+		var lstProduct []string
+		for _, v := range req.ListProductFast {
+			if v.IsProductFast { // san pham nhanh
+				if productFast[v.Name] == v.Name {
+					log.WithError(err).Errorf("Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Error when create duplicated product name")
+				}
+				productFast[v.Name] = v.Name
+			} else { // san pham thuong
+				if productNormal[v.Name] == v.Name {
+					log.WithError(err).Errorf("Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Error when create duplicated product name")
+				}
+				productNormal[v.Name] = v.Name
+				lstProduct = append(lstProduct, v.Name)
+			}
+		}
+		checkDuplicateProduct := model.CheckDuplicateProductRequest{
+			BusinessID: req.BusinessId,
+			Names:      lstProduct,
+		}
+
+		// call ms-product-management to check duplicate product name of product normal
 		header := make(map[string]string)
 		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
 		header["x-user-id"] = req.UserId.String()
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, header, nil, checkDuplicateProduct)
+		if err != nil {
+			log.WithError(err).Errorf("Error when create duplicated product name")
+			return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên")
+		}
+
+		// call create product
+		listProductFast := model.CreateProductFast{
+			BusinessID:      req.BusinessId,
+			ListProductFast: req.ListProductFast,
+		}
+		var productFastResponse model.ProductFastResponse
+
 		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
 		if err != nil {
 			logrus.Errorf("Get contact error: %v", err.Error())
-			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		}
 		if err = json.Unmarshal([]byte(bodyResponse), &productFastResponse); err != nil {
 			logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
@@ -151,7 +187,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		deliveryFee = req.DeliveryFee
 		break
 	default:
-		return nil, ginext.NewError(http.StatusBadRequest, "Create method expected: [buyer, seller]")
+		logrus.Errorf("Error when Create method, expected: [buyer, seller]")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
@@ -165,6 +202,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	// Check valid grand total
 	if req.OtherDiscount > (req.OrderedGrandTotal + req.DeliveryFee - req.PromotionDiscount) {
+		logrus.Errorf("Error when get check valid delivery fee")
 		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không được lớn hơn số tiền phải trả")
 	}
 
@@ -849,7 +887,11 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"ADDRESS_BUSINESS": businessInfo.Address,
 		"PHONE_BUSINESS":   s.RevertBeginPhone(businessInfo.PhoneNumber),
 		"DOMAIN_BUSINESS":  businessInfo.Domain,
-		"QRCODE":           "https://" + businessInfo.Domain + "/o/" + order.OrderNumber,
+	}
+	if order.CreatorID != uuid.Nil {
+		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/o/" + order.OrderNumber + "?required-login=true"
+	} else {
+		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/o/" + order.OrderNumber
 	}
 
 	if businessInfo.Avatar != "" {
