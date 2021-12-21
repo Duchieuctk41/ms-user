@@ -18,3 +18,7 @@ type BaseModel struct {
 type ProductFastResponse struct {
 	Data []OrderItem `json:"data"`
 }
+
+type UriParse struct {
+	ID []string `json:"id" uri:"id"`
+}

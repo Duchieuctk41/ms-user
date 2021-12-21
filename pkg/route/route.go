@@ -40,6 +40,7 @@ func NewService() *Service {
 
 	// 08/12/21 - Create order fast & create product fast for seller - version app 1.0.34.1.1
 	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
+	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))
 
 	// Consumer
 	// 15/12/21 - Receive message from rabbitmq - version app 1.0.34.1.1

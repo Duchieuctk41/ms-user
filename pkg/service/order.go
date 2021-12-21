@@ -37,6 +37,7 @@ func NewOrderService(repo repo.PGInterface) OrderServiceInterface {
 type OrderServiceInterface interface {
 	CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error)
+	UpdateOrder(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error)
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
@@ -496,8 +497,6 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			return err
 		}
 
-		//go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_SHOW_INVOICE, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_COMPLETED, order.OrderNumber))
-
 		if debit.BuyerPay != nil && *debit.BuyerPay < order.GrandTotal {
 			contactTransaction := model.ContactTransaction{
 				ID:              uuid.New(),
@@ -575,7 +574,7 @@ func PushConsumer(ctx context.Context, value interface{}, topic string) {
 	})
 	log.WithError(err).Error("PushConsumer topic: " + topic + " body: " + string(s))
 	if err != nil {
-		log.WithError(err).Error("Fail to push consumer "+topic+": %")
+		log.WithError(err).Error("Fail to push consumer " + topic + ": %")
 	}
 }
 
@@ -769,7 +768,7 @@ func (s *OrderService) SendNotification(ctx context.Context, userId uuid.UUID, e
 
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSNotificationManagement+"/api/notification/send-notification", rest.Post, nil, nil, notiRequest)
 	if err != nil {
-		log.WithError(err).Error("Send noti "+entityKey+"_"+state+" error")
+		log.WithError(err).Error("Send noti " + entityKey + "_" + state + " error")
 	} else {
 		log.WithError(err).Error("Send noti " + entityKey + "_" + state + " successfully")
 	}
@@ -807,7 +806,7 @@ func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UU
 
 		order, err := s.repo.GetOneOrder(ctx, orderId.String(), tx)
 		if err != nil {
-			log.WithError(err).Error("ReminderProcessOrder get order "+orderId.String()+" error")
+			log.WithError(err).Error("ReminderProcessOrder get order " + orderId.String() + " error")
 		}
 
 		if order.State == stateCheck {
@@ -859,6 +858,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 			Quantity:            item.Quantity,
 			TotalAmount:         item.TotalAmount,
 			SkuID:               item.SkuID,
+			SkuName:             item.SkuName,
 			SkuCode:             item.SkuCode,
 			Note:                item.Note,
 			UOM:                 item.UOM,
@@ -1014,14 +1014,11 @@ func (s *OrderService) UpdateEmailForOrderRecent(ctx context.Context, req model.
 		return nil, err
 	}
 
-	// update email
-	order.UpdaterID = req.UserID
+	// update order
 	order.Email = req.Email
+	order.UpdaterID = req.UserID
 
-	// call func update order
-	orderUpdateBody := model.OrderUpdateBody{}
-	common.Sync(order, &orderUpdateBody)
-	res, err = s.UpdateOrder(ctx, orderUpdateBody, order.ID.String())
+	res, err = s.repo.UpdateOrder(ctx, order, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when call func UpdateOrder")
 		return nil, err
@@ -1029,10 +1026,10 @@ func (s *OrderService) UpdateEmailForOrderRecent(ctx context.Context, req model.
 	return res, nil
 }
 
-func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBody, id string) (rs interface{}, err error) {
+func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.UpdateOrder")
 
-	order, err := s.repo.GetOneOrder(ctx, id, nil)
+	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
 	if err != nil {
 		logrus.WithError(err).Errorf("Error when GetOneOrder")
 		return nil, ginext.NewError(http.StatusBadRequest, "Error when GetOneOrder")
@@ -1057,13 +1054,8 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	}
 
 	common.Sync(req, &order)
-	//begin transaction
-	//db, err := postgresv1.GetDatabase("default")
-	//if err != nil {
-	//	return nil, err
-	//}
 	tx := s.repo.GetRepo().Begin()
-	rs, err = s.repo.UpdateOrder(ctx, order, tx)
+	res, err = s.repo.UpdateOrder(ctx, order, tx)
 	if err != nil {
 		logrus.WithError(err).Errorf("Cannot update order")
 		return nil, ginext.NewError(http.StatusBadRequest, "Cannot update order")
@@ -1096,7 +1088,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 			tx.Rollback()
 		}
 	}()
-	return rs, err
+	return res, err
 }
 
 func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Order, tx *gorm.DB) {
