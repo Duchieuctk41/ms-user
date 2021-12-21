@@ -50,7 +50,7 @@ func GenerateRandomString(n int) string {
 
 func (d *Order) GenRandomKey(tx *gorm.DB) string {
 	res := GenerateRandomString(9)
-	if err := tx.Model(&Order{}).Where("order_number = ?", res).First(&Order{}).Error; err != nil{
+	if err := tx.Model(&Order{}).Where("order_number = ?", res).First(&Order{}).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return res
 		}
@@ -146,8 +146,9 @@ type OrderParam struct {
 	IsPrinted      *bool      `json:"is_printed" schema:"is_printed"`
 }
 
-// Define your request body here
 type OrderUpdateBody struct {
+	ID                *uuid.UUID  `json:"id"`
+	BusinessId        *uuid.UUID  `json:"business_id" schema:"business_id"`
 	PromotionCode     *string     `json:"promotion_code"`
 	PromotionDiscount *float64    `json:"promotion_discount"`
 	OrderedGrandTotal *float64    `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
