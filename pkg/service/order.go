@@ -8,6 +8,7 @@ import (
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/logger"
 	"math"
 	"net/http"
@@ -21,7 +22,6 @@ import (
 	"github.com/praslar/lib/common"
 	"github.com/sendgrid/rest"
 	sendinblue "github.com/sendinblue/APIv3-go-library/lib"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gorm.io/gorm"
 )
@@ -62,16 +62,16 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	// Get Contact Info
 	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/v2/contact/get-contact-by-phone-number", rest.Post, nil, nil, getContactRequest)
 	if err != nil {
-		logrus.Errorf("Get contact error: %v", err.Error())
+		log.WithError(err).Error("Get contact error")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 	info := model.GetContactResponse{}
 
 	if err = json.Unmarshal([]byte(bodyResponse), &info); err != nil {
-		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+		log.WithError(err).Error("Fail to Unmarshal contact")
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
-	fmt.Println(info)
+	log.Info(info)
 
 	var lstOrderItem []model.OrderItem
 
@@ -121,11 +121,11 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
 		if err != nil {
-			logrus.Errorf("Get contact error: %v", err.Error())
+			log.WithError(err).Error("Error when create multi product")
 			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		}
 		if err = json.Unmarshal([]byte(bodyResponse), &productFastResponse); err != nil {
-			logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+			log.WithError(err).Error("Error when Unmarshal contact")
 			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
 		lstOrderItem = productFastResponse.Data
@@ -134,6 +134,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	// append ListOrderItem from request to listOrderItem received from createMultiProduct
 	for _, v := range lstOrderItem {
 		if v.SkuID == uuid.Nil {
+			log.WithError(err).Error("Error when received from createMultiProduct")
 			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
 		req.ListOrderItem = append(req.ListOrderItem, v)
@@ -144,7 +145,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	// check can pick quantity, Bỏ qua với trường hợp sku_id == nil (sản phẩm )
 	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), req.ListOrderItem, nil); err != nil {
-		logrus.Errorf("Error when CheckValidOrderItems from MS Product")
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
 		if rCheck.Status != utils.STATUS_SUCCESS {
@@ -176,10 +177,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		}
 		break
 	case utils.SELLER_CREATE_METHOD:
-		tUser, err := s.GetUserList(req.BuyerInfo.PhoneNumber, "")
+		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
-			logrus.Errorf("Error when get user info from phone number of buyer info")
-			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			log.WithError(err).Error("Error when get user info from phone number of buyer info")
+			return nil, ginext.NewError(http.StatusBadRequest, "Error when get user info from phone number of buyer info")
 		}
 		if len(tUser) > 0 {
 			buyerID = tUser[0].ID
@@ -187,7 +188,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		deliveryFee = req.DeliveryFee
 		break
 	default:
-		logrus.Errorf("Error when Create method, expected: [buyer, seller]")
+		log.WithError(err).Error("Error when Create method, expected: [buyer, seller]")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
@@ -195,14 +196,14 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		deliveryFee = 0
 	} else {
 		if deliveryFee != req.DeliveryFee {
-			logrus.Errorf("Error when get check valid delivery fee")
+			log.WithError(err).Error("Error when get check valid delivery fee")
 			return nil, ginext.NewError(http.StatusBadRequest, "Cửa hàng đã cập nhật phí vận chuyển mới, vui lòng kiểm tra lại")
 		}
 	}
 
 	// Check valid grand total
 	if req.OtherDiscount > (req.OrderedGrandTotal + req.DeliveryFee - req.PromotionDiscount) {
-		logrus.Errorf("Error when get check valid delivery fee")
+		log.WithError(err).Error("Error when get check valid delivery fee")
 		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không được lớn hơn số tiền phải trả")
 	}
 
@@ -258,8 +259,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	buyerInfo, err := json.Marshal(req.BuyerInfo)
 	if err != nil {
-		logrus.Errorf("Error when parse buyerInfo: %v", err.Error())
-		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		log.WithError(err).Error("Error when parse buyerInfo")
+		return nil, ginext.NewError(http.StatusInternalServerError, "Error when parse buyerInfo")
 	}
 
 	order.BuyerInfo.RawMessage = buyerInfo
@@ -275,21 +276,22 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	// create order
 	order, err = s.repo.CreateOrder(ctx, order, tx)
 	if err != nil {
-		logrus.Errorf("Error when CreateOrder: %v", err.Error())
-		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		log.WithError(err).Error("Error when CreateOrder")
+		return nil, ginext.NewError(http.StatusInternalServerError, "Error when CreateOrder")
 	}
 
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
-		logrus.Errorf("Create order tracking error", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		log.WithError(err).Error("Create order tracking error")
+		return nil, ginext.NewError(http.StatusBadRequest, "Create order tracking error")
 	}
 
 	for _, orderItem := range req.ListOrderItem {
 		orderItem.OrderId = order.ID
+		orderItem.CreatorID = order.CreatorID
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
-			logrus.Errorf("Error when CreateOrderItem: %v", err.Error())
-			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			log.WithError(err).Error("Error when CreateOrderItem")
+			return nil, ginext.NewError(http.StatusInternalServerError, "Error when CreateOrderItem")
 		}
 		order.OrderItem = append(order.OrderItem, tm)
 	}
@@ -302,10 +304,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	tx.Commit()
 	go s.CountCustomer(ctx, order)
 	go s.OrderProcessing(ctx, order, debit)
-	go s.UpdateContactUser(order, order.CreatorID)
+	go s.UpdateContactUser(ctx, order, order.CreatorID)
 
 	// push consumer to complete order mission
-	go CompletedOrderMission(order)
+	go CompletedOrderMission(ctx, order)
 
 	return order, nil
 }
@@ -327,7 +329,9 @@ func (s *OrderService) ValidPhoneFormat(phone string) bool {
 	return true
 }
 
-func (s *OrderService) GetUserList(phoneNumber string, userIDs string) (res []model.User, err error) {
+func (s *OrderService) GetUserList(ctx context.Context, phoneNumber string, userIDs string) (res []model.User, err error) {
+	log := logger.WithCtx(ctx, "Service.CreateOrder")
+
 	param := map[string]string{}
 	if phoneNumber != "" {
 		param["phone_number"] = phoneNumber
@@ -337,14 +341,14 @@ func (s *OrderService) GetUserList(phoneNumber string, userIDs string) (res []mo
 	}
 	bodyUser, _, err := common.SendRestAPI(conf.LoadEnv().MSUserManagement+"/api/user", rest.Get, nil, param, nil)
 	if err != nil {
-		logrus.Errorf("Fail to get user info due to %v", err)
+		log.WithError(err).Error("Fail to get user info")
 		return res, err
 	}
 	tmpResUser := new(struct {
 		Data []model.User `json:"data"`
 	})
 	if err = json.Unmarshal([]byte(bodyUser), &tmpResUser); err != nil {
-		logrus.Errorf("Fail to get user info due to %v", err)
+		log.WithError(err).Error("Fail to unmarshal user info")
 		return res, err
 	}
 	return tmpResUser.Data, nil
@@ -434,18 +438,18 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 		case utils.ORDER_STATE_CANCEL:
 			customFieldName = "order_cancel_count"
 		}
-		s.UpdateBusinessCustomField(order.BusinessId, customFieldName, strconv.Itoa(countState))
+		s.UpdateBusinessCustomField(ctx, order.BusinessId, customFieldName, strconv.Itoa(countState))
 	}
 
 	//TODO--------Update Business custom_field--------------------------------------------------------------END
 
 	// send email
-	go s.PushConsumerSendEmail(order.ID.String(), order.State)
+	go s.PushConsumerSendEmail(ctx, order.ID.String(), order.State)
 
 	switch order.State {
 
 	case utils.ORDER_STATE_WAITING_CONFIRM:
-		go s.SendNotification(uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State, order.OrderNumber)
+		go s.SendNotification(ctx, uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State, order.OrderNumber)
 		go s.ReminderProcessOrder(ctx, order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM)
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_WAITING_CONFIRM, order.OrderNumber))
 		break
@@ -461,7 +465,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 		}, tx)
 		if err == nil {
 			strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
-			s.UpdateBusinessCustomField(order.BusinessId, "business_revenue", strSumGrandTotal)
+			s.UpdateBusinessCustomField(ctx, order.BusinessId, "business_revenue", strSumGrandTotal)
 		}
 
 		//--------------------------------------------------------------------------------------------------------------------
@@ -486,7 +490,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			Table:           "income",
 		}
 
-		err = s.CreateBusinessTransaction(businessTransaction)
+		err = s.CreateBusinessTransaction(ctx, businessTransaction)
 		if err != nil {
 			logrus.Error("Error when create business transaction: " + err.Error())
 			return err
@@ -514,13 +518,13 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				CreatedAt:       time.Now(),
 				UpdatedAt:       time.Now(),
 			}
-			err = s.CreateContactTransaction(contactTransaction)
+			err = s.CreateContactTransaction(ctx, contactTransaction)
 			if err != nil {
 				logrus.Error("Error when contact transaction: " + err.Error())
 				return err
 			}
 		}
-		go PushConsumer(order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
+		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
 		go s.CreatePo(ctx, order)
 		break
 	case utils.ORDER_STATE_CANCEL:
@@ -534,15 +538,17 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 }
 
 func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
+	log := logger.WithCtx(ctx, "Service.CountCustomer")
+
 	tx := s.repo.GetRepo().Begin()
 
 	_, countCustomer, err := s.repo.GetContactHaveOrder(ctx, order.BusinessId, tx)
 	if err != nil {
-		logrus.Errorf("Fail to get contact have order due to %v", err)
+		log.WithError(err).Error("Fail to get contact have order")
 		return
 	}
 
-	s.UpdateBusinessCustomField(order.BusinessId, "customer_count", strconv.Itoa(countCustomer))
+	s.UpdateBusinessCustomField(ctx, order.BusinessId, "customer_count", strconv.Itoa(countCustomer))
 	defer func() {
 		if err != nil {
 			tx.Rollback()
@@ -550,51 +556,57 @@ func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
 	}()
 }
 
-func (s *OrderService) UpdateBusinessCustomField(businessId uuid.UUID, customField string, customValue string) {
+func (s *OrderService) UpdateBusinessCustomField(ctx context.Context, businessId uuid.UUID, customField string, customValue string) {
+
 	request := model.CustomFieldsRequest{
 		BusinessID:   businessId,
 		CustomFields: postgres.Hstore{customField: utils.String(customValue)},
 	}
-	PushConsumer(request, utils.TOPIC_UPDATE_CUSTOM_FIELDS)
+	PushConsumer(ctx, request, utils.TOPIC_UPDATE_CUSTOM_FIELDS)
 }
 
-func PushConsumer(value interface{}, topic string) {
+func PushConsumer(ctx context.Context, value interface{}, topic string) {
+	log := logger.WithCtx(ctx, "Service.PushConsumer")
+
 	s, _ := json.Marshal(value)
 	_, err := utils.PushConsumer(utils.ConsumerRequest{
 		Topic: topic,
 		Body:  string(s),
 	})
-	logrus.Errorf("PushConsumer topic: " + topic + " body: " + string(s))
+	log.WithError(err).Error("PushConsumer topic: " + topic + " body: " + string(s))
 	if err != nil {
-		logrus.Errorf("Fail to push consumer "+topic+": %", err)
+		log.WithError(err).Error("Fail to push consumer "+topic+": %")
 	}
 }
 
-func CompletedOrderMission(order model.Order) {
+func CompletedOrderMission(ctx context.Context, order model.Order) {
+	log := logger.WithCtx(ctx, "Service.PushConsumer")
 	var userID uuid.UUID
 	if order.CreateMethod == utils.SELLER_CREATE_METHOD {
 		userID = order.CreatorID
 	} else {
 		userHasBusiness, err := utils.GetUserHasBusiness("", order.BusinessId.String())
 		if err != nil {
-			logrus.Errorf("Fail to GetUserHasBusiness : %", err)
+			log.WithError(err).Error("Fail to GetUserHasBusiness")
 			return
 		}
 		userID = userHasBusiness[0].UserID
 	}
 
-	PushConsumer(map[string]string{
+	PushConsumer(ctx, map[string]string{
 		"mission_type": "completed_order",
 		"user_id":      userID.String(),
 	}, utils.TOPIC_PROCESS_MISSION)
 }
 
-func (s *OrderService) UpdateContactUser(order model.Order, user_id uuid.UUID) (err error) {
+func (s *OrderService) UpdateContactUser(ctx context.Context, order model.Order, user_id uuid.UUID) (err error) {
+	log := logger.WithCtx(ctx, "OrderService.CreatePo")
+
 	var buyerInfo *model.BuyerInfo
 	values, _ := order.BuyerInfo.MarshalJSON()
 	err = json.Unmarshal(values, &buyerInfo)
 	if err != nil {
-		logrus.Errorf("Fail to update user contact due to %v", err)
+		log.WithError(err).Error("Fail to unmarshal update user contact")
 	}
 	type UserContact struct {
 		UserID      uuid.UUID `json:"user_id"`
@@ -610,10 +622,10 @@ func (s *OrderService) UpdateContactUser(order model.Order, user_id uuid.UUID) (
 		Address:     buyerInfo.Address,
 	})
 	if err != nil {
-		logrus.Errorf("Fail to update user contact due to %v", err)
+		log.WithError(err).Error("Fail to update user contact")
 		return err
 	} else {
-		logrus.Errorf("Update profile user contact to %v", "successfully")
+		log.WithError(err).Error("Update profile user contact")
 	}
 
 	return nil
@@ -628,39 +640,44 @@ func (s *OrderService) CreateOrderTracking(ctx context.Context, req model.Order,
 	return s.repo.CreateOrderTracking(ctx, orderTracking, tx)
 }
 
-func (s *OrderService) PushConsumerSendEmail(id string, state string) {
+func (s *OrderService) PushConsumerSendEmail(ctx context.Context, id string, state string) {
+
 	request := model.SendEmailRequest{
 		ID:       id,
 		State:    state,
 		UserRole: strconv.Itoa(utils.ADMIN_ROLE),
 	}
-	PushConsumer(request, utils.TOPIC_SEND_EMAIL_ORDER)
+	PushConsumer(ctx, request, utils.TOPIC_SEND_EMAIL_ORDER)
 }
 
-func (s *OrderService) CreateBusinessTransaction(req model.BusinessTransaction) error {
+func (s *OrderService) CreateBusinessTransaction(ctx context.Context, req model.BusinessTransaction) error {
+	log := logger.WithCtx(ctx, "OrderService.CreatePo")
+
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/business-transaction/v2/create", rest.Post, header, nil, req)
 	if err != nil {
-		logrus.Errorf("Fail to create business transaction to %v", err)
+		log.WithError(err).Error("Fail to create business transaction")
 		return err
 	}
 	return nil
 }
 
-func (s *OrderService) CreateContactTransaction(req model.ContactTransaction) error {
+func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.ContactTransaction) error {
+	log := logger.WithCtx(ctx, "OrderService.CreatePo")
+
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v2/contact-transaction/create", rest.Post, header, nil, req)
 	if err != nil {
-		logrus.Errorf("Fail to create contact transaction to %v", err)
+		log.WithError(err).Error("Fail to create contact transaction")
 		return err
 	}
 	return nil
 }
 
 func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err error) {
-	log := logrus.WithContext(ctx)
+	log := logger.WithCtx(ctx, "OrderService.CreatePo")
 	// Make data for push consumer
 	reqCreatePo := model.PurchaseOrderRequest{
 		PoType:        "out",
@@ -687,23 +704,25 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err err
 				})
 			}
 		}
-		go PushConsumer(reqCreatePo, utils.TOPIC_CREATE_PO)
+		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO)
 	}
 	return nil
 }
 
 func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactHaveOrder")
+
 	tx := s.repo.GetRepo().Begin()
 
 	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId, tx)
 	if err != nil {
-		logrus.Errorf("Fail to get contact have order due to %v", err)
+		log.WithError(err).Error("Fail to get contact have order")
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
 	}
 
-	lstContact, err := s.GetContactList(contactIds)
+	lstContact, err := s.GetContactList(ctx, contactIds)
 	if err != nil {
-		logrus.Errorf("Fail to get contact list due to %v", err)
+		log.WithError(err).Error("Fail to get contact list")
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
 	}
 
@@ -716,27 +735,30 @@ func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderP
 	return lstContact, nil
 }
 
-func (s *OrderService) GetContactList(contactIDs string) (res []model.Contact, err error) {
+func (s *OrderService) GetContactList(ctx context.Context, contactIDs string) (res []model.Contact, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactList")
 
 	queryParam := make(map[string]string)
 	queryParam["ids"] = contactIDs
 
 	bodyBusiness, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/contacts", rest.Get, nil, queryParam, nil)
 	if err != nil {
-		logrus.Errorf("Fail to get contact list due to %v", err)
+		log.WithError(err).Error("Fail to get contact list")
 		return res, err
 	}
 	tmpResContact := new(struct {
 		Data []model.Contact `json:"data"`
 	})
 	if err = json.Unmarshal([]byte(bodyBusiness), &tmpResContact); err != nil {
-		logrus.Errorf("Fail to get contact list due to %v", err)
+		log.WithError(err).Error("Fail to get contact list")
 		return res, err
 	}
 	return tmpResContact.Data, nil
 }
 
-func (s *OrderService) SendNotification(userId uuid.UUID, entityKey string, state string, content string) {
+func (s *OrderService) SendNotification(ctx context.Context, userId uuid.UUID, entityKey string, state string, content string) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactList")
+
 	notiRequest := model.SendNotificationRequest{
 		UserId:         userId,
 		EntityKey:      entityKey,
@@ -747,9 +769,9 @@ func (s *OrderService) SendNotification(userId uuid.UUID, entityKey string, stat
 
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSNotificationManagement+"/api/notification/send-notification", rest.Post, nil, nil, notiRequest)
 	if err != nil {
-		logrus.Errorf("Send noti "+entityKey+"_"+state+" error %v", err.Error())
+		log.WithError(err).Error("Send noti "+entityKey+"_"+state+" error")
 	} else {
-		logrus.Errorf("Send noti " + entityKey + "_" + state + " successfully")
+		log.WithError(err).Error("Send noti " + entityKey + "_" + state + " successfully")
 	}
 }
 
@@ -772,23 +794,24 @@ func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, track
 				QuantityChange: v.Quantity,
 			})
 		}
-		go PushConsumer(reqUpdateStock, utils.TOPIC_UPDATE_STOCK)
+		go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK)
 	}
 	return nil
 }
 
 func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactList")
 
 	time.AfterFunc(60*time.Minute, func() {
 		tx := s.repo.GetRepo().Begin()
 
 		order, err := s.repo.GetOneOrder(ctx, orderId.String(), tx)
 		if err != nil {
-			logrus.Errorf("ReminderProcessOrder get order "+orderId.String()+" error %v", err.Error())
+			log.WithError(err).Error("ReminderProcessOrder get order "+orderId.String()+" error")
 		}
 
 		if order.State == stateCheck {
-			s.SendNotification(sellerID, utils.NOTIFICATION_ENTITY_KEY_ORDER, "reminder_"+order.State, order.OrderNumber)
+			s.SendNotification(ctx, sellerID, utils.NOTIFICATION_ENTITY_KEY_ORDER, "reminder_"+order.State, order.OrderNumber)
 		}
 
 		defer func() {
@@ -851,13 +874,13 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	tmpBuyerInfo := order.BuyerInfo.RawMessage
 	buyerInfo := model.BuyerInfo{}
 	if err = json.Unmarshal(tmpBuyerInfo, &buyerInfo); err != nil {
-		logrus.Errorf("Fail to Unmarshal contact : %v", err.Error())
+		log.WithError(err).Error("Fail to Unmarshal contact")
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
 	businessInfo, err := s.GetDetailBusiness(order.BusinessId.String())
 	if err != nil {
-		logrus.Errorf("Fail to get business detail due to %v", err)
+		log.WithError(err).Error("Fail to get business detail")
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
@@ -981,6 +1004,156 @@ func (s *OrderService) GetDetailBusiness(businessID string) (res model.BusinessM
 	return tmpResBusiness.Data, nil
 }
 
+func (s *OrderService) UpdateEmailForOrderRecent(ctx context.Context, req model.UpdateEmailOrderRecentRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateEmailForOrderRecent")
+
+	// get order recent
+	order, err := s.repo.GetOneOrderRecent(ctx, req.UserID.String(), nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetOneOrderRecent")
+		return nil, err
+	}
+
+	// update email
+	order.UpdaterID = req.UserID
+	order.Email = req.Email
+
+	// call func update order
+	orderUpdateBody := model.OrderUpdateBody{}
+	common.Sync(order, &orderUpdateBody)
+	res, err = s.UpdateOrder(ctx, orderUpdateBody, order.ID.String())
+	if err != nil {
+		log.WithError(err).Error("Error when call func UpdateOrder")
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBody, id string) (rs interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateOrder")
+
+	order, err := s.repo.GetOneOrder(ctx, id, nil)
+	if err != nil {
+		logrus.WithError(err).Errorf("Error when GetOneOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when GetOneOrder")
+	}
+
+	if req.State != nil && order.State == *req.State {
+		logrus.WithError(err).Errorf("Error when State not change")
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when State not change")
+	}
+
+	preOrderState := order.State
+
+	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
+		if rCheck, err := utils.CheckCanPickQuantity(order.CreatorID.String(), order.OrderItem, nil); err != nil {
+			logrus.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product")
+		} else {
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				return rCheck, nil
+			}
+		}
+	}
+
+	common.Sync(req, &order)
+	//begin transaction
+	//db, err := postgresv1.GetDatabase("default")
+	//if err != nil {
+	//	return nil, err
+	//}
+	tx := s.repo.GetRepo().Begin()
+	rs, err = s.repo.UpdateOrder(ctx, order, tx)
+	if err != nil {
+		logrus.WithError(err).Errorf("Cannot update order")
+		return nil, ginext.NewError(http.StatusBadRequest, "Cannot update order")
+	}
+
+	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
+		logrus.WithError(err).Errorf("Create order tracking error")
+	}
+	if req.State != nil && *req.State == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
+		go s.OrderCancelProcessing(ctx, order, tx)
+	} else {
+		debit := model.Debit{}
+		if req.Debit != nil {
+			debit = *req.Debit
+		}
+		if err := s.OrderProcessing(ctx, order, debit); err != nil {
+			log.WithError(err).Error("Fail to create transaction")
+			return nil, err
+		}
+	}
+
+	if preOrderState == utils.ORDER_STATE_DELIVERING && req.State != nil && *req.State == utils.ORDER_STATE_CANCEL {
+		go s.UpdateStock(ctx, order, "order_cancelled_when_delivering")
+	}
+
+	tx.Commit()
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+	return rs, err
+}
+
+func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Order, tx *gorm.DB) {
+
+	//TODO--------Update Business custom_field--------------------------------------------------------------START
+	allState := []string{utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_CANCEL}
+
+	// get seller_id from business_id
+	uhb, err := utils.GetUserHasBusiness("", order.BusinessId.String())
+	if err != nil {
+		logrus.Error("Error when get user has busines: " + err.Error())
+		return
+	}
+	if len(uhb) == 0 {
+		logrus.Error("Error: Empty user has business info")
+		return
+	}
+
+	for _, state := range allState {
+		countState := s.repo.CountOneStateOrder(ctx, order.BusinessId, state, tx)
+		customFieldName := ""
+		switch state {
+		case utils.ORDER_STATE_WAITING_CONFIRM:
+			customFieldName = "order_waiting_confirm_count"
+		case utils.ORDER_STATE_DELIVERING:
+			customFieldName = "order_delivering_count"
+		case utils.ORDER_STATE_COMPLETE:
+			customFieldName = "order_complete_count"
+		case utils.ORDER_STATE_CANCEL:
+			customFieldName = "order_cancel_count"
+		}
+		s.UpdateBusinessCustomField(ctx, order.BusinessId, customFieldName, strconv.Itoa(countState))
+	}
+	//TODO--------Update Business custom_field--------------------------------------------------------------END
+
+	switch order.State {
+	case utils.ORDER_STATE_CANCEL:
+		//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
+		revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
+			BusinessID: order.BusinessId,
+		}, tx)
+		if err == nil {
+			strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
+			s.UpdateBusinessCustomField(ctx, order.BusinessId, "business_revenue", strSumGrandTotal)
+		}
+		//TODO--------Update Business custom_field Revenue --------------------------------------------------------------END
+
+		//TODO--------Update Product sold_quantity -------------------------------------------------------------START
+		PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY_CANCEL)
+		//TODO--------Update Product sold_quantity -------------------------------------------------------------END
+		break
+	default:
+		break
+	}
+	return
+}
+
 func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error) {
 	logger := logrus.WithContext(ctx).WithFields(logrus.Fields{
 		"body":  req.Payload,
@@ -996,6 +1169,14 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 		var sendEmailOrderReq model.SendEmailRequest
 		sendEmailOrderReq = sendEmailReq
 		s.SendEmailOrder(ctx, sendEmailOrderReq)
+		break
+	case utils.TOPIC_UPDATE_EMAIL_ORDER_RECENT:
+		var updateEmailOrderRecentRequest model.UpdateEmailOrderRecentRequest
+		if err := json.Unmarshal([]byte(req.Payload), &updateEmailOrderRecentRequest); err != nil {
+			logger.Error("Error parse updateEmailOrderForResentRequest: %v", err.Error())
+			return nil, err
+		}
+		s.UpdateEmailForOrderRecent(ctx, updateEmailOrderRecentRequest)
 		break
 	default:
 		return nil, fmt.Errorf("Topic not found in this service!")

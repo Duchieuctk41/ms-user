@@ -33,14 +33,13 @@ func CheckPermission(ctx context.Context, userId string, businessID string, role
 		Data []UserHasBusiness `json:"data"`
 	})
 	if err = json.Unmarshal([]byte(body), &tmp); err != nil {
-		log.WithError(err).
-			Error("Error when call func Unmarshal")
+		log.WithError(err).Error("Error when call func Unmarshal")
 		return ginext.NewError(http.StatusInternalServerError, MessageError()[http.StatusInternalServerError])
 	}
 
 	// Check User has this business ?
 	if len(tmp.Data) == 0 {
-		logrus.Errorf("Fail to get user has business due to %v", err)
+		log.WithError(err).Error("Fail to get user has business")
 		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
 	}
 
