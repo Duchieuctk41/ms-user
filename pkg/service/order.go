@@ -80,7 +80,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		// Check duplicate name
 		productFast := make(map[string]string)
 		productNormal := make(map[string]string)
-		var lstProduct []model.Product
+		var lstProduct []string
 		for _, v := range req.ListProductFast {
 			if !v.IsProductFast { // san pham nhanh
 				if productFast[v.Name] == v.Name {
@@ -95,15 +95,18 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 				}
 				productNormal[v.Name] = v.Name
 			}
-			lstProduct = append(lstProduct, v)
+			lstProduct = append(lstProduct, v.Name)
 		}
-		checkDuplicateProduct := model.CreateProductFast{
-			BusinessID:      req.BusinessId,
-			ListProductFast: lstProduct,
+		checkDuplicateProduct := model.CheckDuplicateProductRequest{
+			BusinessID: req.BusinessId,
+			Names:      lstProduct,
 		}
 
 		// call ms-product-management to check duplicate product name of product normal
-		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, nil, nil, checkDuplicateProduct)
+		header := make(map[string]string)
+		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
+		header["x-user-id"] = req.UserId.String()
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, header, nil, checkDuplicateProduct)
 		if err != nil {
 			log.WithError(err).Errorf("Error when create duplicated product name")
 			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -116,9 +119,6 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		}
 		var productFastResponse model.ProductFastResponse
 
-		header := make(map[string]string)
-		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
-		header["x-user-id"] = req.UserId.String()
 		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
 		if err != nil {
 			logrus.Errorf("Get contact error: %v", err.Error())
