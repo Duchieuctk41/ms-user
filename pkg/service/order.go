@@ -40,7 +40,7 @@ type OrderServiceInterface interface {
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
-	log := logger.WithCtx(ctx, "Service.CreateOrder")
+	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
 	// Check format phone
 	if !s.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -330,7 +330,7 @@ func (s *OrderService) ValidPhoneFormat(phone string) bool {
 }
 
 func (s *OrderService) GetUserList(ctx context.Context, phoneNumber string, userIDs string) (res []model.User, err error) {
-	log := logger.WithCtx(ctx, "Service.CreateOrder")
+	log := logger.WithCtx(ctx, "OrderService.GetUserList")
 
 	param := map[string]string{}
 	if phoneNumber != "" {
@@ -404,7 +404,7 @@ func (s *OrderService) ConvertVNPhoneFormat(phone string) string {
 }
 
 func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit) (err error) {
-	log := logrus.WithContext(ctx).WithField("Order", order)
+	log := logrus.WithContext(ctx).WithField("OrderService.OrderProcessing", order)
 	tx := s.repo.GetRepo().Begin()
 	defer func() {
 		if err != nil {
@@ -538,7 +538,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 }
 
 func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
-	log := logger.WithCtx(ctx, "Service.CountCustomer")
+	log := logger.WithCtx(ctx, "OrderService.CountCustomer")
 
 	tx := s.repo.GetRepo().Begin()
 
@@ -566,7 +566,7 @@ func (s *OrderService) UpdateBusinessCustomField(ctx context.Context, businessId
 }
 
 func PushConsumer(ctx context.Context, value interface{}, topic string) {
-	log := logger.WithCtx(ctx, "Service.PushConsumer")
+	log := logger.WithCtx(ctx, "PushConsumer")
 
 	s, _ := json.Marshal(value)
 	_, err := utils.PushConsumer(utils.ConsumerRequest{
@@ -580,7 +580,7 @@ func PushConsumer(ctx context.Context, value interface{}, topic string) {
 }
 
 func CompletedOrderMission(ctx context.Context, order model.Order) {
-	log := logger.WithCtx(ctx, "Service.PushConsumer")
+	log := logger.WithCtx(ctx, "CompletedOrderMission")
 	var userID uuid.UUID
 	if order.CreateMethod == utils.SELLER_CREATE_METHOD {
 		userID = order.CreatorID
@@ -600,7 +600,7 @@ func CompletedOrderMission(ctx context.Context, order model.Order) {
 }
 
 func (s *OrderService) UpdateContactUser(ctx context.Context, order model.Order, user_id uuid.UUID) (err error) {
-	log := logger.WithCtx(ctx, "OrderService.CreatePo")
+	log := logger.WithCtx(ctx, "OrderService.UpdateContactUser")
 
 	var buyerInfo *model.BuyerInfo
 	values, _ := order.BuyerInfo.MarshalJSON()
@@ -651,7 +651,7 @@ func (s *OrderService) PushConsumerSendEmail(ctx context.Context, id string, sta
 }
 
 func (s *OrderService) CreateBusinessTransaction(ctx context.Context, req model.BusinessTransaction) error {
-	log := logger.WithCtx(ctx, "OrderService.CreatePo")
+	log := logger.WithCtx(ctx, "OrderService.CreateBusinessTransaction")
 
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
@@ -664,7 +664,7 @@ func (s *OrderService) CreateBusinessTransaction(ctx context.Context, req model.
 }
 
 func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.ContactTransaction) error {
-	log := logger.WithCtx(ctx, "OrderService.CreatePo")
+	log := logger.WithCtx(ctx, "OrderService.CreateContactTransaction")
 
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
@@ -757,7 +757,7 @@ func (s *OrderService) GetContactList(ctx context.Context, contactIDs string) (r
 }
 
 func (s *OrderService) SendNotification(ctx context.Context, userId uuid.UUID, entityKey string, state string, content string) {
-	log := logger.WithCtx(ctx, "OrderService.GetContactList")
+	log := logger.WithCtx(ctx, "OrderService.SendNotification")
 
 	notiRequest := model.SendNotificationRequest{
 		UserId:         userId,
@@ -776,7 +776,7 @@ func (s *OrderService) SendNotification(ctx context.Context, userId uuid.UUID, e
 }
 
 func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, trackingType string) (err error) {
-	log := logrus.WithContext(ctx).WithField("order Items", order.OrderItem)
+	log := logrus.WithContext(ctx).WithField("OrderService.UpdateStock", order.OrderItem)
 
 	// Make data for push consumer
 	reqUpdateStock := model.CreateStockRequest{
@@ -800,7 +800,7 @@ func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, track
 }
 
 func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string) {
-	log := logger.WithCtx(ctx, "OrderService.GetContactList")
+	log := logger.WithCtx(ctx, "OrderService.ReminderProcessOrder")
 
 	time.AfterFunc(60*time.Minute, func() {
 		tx := s.repo.GetRepo().Begin()
@@ -832,7 +832,7 @@ func (s *OrderService) RevertBeginPhone(phone string) string {
 }
 
 func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (rs interface{}, err error) {
-	log := logrus.WithContext(ctx)
+	log := logger.WithCtx(ctx, "OrderService.SendEmailOrder")
 
 	userRoles, _ := strconv.Atoi(req.UserRole)
 	if !((userRoles&utils.ADMIN_ROLE > 0) || (userRoles&utils.ADMIN_ROLE == utils.ADMIN_ROLE)) {

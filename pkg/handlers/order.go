@@ -25,7 +25,7 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 
 // CreateOrderFast Create order for Web POS combine with create product fast
 func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, error) {
-	log := logger.WithCtx(r.GinCtx, "CheckInventoryWarning")
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderFast")
 
 	// check x-user-id
 	userID, err := utils.CurrentUser(r.GinCtx.Request)
