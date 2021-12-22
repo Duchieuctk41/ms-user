@@ -23,6 +23,7 @@ deploy:dev:
     name: dev
   variables:
     APP_ENV: dev
+    DB_NAME: "finan_dev_ms_order_management"
 
 deploy:prd:
   extends: .deploy_base
@@ -31,3 +32,4 @@ deploy:prd:
     name: prd
   variables:
     APP_ENV: prd
+    DB_NAME: "finan_prd_ms_order_management"
