@@ -44,7 +44,7 @@ func NewService() *Service {
 
 	// Consumer
 	// 15/12/21 - Receive message from rabbitmq - version app 1.0.34.1.1
-	s.Router.POST("/api/consumer", ginext.WrapHandler(orderHandle.ProcessConsumer))
+	v1Api.POST("/consumer", ginext.WrapHandler(orderHandle.ProcessConsumer))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

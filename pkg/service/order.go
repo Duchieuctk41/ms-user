@@ -1149,7 +1149,7 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 }
 
 func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error) {
-	logger := logrus.WithContext(ctx).WithFields(logrus.Fields{
+	log := logger.WithCtx(ctx, "ProcessConsumer").WithFields(logrus.Fields{
 		"body":  req.Payload,
 		"topic": req.Topic,
 	})
@@ -1157,20 +1157,24 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 	case utils.TOPIC_SEND_EMAIL_ORDER:
 		var sendEmailReq model.SendEmailRequest
 		if err := json.Unmarshal([]byte(req.Payload), &sendEmailReq); err != nil {
-			logger.Error("Error send email: %v", err.Error())
+			log.Error("Error send email: %v", err.Error())
 			return nil, err
 		}
 		var sendEmailOrderReq model.SendEmailRequest
 		sendEmailOrderReq = sendEmailReq
-		s.SendEmailOrder(ctx, sendEmailOrderReq)
+		if _, err = s.SendEmailOrder(ctx, sendEmailOrderReq); err != nil {
+			return nil, err
+		}
 		break
 	case utils.TOPIC_UPDATE_EMAIL_ORDER_RECENT:
 		var updateEmailOrderRecentRequest model.UpdateEmailOrderRecentRequest
 		if err := json.Unmarshal([]byte(req.Payload), &updateEmailOrderRecentRequest); err != nil {
-			logger.Error("Error parse updateEmailOrderForResentRequest: %v", err.Error())
+			log.Error("Error parse updateEmailOrderForResentRequest: %v", err.Error())
 			return nil, err
 		}
-		s.UpdateEmailForOrderRecent(ctx, updateEmailOrderRecentRequest)
+		if _, err = s.UpdateEmailForOrderRecent(ctx, updateEmailOrderRecentRequest); err != nil {
+			return nil, err
+		}
 		break
 	default:
 		return nil, fmt.Errorf("Topic not found in this service!")
