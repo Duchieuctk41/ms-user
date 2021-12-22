@@ -868,7 +868,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 			ProductSellingPrice: utils.StrDelimitForSum(item.ProductNormalPrice, ""),
 		}
 		if len(item.ProductImages) > 0 {
-			orderItem.ProductImages = item.ProductImages[0]
+			orderItem.ProductImages = utils.ResizeImage(item.ProductImages[0], 80, 80)
 		}
 		orderItems = append(orderItems, orderItem)
 	}
@@ -918,12 +918,12 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	} else {
 		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/o/" + order.OrderNumber
 	}
-
-	if businessInfo.Avatar != "" {
-		tParams["AVATAR_BUSINESS"] = businessInfo.Avatar
-	} else {
-		tParams["AVATAR_BUSINESS"] = "https://jx-central-media-stg.s3.ap-southeast-1.amazonaws.com/finan/default_image/default_avatar_shop.png"
+	avatarBusiness := businessInfo.Avatar
+	if businessInfo.Avatar == "" {
+		avatarBusiness = utils.AVATAR_BUSINESS_DEFAULT
 	}
+	tParams["AVATAR_BUSINESS"] = utils.ResizeImage(avatarBusiness, 128, 128)
+
 	if len(businessInfo.Background) > 0 && businessInfo.Background[0] != "" {
 		tParams["BACKGROUND"] = businessInfo.Background[0]
 	} else {
