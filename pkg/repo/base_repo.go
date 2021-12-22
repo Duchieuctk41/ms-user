@@ -20,6 +20,8 @@ func NewPGRepo(db *gorm.DB) PGInterface {
 type PGInterface interface {
 	// DB
 	GetRepo() *gorm.DB
+	DBWithTimeout(ctx context.Context) (*gorm.DB, context.CancelFunc)
+
 	CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
 	CreateOrderItem(ctx context.Context, orderItem model.OrderItem, tx *gorm.DB) (rs model.OrderItem, err error)
 	CountOneStateOrder(ctx context.Context, businessId uuid.UUID, state string, tx *gorm.DB) int

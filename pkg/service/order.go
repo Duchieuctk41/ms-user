@@ -266,12 +266,14 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	log.Info("Begin work with DB")
 	// Create transaction
-	tx := s.repo.GetRepo().Begin()
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
 	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
+		tx.Rollback()
+		cancel()
 	}()
+
 	log.Info("Start DB transaction")
 
 	// create order
@@ -407,11 +409,13 @@ func (s *OrderService) ConvertVNPhoneFormat(phone string) string {
 
 func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit) (err error) {
 	log := logrus.WithContext(ctx).WithField("OrderService.OrderProcessing", order)
-	tx := s.repo.GetRepo().Begin()
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
 	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
+		tx.Rollback()
+		cancel()
 	}()
 	//TODO--------Update Business custom_field--------------------------------------------------------------START
 	allState := []string{utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_CANCEL}
@@ -540,7 +544,14 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
 	log := logger.WithCtx(ctx, "OrderService.CountCustomer")
 
-	tx := s.repo.GetRepo().Begin()
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
 
 	_, countCustomer, err := s.repo.GetContactHaveOrder(ctx, order.BusinessId, tx)
 	if err != nil {
@@ -554,6 +565,8 @@ func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
 			tx.Rollback()
 		}
 	}()
+
+	tx.Commit()
 }
 
 func (s *OrderService) UpdateBusinessCustomField(ctx context.Context, businessId uuid.UUID, customField string, customValue string) {
@@ -714,7 +727,14 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err err
 func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.GetContactHaveOrder")
 
-	tx := s.repo.GetRepo().Begin()
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
 
 	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId, tx)
 	if err != nil {
@@ -733,7 +753,7 @@ func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderP
 			tx.Rollback()
 		}
 	}()
-
+	tx.Commit()
 	return lstContact, nil
 }
 
@@ -805,7 +825,14 @@ func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UU
 	log := logger.WithCtx(ctx, "OrderService.ReminderProcessOrder")
 
 	time.AfterFunc(60*time.Minute, func() {
-		tx := s.repo.GetRepo().Begin()
+		// Create transaction
+		var cancel context.CancelFunc
+		tx, cancel := s.repo.DBWithTimeout(ctx)
+		tx = tx.Begin()
+		defer func() {
+			tx.Rollback()
+			cancel()
+		}()
 
 		order, err := s.repo.GetOneOrder(ctx, orderId.String(), tx)
 		if err != nil {
@@ -821,6 +848,8 @@ func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UU
 				tx.Rollback()
 			}
 		}()
+
+		tx.Commit()
 	})
 }
 
@@ -842,7 +871,15 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
 	}
 
-	tx := s.repo.GetRepo().Begin()
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+
 	order, err := s.repo.GetOneOrder(ctx, req.ID, tx)
 	if err != nil || order.Email == "" {
 		return
@@ -990,6 +1027,8 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		}
 	}()
 
+	tx.Commit()
+
 	return rs, err
 }
 
@@ -1057,7 +1096,14 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	}
 
 	common.Sync(req, &order)
-	tx := s.repo.GetRepo().Begin()
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
 	res, err = s.repo.UpdateOrder(ctx, order, tx)
 	if err != nil {
 		logrus.WithError(err).Errorf("Cannot update order")
