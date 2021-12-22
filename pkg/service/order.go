@@ -72,8 +72,6 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		log.WithError(err).Error("Fail to Unmarshal contact")
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
-	log.Info(info)
-
 	var lstOrderItem []model.OrderItem
 
 	if len(req.ListProductFast) > 0 {
@@ -142,7 +140,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	}
 
 	// Check valid order item
-	logrus.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
+	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity, Bỏ qua với trường hợp sku_id == nil (sản phẩm )
 	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), req.ListOrderItem, nil); err != nil {
@@ -266,6 +264,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	order.BuyerInfo.RawMessage = buyerInfo
 
+	log.Info("Begin work with DB")
 	// Create transaction
 	tx := s.repo.GetRepo().Begin()
 	defer func() {
@@ -273,6 +272,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 			tx.Rollback()
 		}
 	}()
+	log.Info("Start DB transaction")
 
 	// create order
 	order, err = s.repo.CreateOrder(ctx, order, tx)
@@ -280,6 +280,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		log.WithError(err).Error("Error when CreateOrder")
 		return nil, ginext.NewError(http.StatusInternalServerError, "Error when CreateOrder")
 	}
+	log.WithField("order created", order).Info("Finish createOrder")
 
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
 		log.WithError(err).Error("Create order tracking error")
