@@ -1096,6 +1096,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	}
 
 	common.Sync(req, &order)
+
 	// Create transaction
 	var cancel context.CancelFunc
 	tx, cancel := s.repo.DBWithTimeout(ctx)
@@ -1104,6 +1105,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		tx.Rollback()
 		cancel()
 	}()
+
 	res, err = s.repo.UpdateOrder(ctx, order, tx)
 	if err != nil {
 		logrus.WithError(err).Errorf("Cannot update order")
@@ -1132,11 +1134,6 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 
 	tx.Commit()
 
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
 	return res, err
 }
 

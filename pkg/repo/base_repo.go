@@ -19,7 +19,6 @@ func NewPGRepo(db *gorm.DB) PGInterface {
 
 type PGInterface interface {
 	// DB
-	GetRepo() *gorm.DB
 	DBWithTimeout(ctx context.Context) (*gorm.DB, context.CancelFunc)
 
 	CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
