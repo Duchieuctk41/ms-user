@@ -79,7 +79,7 @@ const (
 )
 
 const (
-	AVATAR_BUSINESS_DEFAULT = "https://jx-central-media-stg.s3.ap-southeast-1.amazonaws.com/finan/default_image/default_avatar_shop.png"
+	AVATAR_BUSINESS_DEFAULT = "https://d3hr4eej8cfgwy.cloudfront.net/finan-dev/1d78990d-33ef-4278-94a9-881c7c57d4ae/image/default_avatar_shop.png"
 	LINK_IMAGE_RESIZE = "https://d3hr4eej8cfgwy.cloudfront.net/"
 )
 
