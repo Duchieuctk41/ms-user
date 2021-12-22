@@ -6,3 +6,4 @@ metadata:
   namespace: "{{ .Env.APP_ENV }}"
 data:
   API_KEY_SENDINBLUE: "{{ .Env.API_KEY_SENDINBLUE }}"
+  DB_NAME: "{{ .Env.DB_NAME }}"
