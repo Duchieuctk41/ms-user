@@ -917,7 +917,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/o/" + order.OrderNumber
 	}
 	avatarBusiness := businessInfo.Avatar
-	if businessInfo.Avatar != "" {
+	if businessInfo.Avatar == "" {
 		avatarBusiness = utils.AVATAR_BUSINESS_DEFAULT
 	}
 	tParams["AVATAR_BUSINESS"] = utils.ResizeImage(avatarBusiness, 128, 128)
