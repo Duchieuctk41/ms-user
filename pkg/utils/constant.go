@@ -77,3 +77,9 @@ const (
 	DefaultFromName  = "Sổ bán hàng"
 	DefaultFromEmail = "notifications@sobanhang.com"
 )
+
+const (
+	AVATAR_BUSINESS_DEFAULT = "https://jx-central-media-stg.s3.ap-southeast-1.amazonaws.com/finan/default_image/default_avatar_shop.png"
+	LINK_IMAGE_RESIZE = "https://d3hr4eej8cfgwy.cloudfront.net/"
+)
+

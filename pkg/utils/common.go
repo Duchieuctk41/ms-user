@@ -85,7 +85,7 @@ func ParseIDFromUri(c *gin.Context) *uuid.UUID {
 }
 
 func ResizeImage(link string, w, h int) string {
-	if link == "" || w == 0 || !strings.Contains(link, "https://d3hr4eej8cfgwy.cloudfront.net/") {
+	if link == "" || w == 0 || !strings.Contains(link, LINK_IMAGE_RESIZE) {
 		return link
 	}
 
