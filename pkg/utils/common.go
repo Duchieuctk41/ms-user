@@ -14,6 +14,7 @@ import (
 	"gitlab.com/goxp/cloud0/ginext"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func CheckPermission(ctx context.Context, userId string, businessID string, role string) (err error) {
@@ -81,4 +82,32 @@ func ParseIDFromUri(c *gin.Context) *uuid.UUID {
 	} else {
 		return &id
 	}
+}
+
+func ResizeImage(link string, w, h int) string {
+	if link == "" || w == 0 || !strings.Contains(link, "https://d3hr4eej8cfgwy.cloudfront.net/") {
+		return link
+	}
+
+	size := getSizeImage(w, h)
+
+	env := "/finan-dev/"
+	linkTemp := strings.Split(link, "/finan-dev/")
+	if len(linkTemp) != 2 {
+		linkTemp = strings.Split(link, "/finan/")
+		env = "/finan/"
+	}
+
+	if len(linkTemp) == 2 {
+		url := linkTemp[0] + "/v2/" + size + env + linkTemp[1]
+		return strings.ReplaceAll(url, " ", "%20")
+	}
+	return strings.ReplaceAll(link, " ", "%20")
+}
+
+func getSizeImage(w, h int) string {
+	if h == 0 {
+		return "w" + strconv.Itoa(w)
+	}
+	return strconv.Itoa(w) + "x" + strconv.Itoa(h)
 }

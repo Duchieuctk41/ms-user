@@ -866,7 +866,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 			ProductSellingPrice: utils.StrDelimitForSum(item.ProductNormalPrice, ""),
 		}
 		if len(item.ProductImages) > 0 {
-			orderItem.ProductImages = item.ProductImages[0]
+			orderItem.ProductImages = utils.ResizeImage(item.ProductImages[0], 80, 80)
 		}
 		orderItems = append(orderItems, orderItem)
 	}
@@ -918,7 +918,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	}
 
 	if businessInfo.Avatar != "" {
-		tParams["AVATAR_BUSINESS"] = businessInfo.Avatar
+		tParams["AVATAR_BUSINESS"] = utils.ResizeImage(businessInfo.Avatar, 128, 128)
 	} else {
 		tParams["AVATAR_BUSINESS"] = "https://jx-central-media-stg.s3.ap-southeast-1.amazonaws.com/finan/default_image/default_avatar_shop.png"
 	}
