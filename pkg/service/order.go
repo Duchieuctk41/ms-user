@@ -592,10 +592,12 @@ func CompletedOrderMission(ctx context.Context, order model.Order) {
 		userID = userHasBusiness[0].UserID
 	}
 
-	PushConsumer(ctx, map[string]string{
+	req := map[string]string {
 		"mission_type": "completed_order",
 		"user_id":      userID.String(),
-	}, utils.TOPIC_PROCESS_MISSION)
+	}
+
+	PushConsumer(ctx, req, utils.TOPIC_PROCESS_MISSION)
 }
 
 func (s *OrderService) UpdateContactUser(ctx context.Context, order model.Order, user_id uuid.UUID) (err error) {
