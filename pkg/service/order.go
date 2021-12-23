@@ -234,6 +234,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	checkCompleted := utils.ORDER_COMPLETED
 	if req.BuyerReceived {
 		req.State = utils.ORDER_STATE_COMPLETE
+	}
+
+	if req.State == utils.ORDER_STATE_COMPLETE {
 		checkCompleted = utils.FAST_ORDER_COMPLETED
 	}
 
