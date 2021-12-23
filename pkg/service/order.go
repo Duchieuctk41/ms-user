@@ -231,8 +231,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	}
 
 	// check buyer received or not
+	checkCompleted := utils.ORDER_COMPLETED
 	if req.BuyerReceived {
 		req.State = utils.ORDER_STATE_COMPLETE
+		checkCompleted = utils.FAST_ORDER_COMPLETED
 	}
 
 	order := model.Order{
@@ -308,7 +310,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	tx.Commit()
 	go s.CountCustomer(ctx, order)
-	go s.OrderProcessing(ctx, order, debit)
+	go s.OrderProcessing(ctx, order, debit, checkCompleted)
 	go s.UpdateContactUser(ctx, order, order.CreatorID)
 
 	// push consumer to complete order mission
@@ -408,7 +410,7 @@ func (s *OrderService) ConvertVNPhoneFormat(phone string) string {
 	return phone
 }
 
-func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit) (err error) {
+func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit, checkCompleted string) (err error) {
 	log := logrus.WithContext(ctx).WithField("OrderService.OrderProcessing", order)
 	// Create transaction
 	var cancel context.CancelFunc
@@ -530,7 +532,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 		}
 		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
-		go s.CreatePo(ctx, order)
+		go s.CreatePo(ctx, order, checkCompleted)
 		break
 	case utils.ORDER_STATE_CANCEL:
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_CANCELED, order.OrderNumber))
@@ -692,7 +694,7 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 	return nil
 }
 
-func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err error) {
+func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCompleted string) (err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreatePo")
 	// Make data for push consumer
 	reqCreatePo := model.PurchaseOrderRequest{
@@ -702,7 +704,7 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err err
 		TotalDiscount: order.OtherDiscount,
 		BusinessID:    order.BusinessId,
 		PoDetails:     nil,
-		Option:        "order_completed",
+		Option:        checkCompleted,
 	}
 	skuIDs, err := utils.CheckSkuHasStock(order.CreatorID.String(), order.OrderItem)
 	if err != nil {
@@ -1123,7 +1125,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		if req.Debit != nil {
 			debit = *req.Debit
 		}
-		if err := s.OrderProcessing(ctx, order, debit); err != nil {
+		if err := s.OrderProcessing(ctx, order, debit, utils.ORDER_COMPLETED); err != nil {
 			log.WithError(err).Error("Fail to create transaction")
 			return nil, err
 		}
