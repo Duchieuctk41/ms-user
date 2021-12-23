@@ -8,14 +8,15 @@ import (
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"gitlab.com/goxp/cloud0/logger"
 	"math"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
+	"gitlab.com/goxp/cloud0/logger"
 
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm/dialects/postgres"
@@ -606,7 +607,7 @@ func CompletedOrderMission(ctx context.Context, order model.Order) {
 		userID = userHasBusiness[0].UserID
 	}
 
-	req := map[string]string {
+	req := map[string]string{
 		"mission_type": "completed_order",
 		"user_id":      userID.String(),
 	}
@@ -719,7 +720,7 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order) (err err
 				})
 			}
 		}
-		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO)
+		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO_V2)
 	}
 	return nil
 }

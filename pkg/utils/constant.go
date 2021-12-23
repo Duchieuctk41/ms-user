@@ -23,7 +23,7 @@ const (
 const (
 	TOPIC_UPDATE_CUSTOM_FIELDS = "ms-business-management:custom_fields"
 	TOPIC_UPDATE_SOLD_QUANTITY = "ms-product-management:update_sold_quantity"
-	TOPIC_CREATE_PO            = "ms-warehouse-management:create_po"
+	TOPIC_CREATE_PO_V2         = "ms-warehouse-management:create_po_v2"
 	TOPIC_UPDATE_STOCK         = "ms-warehouse-management:update_stock"
 	TOPIC_PROCESS_MISSION      = "finan-loyalty:process_mission"
 )
@@ -38,8 +38,8 @@ const (
 )
 
 const (
-	TOPIC_SEND_EMAIL_ORDER = "finan-order:send-email-order"
-	TOPIC_UPDATE_EMAIL_ORDER_RECENT = "finan-order:update_email_order_recent"
+	TOPIC_SEND_EMAIL_ORDER            = "finan-order:send-email-order"
+	TOPIC_UPDATE_EMAIL_ORDER_RECENT   = "finan-order:update_email_order_recent"
 	TOPIC_UPDATE_SOLD_QUANTITY_CANCEL = "ms-product-management:update_sold_quantity_cancel"
 )
 
@@ -80,6 +80,5 @@ const (
 
 const (
 	AVATAR_BUSINESS_DEFAULT = "https://d3hr4eej8cfgwy.cloudfront.net/finan-dev/1d78990d-33ef-4278-94a9-881c7c57d4ae/image/default_avatar_shop.png"
-	LINK_IMAGE_RESIZE = "https://d3hr4eej8cfgwy.cloudfront.net/"
+	LINK_IMAGE_RESIZE       = "https://d3hr4eej8cfgwy.cloudfront.net/"
 )
-
