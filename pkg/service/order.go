@@ -1207,7 +1207,7 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 	case utils.TOPIC_SEND_EMAIL_ORDER:
 		var sendEmailReq model.SendEmailRequest
 		if err := json.Unmarshal([]byte(req.Payload), &sendEmailReq); err != nil {
-			log.Error("Error send email: %v", err.Error())
+			log.Errorf("Error send email: %v", err.Error())
 			return nil, err
 		}
 		var sendEmailOrderReq model.SendEmailRequest
@@ -1219,7 +1219,7 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 	case utils.TOPIC_UPDATE_EMAIL_ORDER_RECENT:
 		var updateEmailOrderRecentRequest model.UpdateEmailOrderRecentRequest
 		if err := json.Unmarshal([]byte(req.Payload), &updateEmailOrderRecentRequest); err != nil {
-			log.Error("Error parse updateEmailOrderForResentRequest: %v", err.Error())
+			log.Errorf("Error parse updateEmailOrderForResentRequest: %v", err.Error())
 			return nil, err
 		}
 		if _, err = s.UpdateEmailForOrderRecent(ctx, updateEmailOrderRecentRequest); err != nil {
