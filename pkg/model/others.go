@@ -76,8 +76,8 @@ type Sku struct {
 	Media           pq.StringArray `json:"media"`
 	SellingPrice    float64        `json:"selling_price"`
 	NormalPrice     float64        `json:"normal_price"`
-	OldNormalPrice  *float64       `json:"old_normal_price,omitempty"`
-	OldSellingPrice *float64       `json:"old_selling_price,omitempty"`
+	OldNormalPrice  float64       `json:"old_normal_price,omitempty"`
+	OldSellingPrice float64       `json:"old_selling_price,omitempty"`
 	Uom             string         `json:"uom"`
 	SkuCode         string         `json:"sku_code"`
 	Barcode         string         `json:"barcode"`

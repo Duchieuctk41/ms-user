@@ -87,3 +87,8 @@ const (
 	ORDER_COMPLETED      = "order_completed"
 	FAST_ORDER_COMPLETED = "fast_order_completed"
 )
+
+// type ms-chat
+const (
+	NOTI_TYPE_UPDATE_ORDER = "update_order"
+)
