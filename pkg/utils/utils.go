@@ -5,13 +5,18 @@ import (
 	"finan/ms-order-management/conf"
 	"finan/ms-order-management/pkg/model"
 	"fmt"
+	"github.com/astaxie/beego/logs"
 	"github.com/google/uuid"
 	"github.com/praslar/lib/common"
 	"github.com/sendgrid/rest"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
 )
 
 type ConsumerRequest struct {
@@ -83,11 +88,11 @@ func PushConsumer(consumer ConsumerRequest) (res []interface{}, err error) {
 	return res, nil
 }
 
-func GetUserHasBusiness(userId string, businessID string) (res []UserHasBusiness, err error) {
+func GetUserHasBusiness(userID string, businessID string) (res []UserHasBusiness, err error) {
 
 	param := map[string]string{}
-	if userId != "" {
-		param["user_id"] = userId
+	if userID != "" {
+		param["user_id"] = userID
 	}
 	if businessID != "" {
 		param["business_id"] = businessID
@@ -151,4 +156,51 @@ func CheckSkuHasStock(userID string, req []model.OrderItem) (rs []string, err er
 		return nil, err
 	}
 	return tm.Data, nil
+}
+
+func ConvertTimestampVN(dateTimeFrom *time.Time, dateTimeTo *time.Time) (string, string) {
+	dateTimeFromStr := dateTimeFrom.Format("2006-01-02")
+	dateTimeToStr := dateTimeTo.Format("2006-01-02")
+
+	dateTimeFromStr = dateTimeFromStr + " 00:00:00+07"
+	dateTimeToStr = dateTimeToStr + " 23:59:59+07"
+
+	return dateTimeFromStr, dateTimeToStr
+}
+
+func TransformString(in string, uppercase bool) string {
+	in = strings.TrimSpace(in)
+	t := transform.Chain(norm.NFD, transform.RemoveFunc(isMn), norm.NFC)
+	result, _, err := transform.String(t, in)
+	if err != nil {
+		logs.Error("Failed to transform %s ", in)
+		return ""
+	}
+	result = strings.ReplaceAll(result, "Đ", "D")
+	result = strings.ReplaceAll(result, "đ", "d")
+	if uppercase {
+		return strings.ToUpper(result)
+	}
+	return strings.ToLower(result)
+}
+
+func isMn(r rune) bool {
+	return unicode.Is(unicode.Mn, r) // Mn: nonspacing marks
+}
+
+func ConvertTimeIntToString(in int) string {
+	if in < 10 {
+		return "0" + strconv.Itoa(in)
+	}
+	return strconv.Itoa(in)
+}
+
+func ConvertTimeFormatForReport(in time.Time) string {
+	return fmt.Sprintf("%s/%s/%s - %s:%s",
+		ConvertTimeIntToString(in.Day()),
+		ConvertTimeIntToString(int(in.Month())),
+		ConvertTimeIntToString(in.Year()),
+		ConvertTimeIntToString(in.Hour()),
+		ConvertTimeIntToString(in.Minute()),
+	)
 }

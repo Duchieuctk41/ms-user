@@ -39,7 +39,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 	// req service
 	createOrderReq := model.OrderBody{
 		UserId:            uuid.MustParse("1b0c26d6-e53f-4326-a5c7-8076c24b530d"),
-		BusinessId:        valid.UUIDPointer(uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b")),
+		BusinessID:        valid.UUIDPointer(uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b")),
 		PromotionCode:     "",
 		OrderedGrandTotal: 55000,
 		PromotionDiscount: 0,
@@ -100,7 +100,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	// order request
 	orderReq := model.OrderBody{
-		BusinessId:        valid.UUIDPointer(uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b")),
+		BusinessID:        valid.UUIDPointer(uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b")),
 		ContactID:         valid.UUIDPointer(uuid.MustParse("fb9ecb53-cc87-4fa4-81db-798d031105a7")),
 		PromotionCode:     "",
 		PromotionDiscount: 0,
@@ -119,8 +119,8 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	// order response
 	orderRes := model.Order{
-		BusinessId:        uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b"),
-		ContactId:         uuid.MustParse("fb9ecb53-cc87-4fa4-81db-798d031105a7"),
+		BusinessID:        uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b"),
+		ContactID:         uuid.MustParse("fb9ecb53-cc87-4fa4-81db-798d031105a7"),
 		PromotionDiscount: 0,
 		DeliveryFee:       0,
 		OrderedGrandTotal: 55000,
@@ -138,7 +138,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		service *OrderService
+		service *service
 		args    args
 		wantRes interface{}
 		wantErr bool
@@ -146,7 +146,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		// TODO: Add test cases
 		{
 			name: "happy flow: CreateOrder",
-			service: &OrderService{
+			service: &service{
 				repo: func() repo.PGInterface {
 					mockIRepo := mocks.NewMockPGInterface(ctr1)
 					mockIRepo.EXPECT().CreateOrder(context.Background(), orderReq, tx).Return(orderRes, nil)

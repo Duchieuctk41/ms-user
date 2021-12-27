@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/antihax/optional v1.0.0 // indirect
-	github.com/astaxie/beego v1.12.3 // indirect
+	github.com/astaxie/beego v1.12.3
 	github.com/caarlos0/env/v6 v6.6.2
 	github.com/gin-gonic/gin v1.7.2
 	github.com/golang/mock v1.6.0 // indirect
@@ -16,7 +16,9 @@ require (
 	github.com/sendinblue/APIv3-go-library v2.0.0+incompatible
 	github.com/sirupsen/logrus v1.8.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	github.com/xuri/excelize/v2 v2.4.1
 	gitlab.com/goxp/cloud0 v1.5.0
+	golang.org/x/text v0.3.6
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	gorm.io/gorm v1.21.11
 )

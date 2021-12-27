@@ -9,7 +9,7 @@ import (
 )
 
 type GetContactRequest struct {
-	BusinessId  uuid.UUID `json:"business_id"`
+	BusinessID  uuid.UUID `json:"business_id"`
 	PhoneNumber string    `json:"phone_number"`
 	Name        string    `json:"name"`
 	Address     string    `json:"address"`
@@ -207,7 +207,7 @@ type PoDetail struct {
 }
 
 type SendNotificationRequest struct {
-	UserId         uuid.UUID `json:"user_id" `
+	UserID         uuid.UUID `json:"user_id" `
 	EntityKey      string    `json:"entity_key"  `
 	StateValue     string    `json:"state_value" `
 	Language       string    `json:"language"    `
@@ -289,3 +289,21 @@ type UpdateEmailOrderRecentRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`
 }
+
+type UpFileToS3Request struct {
+	UserID    uuid.UUID `json:"user_id"`
+	File      string    `json:"file"`
+	Name      string    `json:"name"`
+	MediaType string    `json:"media_type"`
+}
+
+type S3ResponseUpload struct {
+	Status  int                `json:"status"`
+	Message string             `json:"message"`
+	Data    DataResponseUpload `json:"data"`
+}
+
+type DataResponseUpload struct {
+	UploadUrl string `json:"url"`
+}
+

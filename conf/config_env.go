@@ -23,6 +23,7 @@ type AppConfig struct {
 	MSTransactionManagement  string `env:"MS_TRANSACTION_MANAGEMENT" envDefault:"http://localhost:8084"`
 	MSChat                   string `env:"MS_CHAT" envDefault:"http://ms-chat"`
 	MSNotificationManagement string `env:"MS_NOTIFICATION_MANAGEMENT" envDefault:"http://localhost:8083"`
+	MSMediaManagement        string `env:"MS_MEDIA_MANAGEMENT" envDefault:"http://localhost:8082"`
 	ApiKeySendinblue         string `env:"API_KEY_SENDINBLUE" envDefault:"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"`
 
 }
