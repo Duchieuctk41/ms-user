@@ -23,7 +23,7 @@ func NewOrderHandlers(service service.OrderServiceInterface) *OrderHandlers {
 
 // GetOneOrder - convert from /api/v2/get-one-oder - version app 1.0.35.1.4
 func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error) {
-	log := logger.WithCtx(r.GinCtx, "OrderHandlers.UpdateOrder")
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetOneOrder")
 
 	// check x-user-id
 	userID, err := utils.CurrentUser(r.GinCtx.Request)
