@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"finan/ms-order-management/conf"
@@ -8,9 +9,13 @@ import (
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math"
+	"mime/multipart"
 	"net/http"
-	"regexp"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -39,12 +44,22 @@ type OrderServiceInterface interface {
 	CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error)
 	UpdateOrder(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error)
+	GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest) (res interface{}, err error)
+	GetAllOrder(ctx context.Context, req model.OrderParam) (res interface{}, err error)
+	UpdateDetailOrder(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error)
+	CountOrderState(ctx context.Context, req model.RevenueBusinessParam) (res interface{}, err error)
+	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res interface{}, err error)
+	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
+	GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error)
+	GetOneOrder(ctx context.Context, ID uuid.UUID) (res model.Order, err error)
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
+
 	// Check format phone
-	if !s.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
+	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
+		log.WithError(err).Error("Error when check format phone")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
@@ -55,24 +70,15 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	grandTotal := 0.0
 
 	getContactRequest := model.GetContactRequest{
-		BusinessId:  *req.BusinessId,
+		BusinessID:  *req.BusinessID,
 		Name:        req.BuyerInfo.Name,
 		PhoneNumber: req.BuyerInfo.PhoneNumber,
 		Address:     req.BuyerInfo.Address,
 	}
 
 	// Get Contact Info
-	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/v2/contact/get-contact-by-phone-number", rest.Post, nil, nil, getContactRequest)
-	if err != nil {
-		log.WithError(err).Error("Get contact error")
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
-	}
-	info := model.GetContactResponse{}
+	info, _ := s.GetContactInfo(ctx, getContactRequest)
 
-	if err = json.Unmarshal([]byte(bodyResponse), &info); err != nil {
-		log.WithError(err).Error("Fail to Unmarshal contact")
-		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
-	}
 	var lstOrderItem []model.OrderItem
 
 	if len(req.ListProductFast) > 0 {
@@ -85,50 +91,43 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 			if v.IsProductFast { // san pham nhanh
 				if productFast[v.Name] == v.Name {
 					log.WithError(err).Errorf("Error when create duplicated product name")
-					return nil, ginext.NewError(http.StatusBadRequest, "Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên trong cùng một đơn hàng")
 				}
 				productFast[v.Name] = v.Name
 			} else { // san pham thuong
 				if productNormal[v.Name] == v.Name {
 					log.WithError(err).Errorf("Error when create duplicated product name")
-					return nil, ginext.NewError(http.StatusBadRequest, "Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên trong cùng một đơn hàng")
 				}
 				productNormal[v.Name] = v.Name
 				lstProduct = append(lstProduct, v.Name)
 			}
 		}
 		checkDuplicateProduct := model.CheckDuplicateProductRequest{
-			BusinessID: req.BusinessId,
+			BusinessID: req.BusinessID,
 			Names:      lstProduct,
 		}
 
 		// call ms-product-management to check duplicate product name of product normal
 		header := make(map[string]string)
 		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
-		header["x-user-id"] = req.UserId.String()
+		header["x-user-id"] = req.UserID.String()
 		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, header, nil, checkDuplicateProduct)
 		if err != nil {
 			log.WithError(err).Errorf("Error when create duplicated product name")
 			return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên")
 		}
 
-		// call create product
+		// call create multi product
 		listProductFast := model.CreateProductFast{
-			BusinessID:      req.BusinessId,
+			BusinessID:      req.BusinessID,
 			ListProductFast: req.ListProductFast,
 		}
-		var productFastResponse model.ProductFastResponse
 
-		bodyResponse, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, listProductFast)
-		if err != nil {
-			log.WithError(err).Error("Error when create multi product")
-			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		productFastResponse, err := s.CreateMultiProduct(ctx, header, listProductFast)
+		if err == nil {
+			lstOrderItem = productFastResponse.Data
 		}
-		if err = json.Unmarshal([]byte(bodyResponse), &productFastResponse); err != nil {
-			log.WithError(err).Error("Error when Unmarshal contact")
-			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
-		}
-		lstOrderItem = productFastResponse.Data
 	}
 
 	// append ListOrderItem from request to listOrderItem received from createMultiProduct
@@ -144,7 +143,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity, Bỏ qua với trường hợp sku_id == nil (sản phẩm )
-	if rCheck, err := utils.CheckCanPickQuantity(req.UserId.String(), req.ListOrderItem, nil); err != nil {
+	if rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil); err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
@@ -169,7 +168,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	buyerID := uuid.UUID{}
 	switch req.CreateMethod {
 	case utils.BUYER_CREATE_METHOD:
-		buyerID = req.UserId
+		buyerID = req.UserID
 		if info.Data.Business.DeliveryFee == 0 || (info.Data.Business.DeliveryFee > 0 && orderGrandTotal >= info.Data.Business.MinPriceFreeShip && info.Data.Business.MinPriceFreeShip > 0) {
 			deliveryFee = 0
 		} else {
@@ -180,7 +179,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
 			log.WithError(err).Error("Error when get user info from phone number of buyer info")
-			return nil, ginext.NewError(http.StatusBadRequest, "Error when get user info from phone number of buyer info")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		}
 		if len(tUser) > 0 {
 			buyerID = tUser[0].ID
@@ -209,9 +208,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	// Check Promotion Code
 	if req.PromotionCode != "" {
-		promotion, err := s.ProcessPromotion(*req.BusinessId, req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserId, true)
+		promotion, err := s.ProcessPromotion(ctx, *req.BusinessID, req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
 		if err != nil {
-			logrus.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
+			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
 			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
 		}
 		promotionDiscount = promotion.ValueDiscount
@@ -241,8 +240,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	}
 
 	order := model.Order{
-		BusinessId:        *req.BusinessId,
-		ContactId:         info.Data.Contact.ID,
+		BusinessID:        *req.BusinessID,
+		ContactID:         info.Data.Contact.ID,
 		PromotionCode:     req.PromotionCode,
 		PromotionDiscount: promotionDiscount,
 		DeliveryFee:       deliveryFee,
@@ -258,14 +257,14 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		Email:             req.Email,
 	}
 
-	req.BuyerInfo.PhoneNumber = s.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
 
-	order.CreatorID = req.UserId
+	order.CreatorID = req.UserID
 
 	buyerInfo, err := json.Marshal(req.BuyerInfo)
 	if err != nil {
 		log.WithError(err).Error("Error when parse buyerInfo")
-		return nil, ginext.NewError(http.StatusInternalServerError, "Error when parse buyerInfo")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
 	order.BuyerInfo.RawMessage = buyerInfo
@@ -286,22 +285,22 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	order, err = s.repo.CreateOrder(ctx, order, tx)
 	if err != nil {
 		log.WithError(err).Error("Error when CreateOrder")
-		return nil, ginext.NewError(http.StatusInternalServerError, "Error when CreateOrder")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 	log.WithField("order created", order).Info("Finish createOrder")
 
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
 		log.WithError(err).Error("Create order tracking error")
-		return nil, ginext.NewError(http.StatusBadRequest, "Create order tracking error")
+		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	for _, orderItem := range req.ListOrderItem {
-		orderItem.OrderId = order.ID
+		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
 			log.WithError(err).Error("Error when CreateOrderItem")
-			return nil, ginext.NewError(http.StatusInternalServerError, "Error when CreateOrderItem")
+			return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
 		order.OrderItem = append(order.OrderItem, tm)
 	}
@@ -322,49 +321,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	return order, nil
 }
 
-func (s *OrderService) ValidPhoneFormat(phone string) bool {
-	if phone == "" {
-		return false
-	}
-	if len(phone) == 13 {
-		return true
-	}
-	internationalPhone := regexp.MustCompile("^\\+[1-9]\\d{1,14}$")
-	vietnamPhone := regexp.MustCompile(`((09|03|07|08|05)+([0-9]{8})\b)`)
-	if !vietnamPhone.MatchString(phone) {
-		if !internationalPhone.MatchString(phone) {
-			return false
-		}
-	}
-	return true
-}
+func (s *OrderService) ProcessPromotion(ctx context.Context, businessId uuid.UUID, promotionCode string, orderGrandTotal float64, contactID uuid.UUID, currentUser uuid.UUID, isUse bool) (model.Promotion, error) {
+	log := logger.WithCtx(ctx, "OrderService.ProcessPromotion")
 
-func (s *OrderService) GetUserList(ctx context.Context, phoneNumber string, userIDs string) (res []model.User, err error) {
-	log := logger.WithCtx(ctx, "OrderService.GetUserList")
-
-	param := map[string]string{}
-	if phoneNumber != "" {
-		param["phone_number"] = phoneNumber
-	}
-	if userIDs != "" {
-		param["id"] = userIDs
-	}
-	bodyUser, _, err := common.SendRestAPI(conf.LoadEnv().MSUserManagement+"/api/user", rest.Get, nil, param, nil)
-	if err != nil {
-		log.WithError(err).Error("Fail to get user info")
-		return res, err
-	}
-	tmpResUser := new(struct {
-		Data []model.User `json:"data"`
-	})
-	if err = json.Unmarshal([]byte(bodyUser), &tmpResUser); err != nil {
-		log.WithError(err).Error("Fail to unmarshal user info")
-		return res, err
-	}
-	return tmpResUser.Data, nil
-}
-
-func (s *OrderService) ProcessPromotion(businessId uuid.UUID, promotionCode string, orderGrandTotal float64, contactID uuid.UUID, currentUser uuid.UUID, isUse bool) (model.Promotion, error) {
 	type ProcessPromotionRequest struct {
 		BusinessId    uuid.UUID `json:"business_id" valid:"Required"`
 		PromotionCode string    `json:"promotion_code" valid:"Required"`
@@ -390,31 +349,20 @@ func (s *OrderService) ProcessPromotion(businessId uuid.UUID, promotionCode stri
 	promotion := PromotionResponse{}
 	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSPromotionManagement+"/api/v2/promotion/process", rest.Post, header, nil, req)
 	if err != nil {
-		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Get promotion info error: "+err.Error())
+		log.WithError(err).Error("Error when Get promotion info error: %v", err.Error())
+		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	if err = json.Unmarshal([]byte(bodyResponse), &promotion); err != nil {
-		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Get promotion info error: "+err.Error())
+		log.WithError(err).Error("Error when unmarshal promotion: %v", err.Error())
+		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	return promotion.Data, nil
-
-}
-
-func (s *OrderService) ConvertVNPhoneFormat(phone string) string {
-	if phone != "" {
-		if strings.HasPrefix(phone, "84") {
-			phone = "+" + phone
-		}
-		if strings.HasPrefix(phone, "0") {
-			phone = "+84" + phone[1:]
-		}
-	}
-	return phone
 }
 
 func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit, checkCompleted string) (err error) {
-	log := logrus.WithContext(ctx).WithField("OrderService.OrderProcessing", order)
+	log := logger.WithCtx(ctx, "OrderService.OrderProcessing")
 	// Create transaction
 	var cancel context.CancelFunc
 	tx, cancel := s.repo.DBWithTimeout(ctx)
@@ -427,9 +375,9 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	allState := []string{utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_CANCEL}
 
 	// get seller_id from business_id
-	uhb, err := utils.GetUserHasBusiness("", order.BusinessId.String())
+	uhb, err := utils.GetUserHasBusiness("", order.BusinessID.String())
 	if err != nil {
-		log.Error("Error when get user has busines: " + err.Error())
+		log.WithError(err).Errorf("Error when get user has busines: %v", err.Error())
 		return
 	}
 	if len(uhb) == 0 {
@@ -438,7 +386,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	}
 
 	for _, state := range allState {
-		countState := s.repo.CountOneStateOrder(ctx, order.BusinessId, state, tx)
+		countState := s.repo.CountOneStateOrder(ctx, order.BusinessID, state, tx)
 		customFieldName := ""
 		switch state {
 		case utils.ORDER_STATE_WAITING_CONFIRM:
@@ -450,7 +398,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 		case utils.ORDER_STATE_CANCEL:
 			customFieldName = "order_cancel_count"
 		}
-		s.UpdateBusinessCustomField(ctx, order.BusinessId, customFieldName, strconv.Itoa(countState))
+		s.UpdateBusinessCustomField(ctx, order.BusinessID, customFieldName, strconv.Itoa(countState))
 	}
 
 	//TODO--------Update Business custom_field--------------------------------------------------------------END
@@ -473,11 +421,11 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	case utils.ORDER_STATE_COMPLETE:
 		//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
 		revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
-			BusinessID: order.BusinessId,
+			BusinessID: order.BusinessID.String(),
 		}, tx)
 		if err == nil {
 			strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
-			s.UpdateBusinessCustomField(ctx, order.BusinessId, "business_revenue", strSumGrandTotal)
+			s.UpdateBusinessCustomField(ctx, order.BusinessID, "business_revenue", strSumGrandTotal)
 		}
 
 		//--------------------------------------------------------------------------------------------------------------------
@@ -487,7 +435,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 		businessTransaction := model.BusinessTransaction{
 			ID:              uuid.New(),
 			CreatorID:       uhb[0].UserID,
-			BusinessID:      order.BusinessId,
+			BusinessID:      order.BusinessID,
 			Day:             time.Now().UTC(),
 			Amount:          order.GrandTotal,
 			Currency:        "VND",
@@ -504,7 +452,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 
 		err = s.CreateBusinessTransaction(ctx, businessTransaction)
 		if err != nil {
-			logrus.Error("Error when create business transaction: " + err.Error())
+			log.WithError(err).Errorf("Error when create business transaction: " + err.Error())
 			return err
 		}
 
@@ -512,9 +460,9 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			contactTransaction := model.ContactTransaction{
 				ID:              uuid.New(),
 				CreatorID:       uhb[0].UserID,
-				BusinessID:      order.BusinessId,
+				BusinessID:      order.BusinessID,
 				Amount:          order.GrandTotal - *debit.BuyerPay,
-				ContactID:       order.ContactId,
+				ContactID:       order.ContactID,
 				Currency:        "VND",
 				TransactionType: "in",
 				Status:          "create",
@@ -530,7 +478,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 			err = s.CreateContactTransaction(ctx, contactTransaction)
 			if err != nil {
-				logrus.Error("Error when contact transaction: " + err.Error())
+				log.WithError(err).Errorf("Error when contact transaction: " + err.Error())
 				return err
 			}
 		}
@@ -559,13 +507,13 @@ func (s *OrderService) CountCustomer(ctx context.Context, order model.Order) {
 		cancel()
 	}()
 
-	_, countCustomer, err := s.repo.GetContactHaveOrder(ctx, order.BusinessId, tx)
+	_, countCustomer, err := s.repo.GetContactHaveOrder(ctx, order.BusinessID, tx)
 	if err != nil {
 		log.WithError(err).Error("Fail to get contact have order")
 		return
 	}
 
-	s.UpdateBusinessCustomField(ctx, order.BusinessId, "customer_count", strconv.Itoa(countCustomer))
+	s.UpdateBusinessCustomField(ctx, order.BusinessID, "customer_count", strconv.Itoa(countCustomer))
 	defer func() {
 		if err != nil {
 			tx.Rollback()
@@ -604,7 +552,7 @@ func CompletedOrderMission(ctx context.Context, order model.Order) {
 	if order.CreateMethod == utils.SELLER_CREATE_METHOD {
 		userID = order.CreatorID
 	} else {
-		userHasBusiness, err := utils.GetUserHasBusiness("", order.BusinessId.String())
+		userHasBusiness, err := utils.GetUserHasBusiness("", order.BusinessID.String())
 		if err != nil {
 			log.WithError(err).Error("Fail to GetUserHasBusiness")
 			return
@@ -627,7 +575,7 @@ func (s *OrderService) UpdateContactUser(ctx context.Context, order model.Order,
 	values, _ := order.BuyerInfo.MarshalJSON()
 	err = json.Unmarshal(values, &buyerInfo)
 	if err != nil {
-		log.WithError(err).Error("Fail to unmarshal update user contact")
+		log.WithError(err).Error("Error when unmarshal update user contact")
 	}
 	type UserContact struct {
 		UserID      uuid.UUID `json:"user_id"`
@@ -643,7 +591,7 @@ func (s *OrderService) UpdateContactUser(ctx context.Context, order model.Order,
 		Address:     buyerInfo.Address,
 	})
 	if err != nil {
-		log.WithError(err).Error("Fail to update user contact")
+		log.WithError(err).Error("Error when update user contact")
 		return err
 	} else {
 		log.WithError(err).Error("Update profile user contact")
@@ -653,8 +601,10 @@ func (s *OrderService) UpdateContactUser(ctx context.Context, order model.Order,
 }
 
 func (s *OrderService) CreateOrderTracking(ctx context.Context, req model.Order, tx *gorm.DB) error {
+	logger.WithCtx(ctx, "OrderService.CreateOrderTracking").Info()
+
 	orderTracking := model.OrderTracking{
-		OrderId: req.ID,
+		OrderID: req.ID,
 		State:   req.State,
 	}
 
@@ -662,6 +612,7 @@ func (s *OrderService) CreateOrderTracking(ctx context.Context, req model.Order,
 }
 
 func (s *OrderService) PushConsumerSendEmail(ctx context.Context, id string, state string) {
+	logger.WithCtx(ctx, "OrderService.PushConsumerSendEmail").Info()
 
 	request := model.SendEmailRequest{
 		ID:       id,
@@ -678,7 +629,7 @@ func (s *OrderService) CreateBusinessTransaction(ctx context.Context, req model.
 	header["x-user-id"] = req.CreatorID.String()
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/business-transaction/v2/create", rest.Post, header, nil, req)
 	if err != nil {
-		log.WithError(err).Error("Fail to create business transaction")
+		log.WithError(err).Error("Error when create business transaction")
 		return err
 	}
 	return nil
@@ -691,7 +642,7 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 	header["x-user-id"] = req.CreatorID.String()
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v2/contact-transaction/create", rest.Post, header, nil, req)
 	if err != nil {
-		log.WithError(err).Error("Fail to create contact transaction")
+		log.WithError(err).Error("Error when create contact transaction")
 		return err
 	}
 	return nil
@@ -703,9 +654,9 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCom
 	reqCreatePo := model.PurchaseOrderRequest{
 		PoType:        "out",
 		Note:          "Đơn hàng " + order.OrderNumber,
-		ContactID:     order.ContactId,
+		ContactID:     order.ContactID,
 		TotalDiscount: order.OtherDiscount,
-		BusinessID:    order.BusinessId,
+		BusinessID:    order.BusinessID,
 		PoDetails:     nil,
 		Option:        checkCompleted,
 	}
@@ -730,7 +681,7 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCom
 	return nil
 }
 
-func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (rs interface{}, err error) {
+func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderParam) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.GetContactHaveOrder")
 
 	// Create transaction
@@ -742,7 +693,7 @@ func (s *OrderService) GetContactHaveOrder(ctx context.Context, req model.OrderP
 		cancel()
 	}()
 
-	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, req.BusinessId, tx)
+	contactIds, _, err := s.repo.GetContactHaveOrder(ctx, uuid.MustParse(req.BusinessID), tx)
 	if err != nil {
 		log.WithError(err).Error("Fail to get contact have order")
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
@@ -788,7 +739,7 @@ func (s *OrderService) SendNotification(ctx context.Context, userId uuid.UUID, e
 	log := logger.WithCtx(ctx, "OrderService.SendNotification")
 
 	notiRequest := model.SendNotificationRequest{
-		UserId:         userId,
+		UserID:         userId,
 		EntityKey:      entityKey,
 		StateValue:     state,
 		Language:       "vi",
@@ -804,13 +755,13 @@ func (s *OrderService) SendNotification(ctx context.Context, userId uuid.UUID, e
 }
 
 func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, trackingType string) (err error) {
-	log := logrus.WithContext(ctx).WithField("OrderService.UpdateStock", order.OrderItem)
+	log := logger.WithCtx(ctx, "OrderService.UpdateStock").WithField("OrderService.UpdateStock", order.OrderItem)
 
 	// Make data for push consumer
 	reqUpdateStock := model.CreateStockRequest{
 		TrackingType:   trackingType,
 		IDTrackingType: order.OrderNumber,
-		BusinessID:     order.BusinessId,
+		BusinessID:     order.BusinessID,
 	}
 	tResToJson, _ := json.Marshal(order)
 	if err = json.Unmarshal(tResToJson, &reqUpdateStock.TrackingInfo); err != nil {
@@ -859,16 +810,7 @@ func (s *OrderService) ReminderProcessOrder(ctx context.Context, orderId uuid.UU
 	})
 }
 
-func (s *OrderService) RevertBeginPhone(phone string) string {
-	if phone != "" {
-		if strings.HasPrefix(phone, "+84") {
-			phone = "0" + phone[3:]
-		}
-	}
-	return phone
-}
-
-func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (rs interface{}, err error) {
+func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.SendEmailOrder")
 
 	userRoles, _ := strconv.Atoi(req.UserRole)
@@ -899,7 +841,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	var orderItems []model.OrderItemForSendEmail
 	for _, item := range order.OrderItem {
 		var orderItem = model.OrderItemForSendEmail{
-			ProductId:           item.ProductId,
+			ProductID:           item.ProductID,
 			ProductName:         item.ProductName,
 			Quantity:            item.Quantity,
 			TotalAmount:         item.TotalAmount,
@@ -924,7 +866,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
-	businessInfo, err := s.GetDetailBusiness(order.BusinessId.String())
+	businessInfo, err := s.GetDetailBusiness(ctx, order.BusinessID.String())
 	if err != nil {
 		log.WithError(err).Error("Fail to get business detail")
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
@@ -939,7 +881,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		// customer
 		"NAME_CUSTOMER":    buyerInfo.Name,
 		"ADDRESS_CUSTOMER": buyerInfo.Address,
-		"PHONE_CUSTOMER":   s.RevertBeginPhone(buyerInfo.PhoneNumber),
+		"PHONE_CUSTOMER":   utils.RevertBeginPhone(buyerInfo.PhoneNumber),
 		"EMAIL_CUSTOMER":   order.Email,
 		// order
 		"ORDER_NUMBER":        order.OrderNumber,
@@ -954,7 +896,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		// seller
 		"NAME_BUSINESS":    businessInfo.Name,
 		"ADDRESS_BUSINESS": businessInfo.Address,
-		"PHONE_BUSINESS":   s.RevertBeginPhone(businessInfo.PhoneNumber),
+		"PHONE_BUSINESS":   utils.RevertBeginPhone(businessInfo.PhoneNumber),
 		"DOMAIN_BUSINESS":  businessInfo.Domain,
 	}
 	if order.CreatorID != uuid.Nil {
@@ -1035,18 +977,22 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 
 	tx.Commit()
 
-	return rs, err
+	return res, err
 }
 
-func (s *OrderService) GetDetailBusiness(businessID string) (res model.BusinessMainInfo, err error) {
+func (s *OrderService) GetDetailBusiness(ctx context.Context, businessID string) (res model.BusinessMainInfo, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetDetailBusiness")
+
 	bodyBusiness, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/business/"+businessID, rest.Get, nil, nil, nil)
 	if err != nil {
+		log.WithError(err).Error("Error when GetDetailBusiness")
 		return res, err
 	}
 	tmpResBusiness := new(struct {
 		Data model.BusinessMainInfo `json:"data"`
 	})
 	if err = json.Unmarshal([]byte(bodyBusiness), &tmpResBusiness); err != nil {
+		log.WithError(err).Error("Cannot unmarshal BusinessMainInfo")
 		return res, err
 	}
 	return tmpResBusiness.Data, nil
@@ -1079,21 +1025,26 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 
 	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
 	if err != nil {
-		logrus.WithError(err).Errorf("Error when GetOneOrder")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when GetOneOrder")
+		log.WithError(err).Errorf("Error when GetOneOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), req.UserRole); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
 
 	if req.State != nil && order.State == *req.State {
-		logrus.WithError(err).Errorf("Error when State not change")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when State not change")
+		log.WithError(err).Errorf("Error when State not change")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	preOrderState := order.State
 
 	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
 		if rCheck, err := utils.CheckCanPickQuantity(order.CreatorID.String(), order.OrderItem, nil); err != nil {
-			logrus.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product")
+			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		} else {
 			if rCheck.Status != utils.STATUS_SUCCESS {
 				return rCheck, nil
@@ -1114,12 +1065,12 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 
 	res, err = s.repo.UpdateOrder(ctx, order, tx)
 	if err != nil {
-		logrus.WithError(err).Errorf("Cannot update order")
-		return nil, ginext.NewError(http.StatusBadRequest, "Cannot update order")
+		log.WithError(err).Errorf("Cannot update order")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
-		logrus.WithError(err).Errorf("Create order tracking error")
+		log.WithError(err).Errorf("Create order tracking error")
 	}
 	if req.State != nil && *req.State == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
 		go s.OrderCancelProcessing(ctx, order, tx)
@@ -1144,23 +1095,24 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 }
 
 func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Order, tx *gorm.DB) {
+	log := logger.WithCtx(ctx, "OrderService.OrderCancelProcessing")
 
 	//TODO--------Update Business custom_field--------------------------------------------------------------START
 	allState := []string{utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_CANCEL}
 
 	// get seller_id from business_id
-	uhb, err := utils.GetUserHasBusiness("", order.BusinessId.String())
+	uhb, err := utils.GetUserHasBusiness("", order.BusinessID.String())
 	if err != nil {
-		logrus.Error("Error when get user has busines: " + err.Error())
+		log.WithError(err).Errorf("Error when get user has busines: %v", err.Error())
 		return
 	}
 	if len(uhb) == 0 {
-		logrus.Error("Error: Empty user has business info")
+		log.Error("Error: Empty user has business info")
 		return
 	}
 
 	for _, state := range allState {
-		countState := s.repo.CountOneStateOrder(ctx, order.BusinessId, state, tx)
+		countState := s.repo.CountOneStateOrder(ctx, order.BusinessID, state, tx)
 		customFieldName := ""
 		switch state {
 		case utils.ORDER_STATE_WAITING_CONFIRM:
@@ -1172,7 +1124,7 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 		case utils.ORDER_STATE_CANCEL:
 			customFieldName = "order_cancel_count"
 		}
-		s.UpdateBusinessCustomField(ctx, order.BusinessId, customFieldName, strconv.Itoa(countState))
+		s.UpdateBusinessCustomField(ctx, order.BusinessID, customFieldName, strconv.Itoa(countState))
 	}
 	//TODO--------Update Business custom_field--------------------------------------------------------------END
 
@@ -1180,11 +1132,11 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 	case utils.ORDER_STATE_CANCEL:
 		//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
 		revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
-			BusinessID: order.BusinessId,
+			BusinessID: order.BusinessID.String(),
 		}, tx)
 		if err == nil {
 			strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
-			s.UpdateBusinessCustomField(ctx, order.BusinessId, "business_revenue", strSumGrandTotal)
+			s.UpdateBusinessCustomField(ctx, order.BusinessID, "business_revenue", strSumGrandTotal)
 		}
 		//TODO--------Update Business custom_field Revenue --------------------------------------------------------------END
 
@@ -1196,6 +1148,655 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 		break
 	}
 	return
+}
+
+func (s *OrderService) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetListOrderEcom")
+
+	// get list order ecom
+	res, err = s.repo.GetListOrderEcom(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetListOrderEcom")
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *OrderService) GetAllOrder(ctx context.Context, req model.OrderParam) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetAllOrder")
+
+	rs, err := s.repo.GetAllOrder(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetListOrderEcom")
+		return nil, err
+	}
+
+	if req.ContactID != "" {
+		// Get số đơn giao thành công và tính tổng tiền
+		resCompleteOrders, err := s.repo.GetCompleteOrders(ctx, uuid.MustParse(req.ContactID), nil)
+		if err != nil {
+			return res, err
+		}
+		rs.Meta["count_complete"] = resCompleteOrders.Count
+		val := strconv.FormatFloat(resCompleteOrders.SumAmount, 'f', 0, 64)
+		rs.Meta["sum_grand_total_complete"] = val
+	}
+	return rs, nil
+}
+
+func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrder")
+
+	if len(req.ListOrderItem) == 0 {
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm: "+err.Error())
+	}
+
+	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetOneOrder")
+		return nil, err
+	}
+
+	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
+		if *req.OtherDiscount > (*req.OrderedGrandTotal + *req.DeliveryFee - *req.PromotionDiscount) {
+			log.WithError(err).Error("Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+		}
+	}
+
+	if order.State != utils.ORDER_STATE_WAITING_CONFIRM && order.State != utils.ORDER_STATE_DELIVERING {
+		log.WithError(err).Error("Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+	}
+
+	// Check valid order
+	mapItem := make(map[string]model.OrderItem)
+	if len(req.ListOrderItem) > 0 && req.OrderedGrandTotal != nil && req.GrandTotal != nil && req.PromotionDiscount != nil && req.OtherDiscount != nil {
+		orderGrandTotal := 0.0
+		grandTotal := 0.0
+		deliveryFee := 0.0
+
+		// check valid product
+		for _, item := range req.ListOrderItem {
+			product, err := s.GetProduct(ctx, item.ProductID.String())
+			if err == nil {
+				item.ProductImages = product.Images
+			}
+			totalAmount := 0.0
+			if item.ProductSellingPrice > 0 {
+				totalAmount = math.Round(item.ProductSellingPrice * item.Quantity)
+			} else {
+				totalAmount = math.Round(item.ProductNormalPrice * item.Quantity)
+			}
+			orderGrandTotal += totalAmount
+			item.TotalAmount = totalAmount
+			mapItem[item.ProductID.String()] = item
+		}
+
+		// Check promotion discount
+		if req.PromotionDiscount != nil && math.Round(*req.PromotionDiscount) != math.Round(order.PromotionDiscount) {
+			log.WithError(err).Error("Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
+		}
+
+		// Check order grand total
+		if math.Round(orderGrandTotal) != math.Round(*req.OrderedGrandTotal) {
+			log.WithError(err).Error("Lỗi: Số tiền tổng sản phẩm không hợp lệ")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
+		}
+
+		// Check valid delivery fee
+		if req.DeliveryMethod != nil {
+			switch *req.DeliveryMethod {
+			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
+				if req.DeliveryFee != nil && *req.DeliveryFee > 0 {
+					log.WithError(err).Error("Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
+					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
+				}
+				deliveryFee = 0
+				break
+			case utils.DELIVERY_METHOD_SELLER_DELIVERY:
+				if req.DeliveryFee != nil && *req.DeliveryFee >= 0 {
+					deliveryFee = *req.DeliveryFee
+				}
+				break
+			}
+		}
+
+		// Check grand total
+		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - *req.OtherDiscount
+		if grandTotal < 0 {
+			grandTotal = 0
+		}
+		if math.Round(grandTotal) != math.Round(*req.GrandTotal) {
+			log.WithError(err).Error("Lỗi: Số tiền phải trả không hợp lệ")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
+		}
+	}
+
+	// Check and update buyer info
+	if req.BuyerInfo != nil && req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		// Update to order record
+		req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+		buyerInfo, err := json.Marshal(req.BuyerInfo)
+		if err != nil {
+			log.WithError(err).Errorf("Error when parse buyerInfo: %v", err.Error())
+		}
+		order.BuyerInfo.RawMessage = buyerInfo
+
+		// Update address of contact
+		getContactRequest := model.GetContactRequest{
+			BusinessID:  order.BusinessID,
+			Name:        req.BuyerInfo.Name,
+			PhoneNumber: req.BuyerInfo.PhoneNumber,
+			Address:     req.BuyerInfo.Address,
+		}
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/contact/get-contact-by-phone-number", rest.Post, nil, nil, getContactRequest)
+		if err != nil {
+			log.WithError(err).Errorf("Get contact error: %v", err.Error())
+		}
+	}
+
+	req.BuyerInfo = nil
+
+	common.Sync(req, &order)
+
+	res, stocks, err := s.repo.UpdateDetailOrder(ctx, order, mapItem, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when UpdateDetailOrder")
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	if order.State == utils.ORDER_STATE_DELIVERING {
+		go s.UpdateStockWhenUpdateDetailOrder(ctx, order, stocks, "order_delivering")
+	}
+
+	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
+	go s.PushConsumerSendEmail(ctx, order.ID.String(), order.State)
+
+	return res, nil
+}
+
+func (s *OrderService) UpdateStockWhenUpdateDetailOrder(ctx context.Context, order model.Order, listStock []model.StockRequest, trackingType string) (err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateStockWhenUpdateDetailOrder")
+
+	// Make data for push consumer
+	reqUpdateStock := model.CreateStockRequest{
+		TrackingType:   trackingType,
+		IDTrackingType: order.OrderNumber,
+		BusinessID:     order.BusinessID,
+		ListStock:      listStock,
+	}
+	tResToJson, _ := json.Marshal(order)
+	if err = json.Unmarshal(tResToJson, &reqUpdateStock.TrackingInfo); err != nil {
+		log.WithError(err).Error("Error when marshal parse response to json when create stock")
+	} else {
+		go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK)
+	}
+	return nil
+}
+
+func (s *OrderService) CountOrderState(ctx context.Context, req model.RevenueBusinessParam) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.CountOrderState")
+
+	res, err = s.repo.CountOrderState(ctx, req, nil)
+	if err != nil {
+		// if err is not found return 404
+		if err == gorm.ErrRecordNotFound {
+			log.WithError(err).Error("CountOrder not found")
+			return res, nil
+		} else {
+			log.WithError(err).Error("Error CountOrderState")
+			return res, err
+		}
+	}
+	return res, nil
+}
+
+func (s *OrderService) GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOrderByContact")
+
+	res, err = s.repo.GetOrderByContact(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Error("Error GetOrderByContact")
+		return nil, err
+	}
+	return res, nil
+}
+
+//
+func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.ExportOrderReport")
+
+	//  Get data order list
+	orders, err := s.repo.GetAllOrderForExport(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Error("Error GetAllOrderForExport")
+		return nil, err
+	}
+
+	if len(orders) == 0 {
+		log.WithError(err).Error("Record not found while GetAllOrderForExport")
+		return nil, err
+	}
+
+	// get business info
+	businessInfo := model.BusinessMainInfo{}
+	if businessInfo, err = s.GetDetailBusiness(ctx, req.BusinessID.String()); err != nil {
+		log.WithError(err).Errorf("Fail to get business detail due to %v", err.Error())
+		return nil, err
+	}
+
+	// Make excel file
+	f := excelize.NewFile()
+
+	// Config some new style
+	styleHeader, _ := f.NewStyle(`{"font":{"bold":true, "size":14},"alignment":{"horizontal":"left","indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	styleTitle, _ := f.NewStyle(`{"fill":{"type":"pattern","color":["#aad08e"],"pattern":1},"font":{"bold":true},"alignment":{"horizontal":"center","indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	styleBorder, _ := f.NewStyle(`{"alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	styleCenterHorizontal, _ := f.NewStyle(`{"alignment":{"horizontal":"center", "indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	styleCurrency, _ := f.NewStyle(`{"number_format": 41, "alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	styleDatetime, _ := f.NewStyle(`{"number_format": 22, "alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+
+	//======================================================================================
+	//        					Sheet TỔNG QUAN ĐƠN HÀNG
+	//======================================================================================
+	orderSheetName := "Tổng quan đơn hàng"
+	f.SetDefaultFont("Arial")
+	f.SetSheetName("Sheet1", orderSheetName)
+	for i := 3; i < 500; i++ {
+		_ = f.SetRowHeight(orderSheetName, i, 17)
+	}
+	_ = f.SetRowHeight(orderSheetName, 1, 25)
+	_ = f.SetRowHeight(orderSheetName, 2, 25)
+
+	_ = f.MergeCell(orderSheetName, "A1", "Q1")
+	_ = f.MergeCell(orderSheetName, "A2", "Q2")
+	_ = f.SetCellValue(orderSheetName, "A1", fmt.Sprintf("%s - %s", businessInfo.Name, businessInfo.Domain))
+	_ = f.SetCellValue(orderSheetName, "A2", "Ngày xuất báo cáo: "+utils.ConvertTimeFormatForReport(time.Now()))
+
+	headers := map[string]string{
+		"A3": "STT", "B3": "Đơn hàng", "C3": "Ngày giờ đặt",
+		"D3": "Số sản phẩm", "E3": "Tổng số món", "F3": "Tổng tiền",
+		"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3": "Tổng cộng", "J3": "Trạng thái",
+		"K3": "Hình thức giao hàng", "L3": "Mã khuyến mãi", "M3": "Hình thức thanh toán",
+		"N3": "Tên khách hàng", "O3": "SĐT nhận", "P3": "Địa chỉ", "Q3": "Ghi chú",
+	}
+	for k, v := range headers {
+		_ = f.SetCellValue(orderSheetName, k, v)
+	}
+
+	// Set style
+	_ = f.SetCellStyle(orderSheetName, "A2", "Q"+strconv.Itoa(3+len(orders)), styleBorder)
+	_ = f.SetCellStyle(orderSheetName, "A3", "Q3", styleTitle)
+	_ = f.SetCellStyle(orderSheetName, "A1", "Q1", styleHeader)
+	_ = f.SetCellStyle(orderSheetName, "A4", "A"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderSheetName, "N4", "N"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency)
+	_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency)
+	_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency)
+	_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency)
+	_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime)
+
+	// Set col width
+	_ = f.SetColWidth(orderSheetName, "A", "A", 8)
+	_ = f.SetColWidth(orderSheetName, "B", "B", 13)
+	_ = f.SetColWidth(orderSheetName, "C", "C", 18)
+	_ = f.SetColWidth(orderSheetName, "D", "D", 14)
+	_ = f.SetColWidth(orderSheetName, "E", "E", 14)
+	_ = f.SetColWidth(orderSheetName, "F", "F", 14)
+	_ = f.SetColWidth(orderSheetName, "G", "G", 16)
+	_ = f.SetColWidth(orderSheetName, "H", "H", 16)
+	_ = f.SetColWidth(orderSheetName, "I", "I", 16)
+	_ = f.SetColWidth(orderSheetName, "J", "J", 14)
+	_ = f.SetColWidth(orderSheetName, "K", "K", 19)
+	_ = f.SetColWidth(orderSheetName, "L", "L", 15)
+	_ = f.SetColWidth(orderSheetName, "M", "M", 20)
+	_ = f.SetColWidth(orderSheetName, "N", "N", 19)
+	_ = f.SetColWidth(orderSheetName, "O", "O", 15)
+	_ = f.SetColWidth(orderSheetName, "P", "P", 30)
+	_ = f.SetColWidth(orderSheetName, "Q", "Q", 25)
+
+	// Set data order for sheet
+	rowNumber := 4
+	var rowItemsValues [][]interface{}
+	for index, order := range orders {
+		// Count Sum Item and Sum Quantity
+		sumQuantity := 0.0
+		for _, item := range order.OrderItem {
+			sumQuantity += item.Quantity
+		}
+		rowValues := []interface{}{
+			index + 1,
+			order.OrderNumber,
+			order.CreatedAt.Add(7 * time.Hour),
+			len(order.OrderItem),
+			sumQuantity,
+			order.OrderedGrandTotal,
+			order.PromotionDiscount,
+			order.DeliveryFee,
+			order.GrandTotal,
+		}
+		switch order.State {
+		case utils.ORDER_STATE_WAITING_CONFIRM:
+			rowValues = append(rowValues, "Chờ xác nhận")
+			break
+		case utils.ORDER_STATE_DELIVERING:
+			rowValues = append(rowValues, "Đang giao")
+			break
+		case utils.ORDER_STATE_CANCEL:
+			rowValues = append(rowValues, "Đã hủy")
+			break
+		case utils.ORDER_STATE_COMPLETE:
+			rowValues = append(rowValues, "Hoàn thành")
+			break
+		}
+		switch order.DeliveryMethod {
+		case utils.DELIVERY_METHOD_SELLER_DELIVERY:
+			rowValues = append(rowValues, "Tự đi giao")
+			break
+		case utils.DELIVERY_METHOD_BUYER_PICK_UP:
+			rowValues = append(rowValues, "Khách đến lấy")
+			break
+		}
+		rowValues = append(rowValues, order.PromotionCode)
+		rowValues = append(rowValues, order.PaymentMethod)
+
+		buyerInfo := model.BuyerInfo{}
+		tBuyer, _ := json.Marshal(order.BuyerInfo)
+		if err = json.Unmarshal(tBuyer, &buyerInfo); err != nil {
+			log.WithError(err).Errorf("Cannot unmarshal buyerInfo %v", err.Error())
+			rowValues = append(rowValues, "")
+			rowValues = append(rowValues, "")
+			rowValues = append(rowValues, "")
+		} else {
+			rowValues = append(rowValues, buyerInfo.Name)
+			if len(buyerInfo.PhoneNumber) > 3 {
+				rowValues = append(rowValues, "0"+buyerInfo.PhoneNumber[3:])
+			} else {
+				rowValues = append(rowValues, "")
+			}
+			rowValues = append(rowValues, buyerInfo.Address)
+		}
+		rowValues = append(rowValues, order.Note)
+
+		for _, item := range order.OrderItem {
+			itemData := []interface{}{
+				len(rowItemsValues) + 1,
+				rowValues[1],
+				rowValues[2],
+			}
+			name := item.ProductName
+			if item.SkuName != "" {
+				name += " - " + item.SkuName
+			}
+			itemData = append(itemData, name)
+			if item.ProductSellingPrice > 0 && item.ProductSellingPrice < item.ProductNormalPrice {
+				itemData = append(itemData, item.ProductSellingPrice)
+			} else {
+				itemData = append(itemData, item.ProductNormalPrice)
+			}
+			itemData = append(itemData, item.Quantity)
+			itemData = append(itemData, item.TotalAmount)
+			//itemData = append(itemData, rowValues[8])
+			itemData = append(itemData, rowValues[9])  // Trang thai
+			itemData = append(itemData, rowValues[12]) // hinh thuc thanh toan
+			itemData = append(itemData, rowValues[13]) // ten khach hang
+			itemData = append(itemData, rowValues[14]) // Phone
+			itemData = append(itemData, rowValues[15]) // Dia chi
+			itemData = append(itemData, item.Note)     // Note
+
+			rowItemsValues = append(rowItemsValues, itemData)
+		}
+		_ = f.SetSheetRow(orderSheetName, "A"+strconv.Itoa(rowNumber), &rowValues)
+		rowNumber++
+	}
+
+	//======================================================================================
+	//        					Sheet Chi tiết đơn hàng
+	//======================================================================================
+	orderDetailSheetName := "Chi tiết đơn hàng"
+	f.NewSheet(orderDetailSheetName)
+	for i := 3; i < 500; i++ {
+		_ = f.SetRowHeight(orderDetailSheetName, i, 17)
+	}
+
+	// Header for order item
+	headersItem := map[string]string{
+		"A1": "STT", "B1": "Đơn hàng", "C1": "Ngày giờ đặt",
+		"D1": "Tên sản phẩm", "E1": "Giá bán", "F1": "Số lượng sản phẩm",
+		"G1": "Số tiền", "H1": "Trạng thái", "I1": "Hình thức giao hàng",
+		"J1": "Tên khách hàng", "K1": "SĐT nhận", "L1": "Địa chỉ",
+		"M1": "Ghi chú",
+	}
+	for k, v := range headersItem {
+		_ = f.SetCellValue(orderDetailSheetName, k, v)
+	}
+
+	// Set style
+	_ = f.SetCellStyle(orderDetailSheetName, "A1", "M"+strconv.Itoa(1+len(rowItemsValues)), styleBorder)
+	_ = f.SetCellStyle(orderDetailSheetName, "A1", "M1", styleTitle)
+	_ = f.SetCellStyle(orderDetailSheetName, "A2", "A"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderDetailSheetName, "F2", "F"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderDetailSheetName, "J2", "J"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
+	_ = f.SetCellStyle(orderDetailSheetName, "E2", "E"+strconv.Itoa(1+len(rowItemsValues)), styleCurrency)
+	_ = f.SetCellStyle(orderDetailSheetName, "G2", "G"+strconv.Itoa(1+len(rowItemsValues)), styleCurrency)
+	_ = f.SetCellStyle(orderDetailSheetName, "C2", "C"+strconv.Itoa(1+len(rowItemsValues)), styleDatetime)
+
+	// Set col width
+	_ = f.SetColWidth(orderDetailSheetName, "A", "A", 8)
+	_ = f.SetColWidth(orderDetailSheetName, "B", "B", 13)
+	_ = f.SetColWidth(orderDetailSheetName, "C", "C", 18)
+	_ = f.SetColWidth(orderDetailSheetName, "D", "D", 22)
+	_ = f.SetColWidth(orderDetailSheetName, "E", "E", 14)
+	_ = f.SetColWidth(orderDetailSheetName, "F", "F", 16)
+	_ = f.SetColWidth(orderDetailSheetName, "G", "G", 14)
+	_ = f.SetColWidth(orderDetailSheetName, "H", "H", 16)
+	_ = f.SetColWidth(orderDetailSheetName, "I", "I", 16)
+	_ = f.SetColWidth(orderDetailSheetName, "J", "J", 19)
+	_ = f.SetColWidth(orderDetailSheetName, "K", "K", 14)
+	_ = f.SetColWidth(orderDetailSheetName, "L", "L", 30)
+	_ = f.SetColWidth(orderDetailSheetName, "M", "M", 25)
+
+	// Set data order item
+	for i, item := range rowItemsValues {
+		_ = f.SetSheetRow(orderDetailSheetName, "A"+strconv.Itoa(i+2), &item)
+	}
+
+	f.SetActiveSheet(0)
+
+	// Save spreadsheet by the given path.
+	fileName := "DonHang_" +
+		strings.ReplaceAll(businessInfo.Domain, ".", "") +
+		"_" +
+		strconv.Itoa(time.Now().Year()) +
+		utils.ConvertTimeIntToString(int(time.Now().Month())) +
+		utils.ConvertTimeIntToString(time.Now().Day()) +
+		utils.ConvertTimeIntToString(time.Now().Hour()) +
+		utils.ConvertTimeIntToString(time.Now().Minute()) +
+		utils.ConvertTimeIntToString(time.Now().Second()) +
+		".xlsx"
+	if err := f.SaveAs(fileName); err != nil {
+		log.WithError(err).Error("Error when SaveAs")
+		return nil, ginext.NewError(http.StatusInternalServerError, "Error when SaveAs"+err.Error())
+	}
+
+	// Save to S3 and get URL link to response
+	linkReportOrders, err := s.ExcelUpFileToS3(ctx, model.UpFileToS3Request{
+		File:      "./" + fileName,
+		Name:      fileName,
+		MediaType: "EXCEL",
+		UserID:    req.UserID,
+	})
+
+	_ = os.Remove("./" + fileName)
+	if err != nil {
+		log.WithError(err).Error("Error when Remove")
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when Remove")
+	}
+
+	return linkReportOrders, nil
+}
+func (s *OrderService) ExcelUpFileToS3(ctx context.Context, data model.UpFileToS3Request) (string, error) {
+	log := logger.WithCtx(ctx, "OrderService.ExcelUpFileToS3")
+
+	url, err := s.S3PreUpload(ctx, data)
+	if err != nil {
+		log.WithError(err).Error("Error when S3PreUpload")
+		return "", err
+	}
+
+	urlUpload, err := s.S3Upload(ctx, data, url)
+	if err != nil {
+		log.WithError(err).Error("Error when S3Upload")
+		return "", err
+	}
+
+	_, err = s.S3PosUpload(ctx, data)
+	if err != nil {
+		log.WithError(err).Error("Error when S3PosUpload")
+		return "", err
+	}
+
+	return urlUpload, nil
+}
+
+func (s *OrderService) S3PreUpload(ctx context.Context, data model.UpFileToS3Request) (string, error) {
+	log := logger.WithCtx(ctx, "OrderService.S3PreUpload")
+
+	header := map[string]string{
+		"x-user-id": data.UserID.String(),
+	}
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSMediaManagement+"/api/media/pre_up", http.MethodPost, header, nil, data)
+	if err != nil {
+		log.WithError(err).Error("Error when preUpload")
+		return "", err
+	}
+	preUpResponse := struct {
+		Data string `json:"data"`
+	}{}
+	err = json.Unmarshal([]byte(body), &preUpResponse)
+	if err != nil {
+		log.WithError(err).Error("Error unmarshal preUpResponse")
+		return "", err
+	}
+	return preUpResponse.Data, nil
+}
+
+func (s *OrderService) S3Upload(ctx context.Context, data model.UpFileToS3Request, urlUpload string) (string, error) {
+	log := logger.WithCtx(ctx, "OrderService.S3Upload")
+
+	method := "POST"
+
+	payload := &bytes.Buffer{}
+	writer := multipart.NewWriter(payload)
+	_ = writer.WriteField("upload_url", urlUpload)
+
+	file, errFile7 := os.Open(data.File)
+	defer file.Close()
+	part7, errFile7 := writer.CreateFormFile("file", filepath.Base(data.File))
+	_, errFile7 = io.Copy(part7, file)
+	if errFile7 != nil {
+		return "", errFile7
+	}
+	err := writer.Close()
+	if err != nil {
+		return "", err
+	}
+
+	clientUpload := &http.Client{}
+	reqUpload, err := http.NewRequest(method, conf.LoadEnv().MSMediaManagement+"/api/media/upload", payload)
+
+	if err != nil {
+		log.Error("Error when upload media")
+		return "", err
+	}
+	reqUpload.Header.Set("Content-Type", writer.FormDataContentType())
+	reqUpload.Header.Set("x-user-id", data.UserID.String())
+
+	resUpload, err := clientUpload.Do(reqUpload)
+	if err != nil {
+		return "", err
+	}
+	defer resUpload.Body.Close()
+
+	body, err := ioutil.ReadAll(resUpload.Body)
+	if err != nil {
+		return "", err
+	}
+	fmt.Println(string(body))
+
+	tmpResUpload := model.S3ResponseUpload{}
+
+	if err = json.Unmarshal(body, &tmpResUpload); err != nil {
+		log.Error("Error when unmarshal body")
+		return "", err
+	}
+
+	if tmpResUpload.Status != http.StatusOK {
+		return "", fmt.Errorf("Upload error :" + tmpResUpload.Message)
+	}
+
+	return tmpResUpload.Data.UploadUrl, nil
+}
+
+func (s *OrderService) S3PosUpload(ctx context.Context, data model.UpFileToS3Request) (string, error) {
+	log := logger.WithCtx(ctx, "OrderService.S3PosUpload")
+
+	header := map[string]string{
+		"x-user-id": data.UserID.String(),
+	}
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSMediaManagement+"/api/media/pos_up", http.MethodPost, header, nil, data)
+	if err != nil {
+		log.WithError(err).Error("Error when Pos upload")
+		return "", err
+	}
+	return body, nil
+}
+
+func (s *OrderService) GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactDelivering")
+
+	contact, err := s.repo.GetContactDelivering(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
+		return nil, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+	}
+
+	for i, _ := range contact.Data {
+		lstContact, err := s.GetContactList(ctx, contact.Data[i].ContactID.String())
+		if err != nil {
+			log.WithError(err).Errorf("Error when get contact list due to %v", err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
+		}
+		if len(lstContact) > 0 {
+			contact.Data[i].ContactInfo = lstContact[0]
+		}
+	}
+	return contact, nil
+}
+
+//============================== call another service ===================================//
+
+func (s *OrderService) GetProduct(ctx context.Context, productID string) (model.Product, error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrder")
+
+	bodyData, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/product/"+productID, rest.Get, nil, nil, nil)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to get product due to %v", err.Error())
+		return model.Product{}, fmt.Errorf("fail to get product due to %v", err.Error())
+	}
+	tmpResProduct := new(struct {
+		Data model.Product `json:"data"`
+	})
+	if err = json.Unmarshal([]byte(bodyData), &tmpResProduct); err != nil {
+		log.WithError(err).Errorf("GetProduct Unmarshal error %v", err.Error())
+		return model.Product{}, err
+	}
+
+	return tmpResProduct.Data, nil
 }
 
 func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error) {
@@ -1227,7 +1828,82 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 		}
 		break
 	default:
+		log.Errorf("Topic not found in this service!")
 		return nil, fmt.Errorf("Topic not found in this service!")
 	}
 	return "Process consumer successfully", nil
+}
+
+func (s *OrderService) GetUserList(ctx context.Context, phoneNumber string, userIDs string) (res []model.User, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetUserList")
+
+	param := map[string]string{}
+	if phoneNumber != "" {
+		param["phone_number"] = phoneNumber
+	}
+	if userIDs != "" {
+		param["id"] = userIDs
+	}
+	bodyUser, _, err := common.SendRestAPI(conf.LoadEnv().MSUserManagement+"/api/user", rest.Get, nil, param, nil)
+	if err != nil {
+		log.WithError(err).Error("Fail to get user info")
+		return res, err
+	}
+	tmpResUser := new(struct {
+		Data []model.User `json:"data"`
+	})
+	if err = json.Unmarshal([]byte(bodyUser), &tmpResUser); err != nil {
+		log.WithError(err).Error("Fail to unmarshal user info")
+		return res, err
+	}
+	return tmpResUser.Data, nil
+}
+
+func (s *OrderService) GetContactInfo(ctx context.Context, req model.GetContactRequest) (res model.GetContactResponse, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactInfo")
+
+	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/v2/contact/get-contact-by-phone-number", rest.Post, nil, nil, req)
+	if err != nil {
+		log.WithError(err).Error("Get contact error")
+		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	if err = json.Unmarshal([]byte(bodyResponse), &res); err != nil {
+		log.WithError(err).Error("Fail to Unmarshal contact")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	return res, nil
+}
+
+func (s *OrderService) CreateMultiProduct(ctx context.Context, header map[string]string, req model.CreateProductFast) (res model.ProductFastResponse, err error) {
+	log := logger.WithCtx(ctx, "OrderService.CreateMultiProduct")
+
+	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/create-multi-product", rest.Post, header, nil, req)
+	if err != nil {
+		log.WithError(err).Error("Error when create multi product")
+		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	if err = json.Unmarshal([]byte(bodyResponse), &res); err != nil {
+		log.WithError(err).Error("Error when Unmarshal contact")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+	return res, nil
+}
+
+func (s *OrderService) GetOneOrder(ctx context.Context, id uuid.UUID) (res model.Order, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOneOrder")
+
+	res, err = s.repo.GetOneOrder(ctx, id.String(), nil)
+	if err != nil {
+		// if err is not found return 404
+		if err == gorm.ErrRecordNotFound {
+			log.WithError(err).Error("GetOneOrder not found")
+			return res, nil
+		} else {
+			log.WithError(err).Error("Error GetOneOrder")
+			return res, err
+		}
+	}
+	return res, nil
 }

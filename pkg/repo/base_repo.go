@@ -3,6 +3,8 @@ package repo
 import (
 	"context"
 	"finan/ms-order-management/pkg/model"
+	"gitlab.com/goxp/cloud0/ginext"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +32,15 @@ type PGInterface interface {
 	GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs model.Order, err error)
 	GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm.DB) (rs model.Order, err error)
 	UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
+	GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse,err  error)
+	GetAllOrder(ctx context.Context,  req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
+	GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error)
+	UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
+	GetOrderTracking(ctx context.Context, req model.OrderTrackingRequest, tx *gorm.DB) (rs model.OrderTrackingResponse, err error)
+	CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error)
+	GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
+	GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error)
+	GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error)
 }
 
 type BaseModel struct {
@@ -53,4 +64,27 @@ func (r *RepoPG) GetRepo() *gorm.DB {
 func (r *RepoPG) DBWithTimeout(ctx context.Context) (*gorm.DB, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(ctx, generalQueryTimeout)
 	return r.DB.WithContext(ctx), cancel
+}
+
+func (r *RepoPG) GetTotalPages(totalRows, pageSize int) int {
+	return int(math.Ceil(float64(totalRows) / float64(pageSize)))
+}
+
+func (r *RepoPG) GetPaginationInfo(query string, tx *gorm.DB, totalRow, page, pageSize int) (rs ginext.BodyMeta, err error) {
+	tm := struct {
+		Count int `json:"count"`
+	}{}
+	if query != "" {
+		if err = tx.Raw(query).Scan(&tm).Error; err != nil {
+			return nil, err
+		}
+		totalRow = tm.Count
+	}
+
+	return ginext.BodyMeta{
+		"page":        page,
+		"page_size":   pageSize,
+		"total_pages": r.GetTotalPages(totalRow, pageSize),
+		"total_rows":  totalRow,
+	}, nil
 }
