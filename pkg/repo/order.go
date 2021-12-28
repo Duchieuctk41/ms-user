@@ -431,6 +431,9 @@ func (r *RepoPG) GetOrderByContact(ctx context.Context, req model.OrderByContact
 		defer cancel()
 	}
 
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.PageSize)
+
 	tx = tx.Model(&model.Order{})
 
 	if req.BusinessID != "" {
@@ -447,7 +450,8 @@ func (r *RepoPG) GetOrderByContact(ctx context.Context, req model.OrderByContact
 
 	var total int64 = 0
 	tx = tx.Count(&total)
-	tx = tx.Order("created_at desc").Preload("OrderItem")
+
+	tx = tx.Order("created_at desc").Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Preload("OrderItem").Find(&rs.Data)
 
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
 		return rs, err
@@ -484,6 +488,12 @@ func (r *RepoPG) GetAllOrderForExport(ctx context.Context, req model.ExportOrder
 }
 
 func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+   		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
 	tx = tx.Select("contact_id, count(*) as count, max(created_at) as created_at, max(updated_at) as updated_at").Table("orders").Where("business_id = ?", req.BusinessID)
 
 	if req.State != "" {
@@ -501,8 +511,8 @@ func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam,
 		tx = tx.Order(req.Sort)
 	}
 
-	if err := tx.Find(&rs.Data).Error; err != nil {
-		return rs, err
+ 	if err := tx.Find(&rs.Data).Error; err != nil {
+ 		return rs, err
 	}
 
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {

@@ -33,21 +33,26 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 	}
 
 	// Check valid request
-	req := model.OrderUpdateBody{}
+	req := model.GetOneOrderRequest{}
 	r.MustBind(&req)
 
-	if req.ID = utils.ParseIDFromUri(r.GinCtx); req.ID == nil {
-		return nil, ginext.NewError(http.StatusForbidden, "Wrong ID")
+	req.UserID = userID
+	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
+
+
+	req.ID = utils.ParseStringIDFromUri(r.GinCtx)
+	if req.ID == nil {
+		log.WithError(err).Error("Wrong orderNumber %v", err.Error())
+		return nil, ginext.NewError(http.StatusForbidden, "Wrong orderNumber")
 	}
 
-	req.UpdaterID = &userID
 	if err := common.CheckRequireValid(req); err != nil {
 		log.WithError(err).Error("Invalid input")
 		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
 	}
 
-	// Check Permission
-	rs, err := h.service.GetOneOrder(r.Context(), valid.UUID(req.ID))
+	// Get one order
+	rs, err := h.service.GetOneOrder(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Error("Fail to GetOneOrder")
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
@@ -194,7 +199,7 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 
 	// check x-user-id
 	userID, err := utils.CurrentUser(r.GinCtx.Request)
-	if err != nil {
+  	if err != nil {
 		log.WithError(err).Error("Fail to get current user")
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}

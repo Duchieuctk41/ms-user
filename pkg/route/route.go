@@ -42,7 +42,7 @@ func NewService() *Service {
 	v1Api := s.Router.Group("/api/v1")
 
 	// Order
-	v1Api.GET("/get-one-oder", ginext.WrapHandler(orderHandle.GetOneOrder))
+	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
 	v1Api.GET("/get-all-order", ginext.WrapHandler(orderHandle.GetAllOrder))
 	v1Api.GET("/count-order-state", ginext.WrapHandler(orderHandle.CountOrderState))
 	v1Api.GET("/get-order-by-contact", ginext.WrapHandler(orderHandle.GetOrderByContact))

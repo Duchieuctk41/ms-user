@@ -38,7 +38,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	// req service
 	createOrderReq := model.OrderBody{
-		UserId:            uuid.MustParse("1b0c26d6-e53f-4326-a5c7-8076c24b530d"),
+		UserID:            uuid.MustParse("1b0c26d6-e53f-4326-a5c7-8076c24b530d"),
 		BusinessID:        valid.UUIDPointer(uuid.MustParse("ad5c698f-8ec4-44d2-98f1-c8df052c8c3b")),
 		PromotionCode:     "",
 		OrderedGrandTotal: 55000,
