@@ -22,7 +22,6 @@ func (r *RepoPG) CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 		return model.Order{}, err
 	}
 
-	tx.Commit()
 	return order, nil
 }
 
