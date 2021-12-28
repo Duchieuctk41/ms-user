@@ -71,13 +71,14 @@ type CheckValidStockResponse struct {
 type Sku struct {
 	ID              uuid.UUID      `json:"id"`
 	SkuName         string         `json:"sku_name"`
+	ProductID       uuid.UUID      `json:"product_id"`
 	ProductName     string         `json:"product_name"`
 	Quantity        float64        `json:"quantity,omitempty"`
 	Media           pq.StringArray `json:"media"`
 	SellingPrice    float64        `json:"selling_price"`
 	NormalPrice     float64        `json:"normal_price"`
-	OldNormalPrice  float64       `json:"old_normal_price,omitempty"`
-	OldSellingPrice float64       `json:"old_selling_price,omitempty"`
+	OldNormalPrice  float64        `json:"old_normal_price,omitempty"`
+	OldSellingPrice float64        `json:"old_selling_price,omitempty"`
 	Uom             string         `json:"uom"`
 	SkuCode         string         `json:"sku_code"`
 	Barcode         string         `json:"barcode"`
@@ -306,4 +307,3 @@ type S3ResponseUpload struct {
 type DataResponseUpload struct {
 	UploadUrl string `json:"url"`
 }
-

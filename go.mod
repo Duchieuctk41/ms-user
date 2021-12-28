@@ -7,7 +7,7 @@ require (
 	github.com/astaxie/beego v1.12.3
 	github.com/caarlos0/env/v6 v6.6.2
 	github.com/gin-gonic/gin v1.7.2
-	github.com/golang/mock v1.6.0 // indirect
+	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.2.0
 	github.com/jinzhu/gorm v1.9.16
 	github.com/lib/pq v1.3.0

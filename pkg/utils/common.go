@@ -85,6 +85,19 @@ func ParseIDFromUri(c *gin.Context) *uuid.UUID {
 	}
 }
 
+func ParseStringIDFromUri(c *gin.Context) *string {
+	tID := model.UriParse{}
+	if err := c.ShouldBindUri(&tID); err != nil {
+		_ = c.Error(err)
+		return nil
+	}
+	if len(tID.ID) == 0 {
+		_ = c.Error(fmt.Errorf("error: Empty when parse ID from URI"))
+		return nil
+	}
+	return &tID.ID[0]
+}
+
 func ResizeImage(link string, w, h int) string {
 	if link == "" || w == 0 || !strings.Contains(link, LINK_IMAGE_RESIZE) {
 		return link

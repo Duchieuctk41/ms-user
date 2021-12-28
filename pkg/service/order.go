@@ -8,6 +8,7 @@ import (
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
+	"finan/ms-order-management/pkg/valid"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -52,7 +53,42 @@ type OrderServiceInterface interface {
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res interface{}, err error)
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error)
-	GetOneOrder(ctx context.Context, ID uuid.UUID) (res model.Order, err error)
+	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
+}
+
+func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOneOrder")
+
+	order, err := s.repo.GetOneOrder(ctx, valid.String(req.ID), nil)
+	if err != nil {
+		// if err is not found return 404
+		if err == gorm.ErrRecordNotFound {
+			log.WithError(err).Error("GetOneOrder not found")
+			return res, nil
+		} else {
+			log.WithError(err).Error("Error GetOneOrder")
+			return res, err
+		}
+	}
+
+	// check permission
+	if err = utils.CheckPermission(ctx, req.UserID.String(), order.BusinessID.String(), req.UserRole); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return res, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	rs := struct {
+		model.Order
+		BusinessInfo model.BusinessMainInfo `json:"business_info"`
+	}{Order: order}
+
+	// get shop info
+	if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.BusinessID.String()); err != nil {
+		logrus.Errorf("Fail to get business detail due to %v", err)
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	return rs, nil
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
@@ -1640,6 +1676,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 
 	return linkReportOrders, nil
 }
+
 func (s *OrderService) ExcelUpFileToS3(ctx context.Context, data model.UpFileToS3Request) (string, error) {
 	log := logger.WithCtx(ctx, "OrderService.ExcelUpFileToS3")
 
@@ -1888,23 +1925,6 @@ func (s *OrderService) CreateMultiProduct(ctx context.Context, header map[string
 	if err = json.Unmarshal([]byte(bodyResponse), &res); err != nil {
 		log.WithError(err).Error("Error when Unmarshal contact")
 		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
-	}
-	return res, nil
-}
-
-func (s *OrderService) GetOneOrder(ctx context.Context, id uuid.UUID) (res model.Order, err error) {
-	log := logger.WithCtx(ctx, "OrderService.GetOneOrder")
-
-	res, err = s.repo.GetOneOrder(ctx, id.String(), nil)
-	if err != nil {
-		// if err is not found return 404
-		if err == gorm.ErrRecordNotFound {
-			log.WithError(err).Error("GetOneOrder not found")
-			return res, nil
-		} else {
-			log.WithError(err).Error("Error GetOneOrder")
-			return res, err
-		}
 	}
 	return res, nil
 }

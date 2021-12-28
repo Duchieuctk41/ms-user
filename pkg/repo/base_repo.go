@@ -13,6 +13,8 @@ import (
 
 const (
 	generalQueryTimeout = 60 * time.Second
+	defaultPageSize     = 30
+	maxPageSize         = 1000
 )
 
 func NewPGRepo(db *gorm.DB) PGInterface {
@@ -66,9 +68,31 @@ func (r *RepoPG) DBWithTimeout(ctx context.Context) (*gorm.DB, context.CancelFun
 	return r.DB.WithContext(ctx), cancel
 }
 
+func (r *RepoPG) GetPage(page int) int {
+	if page == 0 {
+		return 1
+	}
+	return page
+}
+
+func (r *RepoPG) GetOffset(page int, pageSize int) int {
+	return (page - 1) * pageSize
+}
+
+func (r *RepoPG) GetPageSize(pageSize int) int {
+	if pageSize == 0 {
+		return defaultPageSize
+	}
+	if pageSize > maxPageSize {
+		return maxPageSize
+	}
+	return pageSize
+}
+
 func (r *RepoPG) GetTotalPages(totalRows, pageSize int) int {
 	return int(math.Ceil(float64(totalRows) / float64(pageSize)))
 }
+
 
 func (r *RepoPG) GetPaginationInfo(query string, tx *gorm.DB, totalRow, page, pageSize int) (rs ginext.BodyMeta, err error) {
 	tm := struct {

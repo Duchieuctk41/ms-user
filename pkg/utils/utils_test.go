@@ -58,6 +58,7 @@ func TestCheckCanPickQuantity(t *testing.T) {
 					{Sku: model.Sku{
 						ID:              uuid.MustParse("a1513820-1f4d-4321-a25a-84fc09d9ae7d"),
 						SkuName:         "",
+						ProductID: uuid.MustParse("57dc3c5f-951a-447d-baa4-82c3eb974fda"),
 						ProductName:     "Wiegand Paul",
 						Quantity:        1, // so luong ma khach request len
 						Media:           pq.StringArray{"https://d3hr4eej8cfgwy.cloudfront.net/finan-dev/fa825178-3d63-417d-9913-9fe5959b58df/image/67ce83e8-3a1e-4dbc-b5e1-75a704a818e4.jpeg"},
@@ -71,7 +72,6 @@ func TestCheckCanPickQuantity(t *testing.T) {
 						CanPickQuantity: 95,
 						Type:            "stock_non_varriant",
 					},
-						Stock: nil,
 					},
 				},
 			},
@@ -102,6 +102,7 @@ func TestCheckCanPickQuantity(t *testing.T) {
 					{Sku: model.Sku{
 						ID:              uuid.MustParse("a1513820-1f4d-4321-a25a-84fc09d9ae7d"),
 						SkuName:         "",
+						ProductID: uuid.MustParse("57dc3c5f-951a-447d-baa4-82c3eb974fda"),
 						ProductName:     "Wiegand Paul",
 						Quantity:        1, // so luong ma khach request len
 						Media:           pq.StringArray{"https://d3hr4eej8cfgwy.cloudfront.net/finan-dev/fa825178-3d63-417d-9913-9fe5959b58df/image/67ce83e8-3a1e-4dbc-b5e1-75a704a818e4.jpeg"},
@@ -115,7 +116,7 @@ func TestCheckCanPickQuantity(t *testing.T) {
 						CanPickQuantity: 95,
 						Type:            "stock_non_varriant",
 					},
-						Stock: nil,
+
 					},
 				},
 			},
@@ -146,8 +147,9 @@ func TestCheckCanPickQuantity(t *testing.T) {
 					{Sku: model.Sku{
 						ID:              uuid.MustParse("a1513820-1f4d-4321-a25a-84fc09d9ae7d"),
 						SkuName:         "",
+						ProductID: uuid.MustParse("57dc3c5f-951a-447d-baa4-82c3eb974fda"),
 						ProductName:     "Wiegand Paul",
-						Quantity:        1, // so luong ma khach request len
+						Quantity:        1000, // so luong ma khach request len
 						Media:           pq.StringArray{"https://d3hr4eej8cfgwy.cloudfront.net/finan-dev/fa825178-3d63-417d-9913-9fe5959b58df/image/67ce83e8-3a1e-4dbc-b5e1-75a704a818e4.jpeg"},
 						SellingPrice:    50000,
 						NormalPrice:     50000,
@@ -159,7 +161,12 @@ func TestCheckCanPickQuantity(t *testing.T) {
 						CanPickQuantity: 95,
 						Type:            "stock_non_varriant",
 					},
-						Stock: nil,
+						Stock: &model.StockForCheckValid{
+							TotalQuantity: 100,
+							DeliveringQuantity: 0,
+							BlockedQuantity: 5,
+							HistoricalCost: 100000,
+						},
 					},
 				},
 			},

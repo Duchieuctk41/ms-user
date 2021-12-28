@@ -226,3 +226,9 @@ type ContactDeliveringResponse struct {
 	Data []ContactDelivering    `json:"data"`
 	Meta map[string]interface{} `json:"meta"`
 }
+
+type GetOneOrderRequest struct {
+	ID       *string    `json:"id"`
+	UserRole string    `json:"user_role"`
+	UserID   uuid.UUID `json:"user_id"`
+}
