@@ -114,7 +114,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	}
 
 	// Get Contact Info
-	info, _ := s.GetContactInfo(ctx, getContactRequest)
+	info, err := s.GetContactInfo(ctx, getContactRequest)
+	if err != nil {
+		return nil, err
+	}
 
 	var lstOrderItem []model.OrderItem
 
@@ -179,7 +182,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	// Check valid order item
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
-	// check can pick quantity, Bỏ qua với trường hợp sku_id == nil (sản phẩm )
+	// check can pick quantity
 	if rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil); err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -336,7 +339,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		orderItem.CreatorID = order.CreatorID
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
-			log.WithError(err).Error("Error when CreateOrderItem")
+			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
 			return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
 		order.OrderItem = append(order.OrderItem, tm)
@@ -1401,7 +1404,6 @@ func (s *OrderService) GetOrderByContact(ctx context.Context, req model.OrderByC
 	return res, nil
 }
 
-//
 func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.ExportOrderReport")
 
@@ -1903,7 +1905,7 @@ func (s *OrderService) GetContactInfo(ctx context.Context, req model.GetContactR
 	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/v2/contact/get-contact-by-phone-number", rest.Post, nil, nil, req)
 	if err != nil {
 		log.WithError(err).Error("Get contact error")
-		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		return res, ginext.NewError(http.StatusBadRequest, "Cannot get contact error")
 	}
 
 	if err = json.Unmarshal([]byte(bodyResponse), &res); err != nil {
