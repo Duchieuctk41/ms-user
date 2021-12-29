@@ -3,6 +3,10 @@ package repo
 import (
 	"context"
 	"finan/ms-order-management/pkg/model"
+	"finan/ms-order-management/pkg/utils"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -167,16 +171,11 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 		return model.Order{}, err
 	}
 
+	tx.Commit()
 	return order, nil
 }
 
 func (r *RepoPG) OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error) {
-	var cancel context.CancelFunc
-	if tx == nil {
-		tx, cancel = r.DBWithTimeout(ctx)
-		defer cancel()
-	}
-
 	query := ""
 	query += "SELECT SUM(grand_total) AS sum_grand_total " +
 		" FROM orders " +
@@ -194,6 +193,351 @@ func (r *RepoPG) OverviewSales(ctx context.Context, req model.OrverviewPandLRequ
 		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
 			return rs, err
 		}
+	}
+	return rs, nil
+}
+func (r *RepoPG) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	var total int64 = 0
+	tx = tx.Model(&model.OrderEcom{}).Where("business_id = ?", req.BusinessID)
+
+	if req.Search != "" {
+		tx = tx.Where("order_number ilike ? ", "%"+req.Search+"%")
+	}
+
+	if req.StartTime != nil && req.EndTime != nil {
+		tx = tx.Where("created_time between ? and ?", req.StartTime, req.EndTime)
+	}
+
+	tx = tx.Count(&total)
+	if req.Page != 0 && req.PageSize != 0 {
+		tx = tx.Limit(req.PageSize).Offset((req.Page - 1) * req.PageSize)
+	}
+
+	if req.Sort != "" {
+		tx = tx.Order(req.Sort)
+	} else {
+		tx = tx.Order("created_time desc")
+	}
+
+	if err := tx.Find(&rs.Data).Error; err != nil {
+		return rs, err
+	}
+
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
+		return rs, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	tx = tx.Model(&model.Order{})
+
+	if req.BusinessID != "" && req.SellerID == "" {
+		tx = tx.Where("business_id = ? ", req.BusinessID)
+	}
+
+	if req.ContactID != "" {
+		tx = tx.Where("contact_id = ? ", req.ContactID)
+	}
+
+	if req.OrderNumber != "" {
+		tx = tx.Where("order_number = ?", req.OrderNumber)
+	}
+
+	if req.BuyerID != "" {
+		tx = tx.Where("buyer_id = ? ", req.BuyerID)
+	}
+
+	if req.DeliveryMethod != nil {
+		tx = tx.Where("delivery_method = ?", req.DeliveryMethod)
+	}
+
+	if req.SellerID != "" {
+		// Get ra business_id tương ứng của thằng 1 rồi cho thằng 2 làm buyer_id và ngược lại
+		if uhb1, err := utils.GetUserHasBusiness(req.SellerID, ""); err != nil {
+			return rs, err
+		} else if len(uhb1) == 0 {
+			return rs, fmt.Errorf("Data business empty with user_id: %v", req.SellerID)
+		} else {
+			tx = tx.Where("business_id = ?", uhb1[0].BusinessID)
+		}
+	}
+
+	if req.State != "" {
+		req.State = strings.ReplaceAll(req.State, " ", "")
+		stateArr := strings.Split(req.State, ",")
+		tx = tx.Where("state IN (?) ", stateArr)
+	} else {
+		tx = tx.Where("state IN (?) ", []string{utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_WAITING_CONFIRM})
+	}
+
+	if req.Search != "" {
+		tx = tx.Where("order_number ilike ? OR unaccent(buyer_info->>'name') ilike ? OR buyer_info->>'phone_number' ilike ? OR (CONCAT('0', substring(buyer_info->>'phone_number' from 4))  ilike ?)", "%"+req.Search+"%", "%"+utils.TransformString(req.Search, false)+"%", "%"+req.Search+"%", "%"+req.Search+"%")
+	}
+
+	if req.DateFrom != nil && req.DateTo != nil {
+		tx = tx.Where(" created_at BETWEEN ? AND ? ", req.DateFrom, req.DateTo)
+	} else if req.DateFrom != nil && req.DateTo == nil {
+		_, dateToStr := utils.ConvertTimestampVN(req.DateFrom, req.DateFrom)
+		tx = tx.Where(" created_at BETWEEN ? AND ? ", req.DateFrom, dateToStr)
+	}
+
+	if req.IsPrinted != nil {
+		tx = tx.Where("is_printed = ?", req.IsPrinted)
+	}
+
+	var total int64 = 0
+	tx = tx.Count(&total)
+
+	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).Find(&rs.Data)
+
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
+		return rs, err
+	}
+	tx.Commit()
+	return rs, nil
+}
+
+func (r *RepoPG) GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error) {
+	err = tx.Table("orders").
+		Select("count(*) as count, sum(grand_total) as sum_amount").
+		Where("contact_id = ?", contactID).Where("deleted_at is null").
+		Where("state = ?", "complete").
+		Find(&res).Error
+	return
+}
+
+func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	tMap := make(map[string]model.OrderItem)
+	for i, _ := range order.OrderItem {
+		if v, ok := mapItem[order.OrderItem[i].SkuID.String()]; ok {
+			// If exists in map -> update quantity and money
+			// Cập nhật lại delivering quantity cho stock này
+			if v.Quantity-order.OrderItem[i].Quantity != 0 {
+				stocks = append(stocks, model.StockRequest{
+					SkuID:          order.OrderItem[i].SkuID,
+					QuantityChange: v.Quantity - order.OrderItem[i].Quantity,
+				})
+			}
+			order.OrderItem[i].Quantity = v.Quantity
+			order.OrderItem[i].TotalAmount = v.TotalAmount
+			order.OrderItem[i].SkuName = v.SkuName
+			order.OrderItem[i].ProductName = v.ProductName
+			order.OrderItem[i].ProductNormalPrice = v.ProductNormalPrice
+			order.OrderItem[i].ProductSellingPrice = v.ProductSellingPrice
+			order.OrderItem[i].ProductImages = v.ProductImages
+			order.OrderItem[i].SkuCode = v.SkuCode
+			order.OrderItem[i].UOM = v.UOM
+		} else {
+			// If not exist in map -> delete
+			tNow := time.Now()
+			order.OrderItem[i].DeletedAt = &tNow
+			// Giảm số lượng khách đang đặt cho SKU này (- delivering quantity)
+			stocks = append(stocks, model.StockRequest{
+				SkuID:          order.OrderItem[i].SkuID,
+				QuantityChange: -order.OrderItem[i].Quantity,
+			})
+		}
+		tMap[order.OrderItem[i].SkuID.String()] = order.OrderItem[i]
+	}
+
+	for skuID, item := range mapItem {
+		if _, ok := tMap[skuID]; !ok {
+			order.OrderItem = append(order.OrderItem, item)
+			// Thêm số lượng khách đang đặt bên stock (+ quantity)
+			stocks = append(stocks, model.StockRequest{
+				SkuID:          item.SkuID,
+				QuantityChange: item.Quantity,
+			})
+		}
+	}
+
+	if err := tx.Model(&model.Order{}).Save(&order).Error; err != nil {
+		return model.Order{}, nil, err
+	}
+
+	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
+		return model.Order{}, nil, err
+	}
+
+	tx.Commit()
+	return order, stocks, nil
+}
+
+func (r *RepoPG) CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	query := ""
+	query += "SELECT  " +
+		"            COALESCE(MAX(DAT.count_waiting_confirm),0) AS count_waiting_confirm, " +
+		"            COALESCE(MAX(DAT.count_delivering),0) AS count_delivering, " +
+		"            COALESCE(MAX(DAT.count_complete),0) AS count_complete, " +
+		"            COALESCE(MAX(DAT.count_cancel),0) AS count_cancel, " +
+		"            DAT.business_id " +
+		"     FROM (" +
+		"        	SELECT " +
+		"              business_id," +
+		"              CASE WHEN state = 'create' THEN COUNT(*) END AS count_create," +
+		"              CASE WHEN state = 'waiting_confirm' THEN COUNT(*) END AS count_waiting_confirm," +
+		"              CASE WHEN state = 'readily_delivery' THEN COUNT(*) END AS count_readily_delivery, " +
+		"              CASE WHEN state = 'delivering' THEN COUNT(*) END AS count_delivering, " +
+		"              CASE WHEN state = 'complete' THEN COUNT(*) END AS count_complete, " +
+		"              CASE WHEN state = 'cancel' THEN COUNT(*) END AS count_cancel " +
+		" 		FROM orders " +
+		" 		WHERE business_id = ? "
+	if req.DateFrom != nil && req.DateTo != nil {
+		query += " AND updated_at BETWEEN ? AND ? "
+	}
+
+	query += "  GROUP BY business_id, state " +
+		" ) DAT " +
+		" GROUP BY " +
+		" DAT.business_id "
+
+	rs := model.CountOrderState{}
+
+	if req.DateFrom != nil && req.DateTo != nil {
+		if err := tx.Raw(query, req.BusinessID, req.DateFrom, req.DateTo).Scan(&rs).Error; err != nil {
+			return model.CountOrderState{}, err
+		}
+	} else {
+		if err := tx.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountOrderState{}, err
+		}
+	}
+
+	revenue, err := r.RevenueBusiness(ctx, model.RevenueBusinessParam{
+		BusinessID: req.BusinessID,
+		DateFrom:   req.DateFrom,
+		DateTo:     req.DateTo,
+	}, nil)
+	if err != nil {
+		return model.CountOrderState{}, err
+	}
+
+	rs.Revenue = revenue.SumGrandTotal
+	return rs, nil
+}
+
+func (r *RepoPG) GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.PageSize)
+
+	tx = tx.Model(&model.Order{})
+
+	if req.BusinessID != "" {
+		tx = tx.Where("business_id = ? ", req.BusinessID)
+	}
+
+	if req.ContactID != "" {
+		tx = tx.Where("contact_id = ? ", req.ContactID)
+	}
+
+	if req.StartTime != nil && req.EndTime != nil {
+		tx = tx.Where(" created_at BETWEEN ? AND ? ", req.StartTime, req.EndTime)
+	}
+
+	var total int64 = 0
+	tx = tx.Count(&total)
+
+	tx = tx.Order("created_at desc").Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Preload("OrderItem").Find(&rs.Data)
+
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
+		return rs, err
+	}
+
+	return rs, nil
+}
+
+func (r *RepoPG) GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	tx = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).Where("business_id = ?", req.BusinessID)
+	if req.StartTime != nil && req.EndTime != nil {
+		tx = tx.Where("created_at >= ? AND created_at <= ?", req.StartTime, req.EndTime)
+	}
+	if req.PaymentMethod != nil {
+		tx = tx.Where("payment_method = ?", req.PaymentMethod)
+	}
+	if req.DeliveryMethod != nil {
+		tx = tx.Where("delivery_method = ?", req.DeliveryMethod)
+	}
+	if req.State != nil {
+		tx = tx.Where("state = ?", req.State)
+	}
+	err = tx.Order("created_at desc").Find(&orders).Error
+
+	return
+}
+
+func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.PageSize)
+
+	tx = tx.Model(model.Order{}).Select("contact_id, count(*) as count, max(created_at) as created_at, max(updated_at) as updated_at").Where("business_id = ?", req.BusinessID)
+
+	if req.State != "" {
+		t := strings.Split(req.State, ",")
+		tx = tx.Where("state IN(?)", t)
+	}
+
+	var total int64 = 0
+	tx = tx.Group("contact_id").Count(&total).Limit(pageSize).Offset(r.GetOffset(page, pageSize))
+
+	if req.Sort != "" {
+		tx = tx.Order(req.Sort)
+	}
+
+	if err = tx.Find(&rs.Data).Error; err != nil {
+		return rs, err
+	}
+
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
+		return rs, err
 	}
 
 	return rs, nil

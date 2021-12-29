@@ -11,8 +11,8 @@ import (
 
 type OrderItem struct {
 	BaseModel
-	OrderId             uuid.UUID      `json:"order_id" sql:"index" gorm:"column:order_id;not null;"`
-	ProductId           uuid.UUID      `json:"product_id" sql:"index" gorm:"column:product_id;not null;"`
+	OrderID             uuid.UUID      `json:"order_id" sql:"index" gorm:"column:order_id;not null;"`
+	ProductID           uuid.UUID      `json:"product_id" sql:"index" gorm:"column:product_id;not null;"`
 	ProductName         string         `json:"product_name" gorm:"column:product_name;"`
 	ProductNormalPrice  float64        `json:"product_normal_price" gorm:"column:product_normal_price;default:0"`
 	ProductSellingPrice float64        `json:"product_selling_price" gorm:"column:product_selling_price;default:0"`
@@ -40,7 +40,7 @@ func (u *OrderItem) BeforeSave(tx *gorm.DB) (err error) {
 }
 
 type OrderItemForSendEmail struct {
-	ProductId           uuid.UUID `json:"product_id"`
+	ProductID           uuid.UUID `json:"product_id"`
 	ProductName         string    `json:"product_name"`
 	ProductImages       string    `json:"product_images"`
 	Quantity            float64   `json:"quantity"`

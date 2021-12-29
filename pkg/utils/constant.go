@@ -35,6 +35,7 @@ const (
 	ORDER_STATE_DELIVERING      = "delivering"
 	ORDER_STATE_COMPLETE        = "complete"
 	ORDER_STATE_CANCEL          = "cancel"
+	ORDER_STATE_UPDATE          = "update"
 )
 
 const (
@@ -71,6 +72,7 @@ const (
 	SEND_EMAIL_DELIVERING      = 3
 	SEND_EMAIL_COMPLETE        = 3
 	SEND_EMAIL_CANCEL          = 3
+	ORDER_EMAIL_UPDATE         = 3
 )
 
 const (
@@ -86,4 +88,9 @@ const (
 const (
 	ORDER_COMPLETED      = "order_completed"
 	FAST_ORDER_COMPLETED = "fast_order_completed"
+)
+
+// type ms-chat
+const (
+	NOTI_TYPE_UPDATE_ORDER = "update_order"
 )

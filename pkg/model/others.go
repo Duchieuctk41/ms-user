@@ -9,7 +9,7 @@ import (
 )
 
 type GetContactRequest struct {
-	BusinessId  uuid.UUID `json:"business_id"`
+	BusinessID  uuid.UUID `json:"business_id"`
 	PhoneNumber string    `json:"phone_number"`
 	Name        string    `json:"name"`
 	Address     string    `json:"address"`
@@ -56,6 +56,7 @@ type Contact struct {
 	BusinessHasContactID uuid.UUID  `json:"business_has_contact_id,omitempty" gorm:"-"`
 	LatestSyncTime       time.Time  `json:"latest_sync_time"`
 	FavoriteTime         *time.Time `json:"favorite_time" gorm:"null"`
+	SocialAvatar         string     `json:"social_avatar,omitempty"`
 }
 
 type CheckValidOrderItemResponse struct {
@@ -71,13 +72,14 @@ type CheckValidStockResponse struct {
 type Sku struct {
 	ID              uuid.UUID      `json:"id"`
 	SkuName         string         `json:"sku_name"`
+	ProductID       uuid.UUID      `json:"product_id"`
 	ProductName     string         `json:"product_name"`
 	Quantity        float64        `json:"quantity,omitempty"`
 	Media           pq.StringArray `json:"media"`
 	SellingPrice    float64        `json:"selling_price"`
 	NormalPrice     float64        `json:"normal_price"`
-	OldNormalPrice  *float64       `json:"old_normal_price,omitempty"`
-	OldSellingPrice *float64       `json:"old_selling_price,omitempty"`
+	OldNormalPrice  float64        `json:"old_normal_price,omitempty"`
+	OldSellingPrice float64        `json:"old_selling_price,omitempty"`
 	Uom             string         `json:"uom"`
 	SkuCode         string         `json:"sku_code"`
 	Barcode         string         `json:"barcode"`
@@ -207,7 +209,7 @@ type PoDetail struct {
 }
 
 type SendNotificationRequest struct {
-	UserId         uuid.UUID `json:"user_id" `
+	UserID         uuid.UUID `json:"user_id" `
 	EntityKey      string    `json:"entity_key"  `
 	StateValue     string    `json:"state_value" `
 	Language       string    `json:"language"    `
@@ -288,4 +290,21 @@ type ProcessConsumerRequest struct {
 type UpdateEmailOrderRecentRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 	Email  string    `json:"email"`
+}
+
+type UpFileToS3Request struct {
+	UserID    uuid.UUID `json:"user_id"`
+	File      string    `json:"file"`
+	Name      string    `json:"name"`
+	MediaType string    `json:"media_type"`
+}
+
+type S3ResponseUpload struct {
+	Status  int                `json:"status"`
+	Message string             `json:"message"`
+	Data    DataResponseUpload `json:"data"`
+}
+
+type DataResponseUpload struct {
+	UploadUrl string `json:"url"`
 }

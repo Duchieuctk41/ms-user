@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/ginext"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -84,6 +85,19 @@ func ParseIDFromUri(c *gin.Context) *uuid.UUID {
 	}
 }
 
+func ParseStringIDFromUri(c *gin.Context) *string {
+	tID := model.UriParse{}
+	if err := c.ShouldBindUri(&tID); err != nil {
+		_ = c.Error(err)
+		return nil
+	}
+	if len(tID.ID) == 0 {
+		_ = c.Error(fmt.Errorf("error: Empty when parse ID from URI"))
+		return nil
+	}
+	return &tID.ID[0]
+}
+
 func ResizeImage(link string, w, h int) string {
 	if link == "" || w == 0 || !strings.Contains(link, LINK_IMAGE_RESIZE) {
 		return link
@@ -110,4 +124,42 @@ func getSizeImage(w, h int) string {
 		return "w" + strconv.Itoa(w)
 	}
 	return strconv.Itoa(w) + "x" + strconv.Itoa(h)
+}
+
+func ConvertVNPhoneFormat(phone string) string {
+	if phone != "" {
+		if strings.HasPrefix(phone, "84") {
+			phone = "+" + phone
+		}
+		if strings.HasPrefix(phone, "0") {
+			phone = "+84" + phone[1:]
+		}
+	}
+	return phone
+}
+
+func ValidPhoneFormat(phone string) bool {
+	if phone == "" {
+		return false
+	}
+	if len(phone) == 13 {
+		return true
+	}
+	internationalPhone := regexp.MustCompile("^\\+[1-9]\\d{1,14}$")
+	vietnamPhone := regexp.MustCompile(`((09|03|07|08|05)+([0-9]{8})\b)`)
+	if !vietnamPhone.MatchString(phone) {
+		if !internationalPhone.MatchString(phone) {
+			return false
+		}
+	}
+	return true
+}
+
+func RevertBeginPhone(phone string) string {
+	if phone != "" {
+		if strings.HasPrefix(phone, "+84") {
+			phone = "0" + phone[3:]
+		}
+	}
+	return phone
 }

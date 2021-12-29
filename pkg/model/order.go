@@ -3,7 +3,6 @@ package model
 import (
 	"crypto/rand"
 	"math/big"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,8 +13,8 @@ import (
 
 type Order struct {
 	BaseModel
-	BusinessId        uuid.UUID      `json:"business_id" sql:"index" gorm:"column:business_id;not null;" valid:"Required" scheme:"business_id"`
-	ContactId         uuid.UUID      `json:"contact_id" sql:"index" gorm:"column:contact_id;not null;"`
+	BusinessID        uuid.UUID      `json:"business_id" sql:"index" gorm:"column:business_id;not null;" valid:"Required" scheme:"business_id"`
+	ContactID         uuid.UUID      `json:"contact_id" sql:"index" gorm:"column:contact_id;not null;"`
 	OrderNumber       string         `json:"order_number" sql:"index" gorm:"column:order_number;not null;"`
 	PromotionCode     string         `json:"promotion_code" gorm:"column:promotion_code;null;"`
 	OrderedGrandTotal float64        `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
@@ -71,9 +70,9 @@ func (Order) TableName() string {
 
 // Define your request body here
 type OrderBody struct {
-	UserId            uuid.UUID   `json:"user_id"`
+	UserID            uuid.UUID   `json:"user_id"`
 	ContactID         *uuid.UUID  `json:"contact_id,omitempty"`
-	BusinessId        *uuid.UUID  `json:"business_id" schema:"business_id"`
+	BusinessID        *uuid.UUID  `json:"business_id" schema:"business_id"`
 	PromotionCode     string      `json:"promotion_code"`
 	PromotionDiscount float64     `json:"promotion_discount"`
 	OrderedGrandTotal float64     `json:"ordered_grand_total"`
@@ -113,43 +112,33 @@ type RevenueBusiness struct {
 	SumGrandTotal float64 `json:"sum_grand_total"`
 }
 
-type RevenueBusinessParam struct {
-	BusinessID  uuid.UUID  `json:"business_id" schema:"business_id"`
-	ContactID   uuid.UUID  `json:"contact_id" schema:"contact_id"`
-	DateFrom    *time.Time `json:"date_from" schema:"date_from"`
-	DateTo      *time.Time `json:"date_to" schema:"date_to"`
-	UserRole    string     `json:"user_role"`
-	UserCallAPI uuid.UUID  `json:"user_call_api"`
-}
-
 // Define your request param here
 // Remember to user scheme tag
 type OrderParam struct {
-	R              *http.Request
-	BusinessId     uuid.UUID  `json:"business_id" schema:"business_id"`
-	ContactId      uuid.UUID  `json:"contact_id" schema:"contact_id"`
-	PromotionCode  string     `json:"promotion_code" schema:"promotion_code"`
-	State          string     `json:"state"`
-	OrderNumber    string     `json:"order_number" schema:"order_number"`
-	PaymentMethod  string     `json:"payment_method" schema:"payment_method"`
-	Note           string     `json:"note"`
-	Size           int        `json:"size"`
-	Page           int        `json:"page"`
-	Sort           string     `json:"sort"`
-	BuyerId        uuid.UUID  `json:"buyer_id" schema:"buyer_id"`
-	DateFrom       *time.Time `json:"date_from" schema:"date_from"`
-	DateTo         *time.Time `json:"date_to" schema:"date_to"`
-	Search         string     `json:"search" schema:"search"`
-	SellerID       uuid.UUID  `json:"seller_id" schema:"seller_id"`
-	UserRole       string     `json:"user_role"`
-	UserCallAPI    uuid.UUID  `json:"user_call_api"`
-	DeliveryMethod *string    `json:"delivery_method" schema:"delivery_method"`
-	IsPrinted      *bool      `json:"is_printed" schema:"is_printed"`
+	BusinessID     string     `json:"business_id" form:"business_id"`
+	ContactID      string     `json:"contact_id" form:"contact_id"`
+	PromotionCode  string     `json:"promotion_code" form:"promotion_code"`
+	State          string     `json:"state" form:"state"`
+	OrderNumber    string     `json:"order_number" form:"order_number"`
+	PaymentMethod  string     `json:"payment_method" form:"payment_method"`
+	Note           string     `json:"note" form:"note"`
+	PageSize       int        `json:"size" form:"page_size"`
+	Page           int        `json:"page" form:"page"`
+	Sort           string     `json:"sort" form:"sort"`
+	BuyerID        string     `json:"buyer_id" form:"buyer_id"`
+	DateFrom       *time.Time `json:"date_from" form:"date_from"`
+	DateTo         *time.Time `json:"date_to" form:"date_to"`
+	Search         string     `json:"search" form:"search"`
+	SellerID       string     `json:"seller_id" form:"seller_id"`
+	UserRole       string     `json:"user_role" form:"user_role"`
+	UserCallAPI    string     `json:"user_call_api" form:"user_call_api"`
+	DeliveryMethod *string    `json:"delivery_method" form:"delivery_method"`
+	IsPrinted      *bool      `json:"is_printed" form:"is_printed"`
 }
 
 type OrderUpdateBody struct {
 	ID                *uuid.UUID  `json:"id"`
-	BusinessId        *uuid.UUID  `json:"business_id" schema:"business_id"`
+	BusinessID        *uuid.UUID  `json:"business_id" schema:"business_id"`
 	PromotionCode     *string     `json:"promotion_code"`
 	PromotionDiscount *float64    `json:"promotion_discount"`
 	OrderedGrandTotal *float64    `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
@@ -157,10 +146,10 @@ type OrderUpdateBody struct {
 	State             *string     `json:"state"`
 	PaymentMethod     *string     `json:"payment_method"`
 	Note              *string     `json:"note"`
-	BuyerId           *uuid.UUID  `json:"buyer_id"`
+	BuyerID           *uuid.UUID  `json:"buyer_id"`
 	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
 	UpdaterID         *uuid.UUID  `json:"updater_id,omitempty"`
-	UserRole          *string     `json:"user_role"`
+	UserRole          string      `json:"user_role"`
 	OtherDiscount     *float64    `json:"other_discount"`
 	Email             *string     `json:"email,omitempty"`
 	ListOrderItem     []OrderItem `json:"list_order_item,omitempty"`
@@ -173,4 +162,81 @@ type OrverviewPandLRequest struct {
 	StartTime   *time.Time `json:"start_time,omitempty" form:"start_time"`
 	EndTime     *time.Time `json:"end_time,omitempty" form:"end_time"`
 	BusinessID  *string    `json:"business_id,omitempty" form:"business_id" valid:"Required"`
+}
+type UpdateDetailOrderRequest struct {
+	BusinessID        *uuid.UUID  `json:"business_id"`
+	ID                *uuid.UUID  `json:"id"`
+	PromotionDiscount *float64    `json:"promotion_discount,omitempty" valid:"Required"`
+	OrderedGrandTotal *float64    `json:"ordered_grand_total,omitempty" valid:"Required"`
+	GrandTotal        *float64    `json:"grand_total,omitempty" valid:"Required"`
+	DeliveryFee       *float64    `json:"delivery_fee,omitempty"`    // set valid:"Required" when APP done new version store
+	DeliveryMethod    *string     `json:"delivery_method,omitempty"` // set valid:"Required" when APP done new version store
+	Note              *string     `json:"note"`
+	UpdaterID         *uuid.UUID  `json:"updater_id,omitempty"`
+	UserRole          *string     `json:"user_role"`
+	OtherDiscount     *float64    `json:"other_discount,omitempty" valid:"Required"`
+	ListOrderItem     []OrderItem `json:"list_order_item,omitempty" valid:"Required"`
+	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
+}
+
+type ListOrderResponse struct {
+	Data []Order                `json:"data"`
+	Meta map[string]interface{} `json:"meta"`
+}
+
+type GetCompleteOrdersResponse struct {
+	Count     int     `json:"count"`
+	SumAmount float64 `json:"sum_amount"`
+}
+
+type RevenueBusinessParam struct {
+	BusinessID string     `json:"business_id" form:"business_id"`
+	ContactID  string     `json:"contact_id" form:"contact_id"`
+	DateFrom   *time.Time `json:"date_from" form:"date_from"`
+	DateTo     *time.Time `json:"date_to" form:"date_to"`
+}
+
+type CountOrderState struct {
+	CountWaitingConfirm int     `json:"count_waiting_confirm"`
+	CountDelivering     int     `json:"count_delivering"`
+	CountComplete       int     `json:"count_complete"`
+	CountCancel         int     `json:"count_cancel"`
+	Revenue             float64 `json:"revenue"`
+}
+
+type OrderByContactParam struct {
+	PageSize   int        `json:"size" form:"page_size"`
+	Page       int        `json:"page" form:"page"`
+	StartTime  *time.Time `json:"start_time" form:"start_time"`
+	EndTime    *time.Time `json:"end_time" form:"end_time"`
+	ContactID  string     `json:"contact_id" form:"contact_id"`
+	BusinessID string     `json:"business_id" form:"business_id"`
+}
+
+type ExportOrderReportRequest struct {
+	BusinessID     *uuid.UUID `json:"business_id" valid:"Required"`
+	UserID         uuid.UUID  `json:"user_id"`
+	UserRole       string     `json:"user_role"`
+	StartTime      *time.Time `json:"start_time"`
+	EndTime        *time.Time `json:"end_time"`
+	State          *string    `json:"state"`
+	PaymentMethod  *string    `json:"payment_method"`
+	DeliveryMethod *string    `json:"delivery_method"`
+}
+
+type ContactDelivering struct {
+	ContactID   uuid.UUID `json:"contact_id"`
+	Count       int       `json:"count"`
+	ContactInfo Contact   `json:"contact_info"`
+}
+
+type ContactDeliveringResponse struct {
+	Data []ContactDelivering    `json:"data"`
+	Meta map[string]interface{} `json:"meta"`
+}
+
+type GetOneOrderRequest struct {
+	ID       *string   `json:"id"`
+	UserRole string    `json:"user_role"`
+	UserID   uuid.UUID `json:"user_id"`
 }
