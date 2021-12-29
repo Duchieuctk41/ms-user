@@ -32,6 +32,7 @@ type Order struct {
 	Email             string         `json:"email" sql:"index" gorm:"type:varchar(500)"`
 	OtherDiscount     float64        `json:"other_discount" gorm:""`
 	IsPrinted         bool           `json:"is_printed" sql:"index" gorm:"column:is_printed;default:false"`
+	DebtAmount        float64        `json:"debt_amount" gorm:"column:debt_amount"`
 }
 
 func GenerateRandomString(n int) string {
@@ -155,6 +156,13 @@ type OrderUpdateBody struct {
 	Debit             *Debit      `json:"debit,omitempty"`
 }
 
+type OrverviewPandLRequest struct {
+	UserRole    string     `json:"user_role"`
+	UserCallAPI uuid.UUID  `json:"user_call_api"`
+	StartTime   *time.Time `json:"start_time,omitempty" form:"start_time"`
+	EndTime     *time.Time `json:"end_time,omitempty" form:"end_time"`
+	BusinessID  *string    `json:"business_id,omitempty" form:"business_id" valid:"Required"`
+}
 type UpdateDetailOrderRequest struct {
 	BusinessID        *uuid.UUID  `json:"business_id"`
 	ID                *uuid.UUID  `json:"id"`

@@ -5,6 +5,14 @@ import (
 	"finan/ms-order-management/conf"
 	"finan/ms-order-management/pkg/model"
 	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"time"
+	"unicode"
+
 	"github.com/astaxie/beego/logs"
 	"github.com/google/uuid"
 	"github.com/praslar/lib/common"
@@ -12,11 +20,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
-	"unicode"
 )
 
 type ConsumerRequest struct {
@@ -213,4 +216,11 @@ func ConvertTimeFormatForReport(in time.Time) string {
 		ConvertTimeIntToString(in.Hour()),
 		ConvertTimeIntToString(in.Minute()),
 	)
+}
+
+func RemoveSpace(str string) string {
+	re := regexp.MustCompile(`\s+`)
+	out := re.ReplaceAllString(str, " ")
+	out = strings.TrimSpace(out)
+	return out
 }

@@ -27,11 +27,15 @@ type OrderItem struct {
 	ProductType         *string        `json:"product_type,omitempty" gorm:"-"`
 	CanPickQuantity     *float64       `json:"can_pick_quantity,omitempty" gorm:"-"`
 	SkuActive           *bool          `json:"sku_active,omitempty" gorm:"-"`
+	Price               float64        `json:"price" gorm:"column:price;default:0"`
+	HistoricalCost      float64        `json:"historical_cost" gorm:"column:historical_cost;default:0"`
 }
 
 func (u *OrderItem) BeforeSave(tx *gorm.DB) (err error) {
-	quantity, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", u.Quantity), 64)
-	u.Quantity = quantity
+	if u.Quantity != 0 {
+		quantity, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", u.Quantity), 64)
+		u.Quantity = quantity
+	}
 	return
 }
 
@@ -46,6 +50,6 @@ type OrderItemForSendEmail struct {
 	SkuCode             string    `json:"sku_code"`
 	SkuName             string    `json:"sku_name"`
 	UOM                 string    `json:"uom"`
-	ProductNormalPrice  string   `json:"product_normal_price"`
-	ProductSellingPrice string   `json:"product_selling_price"`
+	ProductNormalPrice  string    `json:"product_normal_price"`
+	ProductSellingPrice string    `json:"product_selling_price"`
 }

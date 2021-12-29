@@ -34,6 +34,9 @@ func NewService() *Service {
 	repoPG := repo.NewPGRepo(db)
 
 	oderService := service2.NewOrderService(repoPG)
+	ProfitAndLossService := service2.NewProfitAndLossService(repoPG)
+	//orderHandle := handlers.NewPoCategoryHandlers(oderService)
+	ProfitAndLossHandle := handlers.NewProfitAndLossHandlers(ProfitAndLossService)
 	orderHandle := handlers.NewOrderHandlers(oderService)
 
 	orderTrackingService := service2.NewOrderTrackingService(repoPG)
@@ -62,7 +65,12 @@ func NewService() *Service {
 	// Send email order
 	//v1Api.POST("/send-email-order", ginext.WrapHandler(orderHandle.SendEmailOrder))
 
-	// Consumer - Receive message from rabbitmq - version app 1.0.34.1.1
+	//ProfitAndLoss
+	v1Api.GET("/get-list-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetListProfitAndLoss))
+	v1Api.GET("/overview-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetOverviewPandL))
+
+	// Consumer
+	// 15/12/21 - Receive message from rabbitmq - version app 1.0.34.1.1
 	v1Api.POST("/consumer", ginext.WrapHandler(orderHandle.ProcessConsumer))
 
 	// Migrate
