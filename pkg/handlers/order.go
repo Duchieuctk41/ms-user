@@ -39,7 +39,6 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 	req.UserID = userID
 	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
 
-
 	req.ID = utils.ParseStringIDFromUri(r.GinCtx)
 	if req.ID == nil {
 		log.WithError(err).Error("Wrong orderNumber %v", err.Error())
@@ -199,7 +198,7 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 
 	// check x-user-id
 	userID, err := utils.CurrentUser(r.GinCtx.Request)
-  	if err != nil {
+	if err != nil {
 		log.WithError(err).Error("Fail to get current user")
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
@@ -473,3 +472,23 @@ func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, er
 		},
 	}, nil
 }
+
+////Send email order
+//func (h *OrderHandlers) SendEmailOrder(r *ginext.Request) (*ginext.Response, error) {
+//	log := logger.WithCtx(r.GinCtx, "OrderHandlers.SendEmailOrder")
+//
+//	req := model.SendEmailRequest{}
+//	r.MustBind(&req)
+//
+//	res, err := h.service.SendEmailOrder(r.Context(), req)
+//	if err != nil {
+//		log.WithError(err).Errorf("Fail to SendEmailOrder: %v", err.Error())
+//		return nil, ginext.NewError(http.StatusBadRequest, "Fail to SendEmailOrder")
+//	}
+//	return &ginext.Response{
+//		Code: http.StatusOK,
+//		GeneralBody: &ginext.GeneralBody{
+//			Data: res,
+//		},
+//	}, nil
+//}

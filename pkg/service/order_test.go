@@ -6,12 +6,14 @@ import (
 	"finan/ms-order-management/pkg/mocks"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/repo"
+	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"gorm.io/gorm"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -29,6 +31,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		req model.OrderBody
 	}
 
+	var tx *gorm.DB
 	// mock data order request
 	buyerInfo := model.BuyerInfo{
 		PhoneNumber: "+84792452548",
@@ -134,11 +137,10 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		OtherDiscount:     0,
 		Email:             "missem9999@gmail.com",
 	}
-	var tx *gorm.DB
 
 	tests := []struct {
 		name    string
-		service *service
+		service *OrderService
 		args    args
 		wantRes interface{}
 		wantErr bool
@@ -146,7 +148,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 		// TODO: Add test cases
 		{
 			name: "happy flow: CreateOrder",
-			service: &service{
+			service: &OrderService{
 				repo: func() repo.PGInterface {
 					mockIRepo := mocks.NewMockPGInterface(ctr1)
 					mockIRepo.EXPECT().CreateOrder(context.Background(), orderReq, tx).Return(orderRes, nil)
@@ -171,6 +173,63 @@ func TestOrderService_CreateOrder(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotRes, tt.wantRes) {
 				t.Errorf("CreateOrder() gotRes = %v, want %v", gotRes, tt.wantRes)
+			}
+		})
+	}
+}
+
+func TestOrderService_SendEmailOrder(t *testing.T) {
+	conf.SetEnv()
+
+	ctr1 := gomock.NewController(t)
+	defer ctr1.Finish()
+
+	type args struct {
+		ctx context.Context
+		req model.SendEmailRequest
+	}
+	//var ctx context.Context
+	tests := []struct {
+		name    string
+		service *OrderService
+		args    args
+		wantRes interface{}
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+		{
+			name:    "happy flow: Test SendEmailOrder",
+			service: &OrderService{
+				repo: func() repo.PGInterface {
+					mockIRepo := mocks.NewMockPGInterface(ctr1)
+
+					return mockIRepo
+				}(),
+			},
+			args: args{
+				ctx: context.Background(),
+				req: model.SendEmailRequest{
+					ID:       "a17872d7-9ea5-46b9-ac20-81cab5374cb3",
+					State:    utils.ORDER_STATE_WAITING_CONFIRM,
+					UserRole: strconv.Itoa(utils.ADMIN_ROLE),
+				},
+			},
+			wantRes: utils.ORDER_STATE_WAITING_CONFIRM,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &OrderService{
+				repo: tt.service.repo,
+			}
+			gotRes, err := s.SendEmailOrder(tt.args.ctx, tt.args.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SendEmailOrder() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(gotRes, tt.wantRes) {
+				t.Errorf("SendEmailOrder() gotRes = %v, want %v", gotRes, tt.wantRes)
 			}
 		})
 	}
