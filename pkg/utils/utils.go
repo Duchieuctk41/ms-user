@@ -5,13 +5,15 @@ import (
 	"finan/ms-order-management/conf"
 	"finan/ms-order-management/pkg/model"
 	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/praslar/lib/common"
 	"github.com/sendgrid/rest"
 	"github.com/sirupsen/logrus"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 type ConsumerRequest struct {
@@ -151,4 +153,11 @@ func CheckSkuHasStock(userID string, req []model.OrderItem) (rs []string, err er
 		return nil, err
 	}
 	return tm.Data, nil
+}
+
+func RemoveSpace(str string) string {
+	re := regexp.MustCompile(`\s+`)
+	out := re.ReplaceAllString(str, " ")
+	out = strings.TrimSpace(out)
+	return out
 }

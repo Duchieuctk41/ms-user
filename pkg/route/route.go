@@ -33,7 +33,9 @@ func NewService() *Service {
 	}
 	repoPG := repo.NewPGRepo(db)
 	oderService := service2.NewOrderService(repoPG)
+	ProfitAndLossService := service2.NewProfitAndLossService(repoPG)
 	orderHandle := handlers.NewPoCategoryHandlers(oderService)
+	ProfitAndLossHandle := handlers.NewProfitAndLossHandlers(ProfitAndLossService)
 
 	v1Api := s.Router.Group("/api/v1")
 	v1Api.GET("/get-one-oder", ginext.WrapHandler(orderHandle.GetOneOrder))
@@ -41,6 +43,10 @@ func NewService() *Service {
 	// 08/12/21 - Create order fast & create product fast for seller - version app 1.0.34.1.1
 	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
 	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))
+
+	//ProfitAndLoss
+	v1Api.GET("/get-list-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetListProfitAndLoss))
+	v1Api.GET("/overview-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetOverviewPandL))
 
 	// Consumer
 	// 15/12/21 - Receive message from rabbitmq - version app 1.0.34.1.1

@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"finan/ms-order-management/pkg/model"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -167,4 +168,33 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 	}
 
 	return order, nil
+}
+
+func (r *RepoPG) OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	query := ""
+	query += "SELECT SUM(grand_total) AS sum_grand_total " +
+		" FROM orders " +
+		" WHERE business_id = ? " +
+		"  AND state = 'complete' "
+	if req.StartTime != nil && req.EndTime != nil {
+		query += " AND updated_at BETWEEN ? AND ? "
+	}
+	rs := model.OverviewPandLResponse{}
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return rs, err
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return rs, err
+		}
+	}
+
+	return rs, nil
 }
