@@ -50,7 +50,7 @@ func NewService() *Service {
 
 	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
 	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))
-	v1Api.PUT("update-detail-order", ginext.WrapHandler(orderHandle.UpdateDetailOrder))
+	v1Api.PUT("/update-detail-order/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrder))
 	v1Api.POST("/export-order-report", ginext.WrapHandler(orderHandle.ExportOrderReport))
 
 	// Order ecom

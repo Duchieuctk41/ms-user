@@ -117,13 +117,13 @@ type OrderParam struct {
 	BusinessID     string     `json:"business_id" form:"business_id"`
 	ContactID      string     `json:"contact_id" form:"contact_id"`
 	PromotionCode  string     `json:"promotion_code" form:"promotion_code"`
-	State          string     `json:"state"`
+	State          string     `json:"state" form:"state"`
 	OrderNumber    string     `json:"order_number" form:"order_number"`
 	PaymentMethod  string     `json:"payment_method" form:"payment_method"`
 	Note           string     `json:"note" form:"note"`
-	PageSize       int        `json:"size" form:"size"`
-	Page           int        `json:"page" form:"size"`
-	Sort           string     `json:"sort" form:"size"`
+	PageSize       int        `json:"size" form:"page_size"`
+	Page           int        `json:"page" form:"page"`
+	Sort           string     `json:"sort" form:"sort"`
 	BuyerID        string     `json:"buyer_id" form:"buyer_id"`
 	DateFrom       *time.Time `json:"date_from" form:"date_from"`
 	DateTo         *time.Time `json:"date_to" form:"date_to"`
@@ -228,7 +228,7 @@ type ContactDeliveringResponse struct {
 }
 
 type GetOneOrderRequest struct {
-	ID       *string    `json:"id"`
+	ID       *string   `json:"id"`
 	UserRole string    `json:"user_role"`
 	UserID   uuid.UUID `json:"user_id"`
 }
