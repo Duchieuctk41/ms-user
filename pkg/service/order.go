@@ -10,6 +10,7 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
+	"github.com/xuri/excelize/v2"
 	"io"
 	"io/ioutil"
 	"math"
@@ -29,7 +30,6 @@ import (
 	"github.com/praslar/lib/common"
 	"github.com/sendgrid/rest"
 	sendinblue "github.com/sendinblue/APIv3-go-library/lib"
-	"github.com/xuri/excelize/v2"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gorm.io/gorm"
 )
@@ -1076,7 +1076,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 
 	if req.State != nil && order.State == *req.State {
 		log.WithError(err).Errorf("Error when State not change")
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when State not change")
 	}
 
 	preOrderState := order.State
@@ -1084,7 +1084,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
 		if rCheck, err := utils.CheckCanPickQuantity(order.CreatorID.String(), order.OrderItem, nil); err != nil {
 			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckCanPickQuantity: "+err.Error())
 		} else {
 			if rCheck.Status != utils.STATUS_SUCCESS {
 				return rCheck, nil

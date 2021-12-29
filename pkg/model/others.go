@@ -56,6 +56,7 @@ type Contact struct {
 	BusinessHasContactID uuid.UUID  `json:"business_has_contact_id,omitempty" gorm:"-"`
 	LatestSyncTime       time.Time  `json:"latest_sync_time"`
 	FavoriteTime         *time.Time `json:"favorite_time" gorm:"null"`
+	SocialAvatar         string     `json:"social_avatar,omitempty"`
 }
 
 type CheckValidOrderItemResponse struct {
