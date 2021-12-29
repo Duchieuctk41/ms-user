@@ -54,6 +54,8 @@ type OrderServiceInterface interface {
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
+
+	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
 
 func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error) {
@@ -389,12 +391,12 @@ func (s *OrderService) ProcessPromotion(ctx context.Context, businessId uuid.UUI
 	promotion := PromotionResponse{}
 	bodyResponse, _, err := common.SendRestAPI(conf.LoadEnv().MSPromotionManagement+"/api/v2/promotion/process", rest.Post, header, nil, req)
 	if err != nil {
-		log.WithError(err).Error("Error when Get promotion info error: %v", err.Error())
+		log.WithError(err).Errorf("Error when Get promotion info error: %v", err.Error())
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
 	if err = json.Unmarshal([]byte(bodyResponse), &promotion); err != nil {
-		log.WithError(err).Error("Error when unmarshal promotion: %v", err.Error())
+		log.WithError(err).Errorf("Error when unmarshal promotion: %v", err.Error())
 		return model.Promotion{}, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
@@ -891,7 +893,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 			Note:                item.Note,
 			UOM:                 item.UOM,
 			ProductNormalPrice:  utils.StrDelimitForSum(item.ProductNormalPrice, ""),
-			ProductSellingPrice: utils.StrDelimitForSum(item.ProductNormalPrice, ""),
+			ProductSellingPrice: utils.StrDelimitForSum(item.ProductSellingPrice, ""),
 		}
 		if len(item.ProductImages) > 0 {
 			orderItem.ProductImages = utils.ResizeImage(item.ProductImages[0], 80, 80)
@@ -927,6 +929,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"ORDER_NUMBER":        order.OrderNumber,
 		"ORDERED_GRAND_TOTAL": utils.StrDelimitForSum(order.OrderedGrandTotal, ""),
 		"PROMOTION_DISCOUNT":  utils.StrDelimitForSum(order.PromotionDiscount, ""),
+		"OTHER_DISCOUNT":      utils.StrDelimitForSum(order.OtherDiscount, ""),
 		"DELIVERY_FEE":        utils.StrDelimitForSum(order.DeliveryFee, ""),
 		"GRAND_TOTAL":         utils.StrDelimitForSum(order.GrandTotal, ""),
 		"PAYMENT_METHOD":      order.PaymentMethod,
@@ -969,6 +972,9 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	case utils.ORDER_STATE_COMPLETE:
 		tParams["STATE"] = "đã hoàn thành"
 		break
+	case utils.ORDER_STATE_UPDATE:
+		tParams["STATE"] = "đã được cập nhật"
+		break
 	default:
 		return nil, nil
 		break
@@ -997,6 +1003,9 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	case utils.ORDER_STATE_COMPLETE:
 		body.TemplateId = int64(utils.SEND_EMAIL_CANCEL)
 		break
+	case utils.ORDER_STATE_UPDATE:
+		body.TemplateId = int64(utils.ORDER_EMAIL_UPDATE)
+		break
 	default:
 		return nil, nil
 		break
@@ -1017,7 +1026,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 
 	tx.Commit()
 
-	return res, err
+	return req.State, err
 }
 
 func (s *OrderService) GetDetailBusiness(ctx context.Context, businessID string) (res model.BusinessMainInfo, err error) {
@@ -1352,7 +1361,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	}
 
 	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
-	go s.PushConsumerSendEmail(ctx, order.ID.String(), order.State)
+	go s.PushConsumerSendEmail(ctx, order.ID.String(), utils.ORDER_STATE_UPDATE)
 
 	return res, nil
 }

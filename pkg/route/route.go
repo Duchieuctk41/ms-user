@@ -59,6 +59,9 @@ func NewService() *Service {
 	// Order tracking
 	v1Api.GET("/get-order-tracking", ginext.WrapHandler(orderTrackingHandle.GetOrderTracking))
 
+	// Send email order
+	//v1Api.POST("/send-email-order", ginext.WrapHandler(orderHandle.SendEmailOrder))
+
 	// Consumer - Receive message from rabbitmq - version app 1.0.34.1.1
 	v1Api.POST("/consumer", ginext.WrapHandler(orderHandle.ProcessConsumer))
 

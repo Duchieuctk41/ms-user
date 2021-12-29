@@ -20,6 +20,42 @@ type MockPGInterface struct {
 	recorder *MockPGInterfaceMockRecorder
 }
 
+func (m *MockPGInterface) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetOrderTracking(ctx context.Context, req model.OrderTrackingRequest, tx *gorm.DB) (rs model.OrderTrackingResponse, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error) {
+	panic("implement me")
+}
+
 // MockPGInterfaceMockRecorder is the mock recorder for MockPGInterface.
 type MockPGInterfaceMockRecorder struct {
 	mock *MockPGInterface
