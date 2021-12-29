@@ -61,6 +61,16 @@ func CheckCanPickQuantity(userID string, req []model.OrderItem, mapItem map[stri
 	if err = json.Unmarshal([]byte(body), &tm); err != nil {
 		return res, err
 	}
+
+	// set quantity
+	for i, v := range tm.Data.ItemsInfo {
+		if mapItem != nil {
+			if _, ok := mapItem[v.Sku.ID.String()]; ok {
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+			}
+		}
+	}
+
 	return tm.Data, nil
 }
 
