@@ -454,7 +454,10 @@ func (h *OrderHandlers) GetListOrderEcom(r *ginext.Request) (*ginext.Response, e
 	}, nil
 }
 
+// Author: Hieucn
 // CreateOrderV2 Create order version 2 - update from CreateOrderFast - version app 1.0.35.1.4
+// Check: buyer mustn't change state, buyer mustn't create-product-fast
+// Check: permission of seller
 func (h *OrderHandlers) CreateOrderV2(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderV2")
 
