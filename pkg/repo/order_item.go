@@ -29,29 +29,34 @@ func (r *RepoPG) OverviewCost(ctx context.Context, req model.OrverviewPandLReque
 		tx, cancel = r.DBWithTimeout(ctx)
 		defer cancel()
 	}
-	query := ""
-	query += `select
-					sum(oi.historical_cost * oi.quantity) as cost_total
-				from
-					order_item oi
-				inner join orders o on
-					oi.order_id = o.id
-					and o.state = 'complete'
-					and o.business_id = ? `
-	if req.StartTime != nil && req.EndTime != nil {
-		query += " AND updated_at BETWEEN ? AND ? "
+
+	type CountTotal struct {
+		CostTotal float64 `json:"cost_total"`
 	}
-	//rs := model.OverviewPandLResponse{}
+
+	query := ""
+	query += utils.RemoveSpace(`select
+									sum(oi.historical_cost * oi.quantity) as cost_total
+								from
+									order_item oi
+								inner join orders o on
+									oi.order_id = o.id
+									and o.state = 'complete'
+									and o.business_id = ? `)
 	if req.StartTime != nil && req.EndTime != nil {
-		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&overviewPandL).Error; err != nil {
+		query += " AND o.updated_at BETWEEN ? AND ? "
+	}
+	rs := CountTotal{}
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
 			return model.OverviewPandLResponse{}, err
 		}
 	} else {
-		if err := r.DB.Raw(query, req.BusinessID).Scan(&overviewPandL).Error; err != nil {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
 			return model.OverviewPandLResponse{}, err
 		}
 	}
-
+	overviewPandL.CostTotal = rs.CostTotal
 	return overviewPandL, nil
 }
 
@@ -118,7 +123,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 					and o.state = 'complete'
 					and o.business_id = ? `)
 	if req.StartTime != nil && req.EndTime != nil {
-		queryTotal += " AND updated_at BETWEEN ? AND ? "
+		queryTotal += " AND o.updated_at BETWEEN ? AND ? "
 	}
 
 	totalProfit := model.TotalProfitAndLossResponse{}
