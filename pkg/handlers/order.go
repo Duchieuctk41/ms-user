@@ -454,6 +454,58 @@ func (h *OrderHandlers) GetListOrderEcom(r *ginext.Request) (*ginext.Response, e
 	}, nil
 }
 
+// Author: Hieucn
+// CreateOrderV2 Create order version 2 - update from CreateOrderFast - version app 1.0.35.1.4
+// Check: buyer mustn't change state, buyer mustn't create-product-fast
+// Check: permission of seller
+func (h *OrderHandlers) CreateOrderV2(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderV2")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.OrderBody{}
+	r.MustBind(&req)
+	req.UserID = userID
+	if err := common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	// Check Permission
+	if req.CreateMethod == utils.SELLER_CREATE_METHOD {
+		if req.BusinessID == nil {
+			log.WithError(err).Error("Missing business ID")
+			return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+		}
+
+		role := r.GinCtx.Request.Header.Get("x-user-roles")
+		if err = utils.CheckPermission(r.GinCtx, userID.String(), req.BusinessID.String(), role); err != nil {
+			log.WithError(err).Error("Unauthorized")
+			return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+		}
+	}
+
+	// create order
+	rs, err := h.service.CreateOrderV2(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to create order %v", err.Error())
+		return nil, ginext.NewError(http.StatusBadRequest, "Fail to create order: "+err.Error())
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
 // ProcessConsumer Receive message from rabbitmq - version app 1.0.35.1.4
 func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ProcessConsumer")
