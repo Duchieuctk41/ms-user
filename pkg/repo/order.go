@@ -176,6 +176,34 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 }
 
 func (r *RepoPG) OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error) {
+
+	query := ""
+	query += "SELECT SUM(grand_total) AS sum_grand_total, SUM(ordered_grand_total) as sum_ordered_grand_total, " +
+		" SUM(promotion_discount) as sum_promotion_discount, " +
+		" SUM(delivery_fee) as sum_delivery_fee, SUM(other_discount) as sum_other_discount " +
+		" FROM orders " +
+		" WHERE business_id = ? " +
+		"  AND state = 'complete' "
+	if req.StartTime != nil && req.EndTime != nil {
+		query += " AND updated_at BETWEEN ? AND ? "
+	}
+	detailSales := model.DetailSales{}
+	rs := model.OverviewPandLResponse{}
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&detailSales).Error; err != nil {
+			return rs, err
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&detailSales).Error; err != nil {
+			return rs, err
+		}
+	}
+	rs.SumGrandTotal = detailSales.SumGrandTotal
+	rs.DetailSales = detailSales
+	return rs, nil
+}
+
+func (r *RepoPG) DetailSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error) {
 	query := ""
 	query += "SELECT SUM(grand_total) AS sum_grand_total " +
 		" FROM orders " +
@@ -196,6 +224,7 @@ func (r *RepoPG) OverviewSales(ctx context.Context, req model.OrverviewPandLRequ
 	}
 	return rs, nil
 }
+
 func (r *RepoPG) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse, err error) {
 	var cancel context.CancelFunc
 	if tx == nil {
