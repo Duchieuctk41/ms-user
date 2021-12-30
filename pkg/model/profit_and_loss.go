@@ -39,7 +39,16 @@ type TotalProfitAndLossResponse struct {
 }
 
 type OverviewPandLResponse struct {
-	SumGrandTotal float64 `json:"sum_grand_total"`
-	CostTotal     float64 `json:"cost_total"`
-	ProfitTotal   float64 `json:"profit_total"`
+	SumGrandTotal float64     `json:"sum_grand_total"`
+	CostTotal     float64     `json:"cost_total"`
+	ProfitTotal   float64     `json:"profit_total"`
+	DetailSales   DetailSales `json:"detail_sales"`
+}
+
+type DetailSales struct {
+	SumGrandTotal        float64 `json:"sum_grand_total"`
+	SumOrderedGrandTotal float64 `json:"sum_ordered_grand_total"`
+	SumPromotionDiscount float64 `json:"sum_promotion_discount"`
+	SumDeliveryFee       float64 `json:"sum_delivery_fee"`
+	SumOtherDiscount     float64 `json:"sum_other_discount"`
 }
