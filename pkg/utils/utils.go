@@ -77,6 +77,52 @@ func CheckCanPickQuantity(userID string, req []model.OrderItem, mapItem map[stri
 	return tm.Data, nil
 }
 
+func CheckCanPickQuantityV2(userID string, businessID uuid.UUID, req []model.OrderItem, mapItem map[string]model.OrderItem) (res model.CheckValidOrderItemResponse, err error) {
+	// Update req quantity
+	var tReq = model.CheckBusinessOrderItemsRequest{
+		BusinessID: businessID,
+	}
+	for _, v := range req {
+		if mapItem != nil {
+			if item, ok := mapItem[v.SkuID.String()]; ok {
+				v.Quantity = v.Quantity - item.Quantity
+			}
+		}
+		tReq.ListOrderItem = append(tReq.ListOrderItem, v)
+	}
+	header := make(map[string]string)
+	header["x-user-id"] = userID
+	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v3/check-valid-order-items", rest.Post, header, nil, tReq)
+	if err != nil {
+		// parsing error
+		tm := struct {
+			Message string `json:"message"`
+		}{}
+		if err = json.Unmarshal([]byte(body), &tm); err != nil {
+			return res, err
+		}
+		return res, fmt.Errorf(tm.Message)
+	}
+	tm := struct {
+		Data model.CheckValidOrderItemResponse `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		return res, err
+	}
+
+	// set quantity
+	for i, v := range tm.Data.ItemsInfo {
+		if mapItem != nil {
+			if _, ok := mapItem[v.Sku.ID.String()]; ok {
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+			}
+		}
+	}
+
+	return tm.Data, nil
+}
+
 func CurrentUser(c *http.Request) (uuid.UUID, error) {
 	userIdStr := c.Header.Get("x-user-id")
 	if strings.Contains(userIdStr, "|") {

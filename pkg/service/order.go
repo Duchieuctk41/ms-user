@@ -10,7 +10,7 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
-	"github.com/xuri/excelize/v2"
+	//"github.com/xuri/excelize/v2"
 	"io"
 	"io/ioutil"
 	"math"
@@ -54,6 +54,9 @@ type OrderServiceInterface interface {
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
+
+	// version 2
+	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
@@ -1414,278 +1417,279 @@ func (s *OrderService) GetOrderByContact(ctx context.Context, req model.OrderByC
 }
 
 func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error) {
-	log := logger.WithCtx(ctx, "OrderService.ExportOrderReport")
+	//log := logger.WithCtx(ctx, "OrderService.ExportOrderReport")
+	//
+	////  Get data order list
+	//orders, err := s.repo.GetAllOrderForExport(ctx, req, nil)
+	//if err != nil {
+	//	log.WithError(err).Error("Error GetAllOrderForExport")
+	//	return nil, err
+	//}
+	//
+	//if len(orders) == 0 {
+	//	log.WithError(err).Error("Record not found while GetAllOrderForExport")
+	//	return nil, err
+	//}
+	//
+	//// get business info
+	//businessInfo := model.BusinessMainInfo{}
+	//if businessInfo, err = s.GetDetailBusiness(ctx, req.BusinessID.String()); err != nil {
+	//	log.WithError(err).Errorf("Fail to get business detail due to %v", err.Error())
+	//	return nil, err
+	//}
+	//
+	//// Make excel file
+	//f := excelize.NewFile()
 
-	//  Get data order list
-	orders, err := s.repo.GetAllOrderForExport(ctx, req, nil)
-	if err != nil {
-		log.WithError(err).Error("Error GetAllOrderForExport")
-		return nil, err
-	}
-
-	if len(orders) == 0 {
-		log.WithError(err).Error("Record not found while GetAllOrderForExport")
-		return nil, err
-	}
-
-	// get business info
-	businessInfo := model.BusinessMainInfo{}
-	if businessInfo, err = s.GetDetailBusiness(ctx, req.BusinessID.String()); err != nil {
-		log.WithError(err).Errorf("Fail to get business detail due to %v", err.Error())
-		return nil, err
-	}
-
-	// Make excel file
-	f := excelize.NewFile()
-
-	// Config some new style
-	styleHeader, _ := f.NewStyle(`{"font":{"bold":true, "size":14},"alignment":{"horizontal":"left","indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
-	styleTitle, _ := f.NewStyle(`{"fill":{"type":"pattern","color":["#aad08e"],"pattern":1},"font":{"bold":true},"alignment":{"horizontal":"center","indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
-	styleBorder, _ := f.NewStyle(`{"alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
-	styleCenterHorizontal, _ := f.NewStyle(`{"alignment":{"horizontal":"center", "indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
-	styleCurrency, _ := f.NewStyle(`{"number_format": 41, "alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
-	styleDatetime, _ := f.NewStyle(`{"number_format": 22, "alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
-
-	//======================================================================================
-	//        					Sheet TỔNG QUAN ĐƠN HÀNG
-	//======================================================================================
-	orderSheetName := "Tổng quan đơn hàng"
-	f.SetDefaultFont("Arial")
-	f.SetSheetName("Sheet1", orderSheetName)
-	for i := 3; i < 500; i++ {
-		_ = f.SetRowHeight(orderSheetName, i, 17)
-	}
-	_ = f.SetRowHeight(orderSheetName, 1, 25)
-	_ = f.SetRowHeight(orderSheetName, 2, 25)
-
-	_ = f.MergeCell(orderSheetName, "A1", "Q1")
-	_ = f.MergeCell(orderSheetName, "A2", "Q2")
-	_ = f.SetCellValue(orderSheetName, "A1", fmt.Sprintf("%s - %s", businessInfo.Name, businessInfo.Domain))
-	_ = f.SetCellValue(orderSheetName, "A2", "Ngày xuất báo cáo: "+utils.ConvertTimeFormatForReport(time.Now()))
-
-	headers := map[string]string{
-		"A3": "STT", "B3": "Đơn hàng", "C3": "Ngày giờ đặt",
-		"D3": "Số sản phẩm", "E3": "Tổng số món", "F3": "Tổng tiền",
-		"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3": "Tổng cộng", "J3": "Trạng thái",
-		"K3": "Hình thức giao hàng", "L3": "Mã khuyến mãi", "M3": "Hình thức thanh toán",
-		"N3": "Tên khách hàng", "O3": "SĐT nhận", "P3": "Địa chỉ", "Q3": "Ghi chú",
-	}
-	for k, v := range headers {
-		_ = f.SetCellValue(orderSheetName, k, v)
-	}
-
-	// Set style
-	_ = f.SetCellStyle(orderSheetName, "A2", "Q"+strconv.Itoa(3+len(orders)), styleBorder)
-	_ = f.SetCellStyle(orderSheetName, "A3", "Q3", styleTitle)
-	_ = f.SetCellStyle(orderSheetName, "A1", "Q1", styleHeader)
-	_ = f.SetCellStyle(orderSheetName, "A4", "A"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "N4", "N"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime)
-
-	// Set col width
-	_ = f.SetColWidth(orderSheetName, "A", "A", 8)
-	_ = f.SetColWidth(orderSheetName, "B", "B", 13)
-	_ = f.SetColWidth(orderSheetName, "C", "C", 18)
-	_ = f.SetColWidth(orderSheetName, "D", "D", 14)
-	_ = f.SetColWidth(orderSheetName, "E", "E", 14)
-	_ = f.SetColWidth(orderSheetName, "F", "F", 14)
-	_ = f.SetColWidth(orderSheetName, "G", "G", 16)
-	_ = f.SetColWidth(orderSheetName, "H", "H", 16)
-	_ = f.SetColWidth(orderSheetName, "I", "I", 16)
-	_ = f.SetColWidth(orderSheetName, "J", "J", 14)
-	_ = f.SetColWidth(orderSheetName, "K", "K", 19)
-	_ = f.SetColWidth(orderSheetName, "L", "L", 15)
-	_ = f.SetColWidth(orderSheetName, "M", "M", 20)
-	_ = f.SetColWidth(orderSheetName, "N", "N", 19)
-	_ = f.SetColWidth(orderSheetName, "O", "O", 15)
-	_ = f.SetColWidth(orderSheetName, "P", "P", 30)
-	_ = f.SetColWidth(orderSheetName, "Q", "Q", 25)
-
-	// Set data order for sheet
-	rowNumber := 4
-	var rowItemsValues [][]interface{}
-	for index, order := range orders {
-		// Count Sum Item and Sum Quantity
-		sumQuantity := 0.0
-		for _, item := range order.OrderItem {
-			sumQuantity += item.Quantity
-		}
-		rowValues := []interface{}{
-			index + 1,
-			order.OrderNumber,
-			order.CreatedAt.Add(7 * time.Hour),
-			len(order.OrderItem),
-			sumQuantity,
-			order.OrderedGrandTotal,
-			order.PromotionDiscount,
-			order.DeliveryFee,
-			order.GrandTotal,
-		}
-		switch order.State {
-		case utils.ORDER_STATE_WAITING_CONFIRM:
-			rowValues = append(rowValues, "Chờ xác nhận")
-			break
-		case utils.ORDER_STATE_DELIVERING:
-			rowValues = append(rowValues, "Đang giao")
-			break
-		case utils.ORDER_STATE_CANCEL:
-			rowValues = append(rowValues, "Đã hủy")
-			break
-		case utils.ORDER_STATE_COMPLETE:
-			rowValues = append(rowValues, "Hoàn thành")
-			break
-		}
-		switch order.DeliveryMethod {
-		case utils.DELIVERY_METHOD_SELLER_DELIVERY:
-			rowValues = append(rowValues, "Tự đi giao")
-			break
-		case utils.DELIVERY_METHOD_BUYER_PICK_UP:
-			rowValues = append(rowValues, "Khách đến lấy")
-			break
-		}
-		rowValues = append(rowValues, order.PromotionCode)
-		rowValues = append(rowValues, order.PaymentMethod)
-
-		buyerInfo := model.BuyerInfo{}
-		tBuyer, _ := json.Marshal(order.BuyerInfo)
-		if err = json.Unmarshal(tBuyer, &buyerInfo); err != nil {
-			log.WithError(err).Errorf("Cannot unmarshal buyerInfo %v", err.Error())
-			rowValues = append(rowValues, "")
-			rowValues = append(rowValues, "")
-			rowValues = append(rowValues, "")
-		} else {
-			rowValues = append(rowValues, buyerInfo.Name)
-			if len(buyerInfo.PhoneNumber) > 3 {
-				rowValues = append(rowValues, "0"+buyerInfo.PhoneNumber[3:])
-			} else {
-				rowValues = append(rowValues, "")
-			}
-			rowValues = append(rowValues, buyerInfo.Address)
-		}
-		rowValues = append(rowValues, order.Note)
-
-		for _, item := range order.OrderItem {
-			itemData := []interface{}{
-				len(rowItemsValues) + 1,
-				rowValues[1],
-				rowValues[2],
-			}
-			name := item.ProductName
-			if item.SkuName != "" {
-				name += " - " + item.SkuName
-			}
-			itemData = append(itemData, name)
-			if item.ProductSellingPrice > 0 && item.ProductSellingPrice < item.ProductNormalPrice {
-				itemData = append(itemData, item.ProductSellingPrice)
-			} else {
-				itemData = append(itemData, item.ProductNormalPrice)
-			}
-			itemData = append(itemData, item.Quantity)
-			itemData = append(itemData, item.TotalAmount)
-			//itemData = append(itemData, rowValues[8])
-			itemData = append(itemData, rowValues[9])  // Trang thai
-			itemData = append(itemData, rowValues[12]) // hinh thuc thanh toan
-			itemData = append(itemData, rowValues[13]) // ten khach hang
-			itemData = append(itemData, rowValues[14]) // Phone
-			itemData = append(itemData, rowValues[15]) // Dia chi
-			itemData = append(itemData, item.Note)     // Note
-
-			rowItemsValues = append(rowItemsValues, itemData)
-		}
-		_ = f.SetSheetRow(orderSheetName, "A"+strconv.Itoa(rowNumber), &rowValues)
-		rowNumber++
-	}
-
-	//======================================================================================
-	//        					Sheet Chi tiết đơn hàng
-	//======================================================================================
-	orderDetailSheetName := "Chi tiết đơn hàng"
-	f.NewSheet(orderDetailSheetName)
-	for i := 3; i < 500; i++ {
-		_ = f.SetRowHeight(orderDetailSheetName, i, 17)
-	}
-
-	// Header for order item
-	headersItem := map[string]string{
-		"A1": "STT", "B1": "Đơn hàng", "C1": "Ngày giờ đặt",
-		"D1": "Tên sản phẩm", "E1": "Giá bán", "F1": "Số lượng sản phẩm",
-		"G1": "Số tiền", "H1": "Trạng thái", "I1": "Hình thức giao hàng",
-		"J1": "Tên khách hàng", "K1": "SĐT nhận", "L1": "Địa chỉ",
-		"M1": "Ghi chú",
-	}
-	for k, v := range headersItem {
-		_ = f.SetCellValue(orderDetailSheetName, k, v)
-	}
-
-	// Set style
-	_ = f.SetCellStyle(orderDetailSheetName, "A1", "M"+strconv.Itoa(1+len(rowItemsValues)), styleBorder)
-	_ = f.SetCellStyle(orderDetailSheetName, "A1", "M1", styleTitle)
-	_ = f.SetCellStyle(orderDetailSheetName, "A2", "A"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderDetailSheetName, "F2", "F"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderDetailSheetName, "J2", "J"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderDetailSheetName, "E2", "E"+strconv.Itoa(1+len(rowItemsValues)), styleCurrency)
-	_ = f.SetCellStyle(orderDetailSheetName, "G2", "G"+strconv.Itoa(1+len(rowItemsValues)), styleCurrency)
-	_ = f.SetCellStyle(orderDetailSheetName, "C2", "C"+strconv.Itoa(1+len(rowItemsValues)), styleDatetime)
-
-	// Set col width
-	_ = f.SetColWidth(orderDetailSheetName, "A", "A", 8)
-	_ = f.SetColWidth(orderDetailSheetName, "B", "B", 13)
-	_ = f.SetColWidth(orderDetailSheetName, "C", "C", 18)
-	_ = f.SetColWidth(orderDetailSheetName, "D", "D", 22)
-	_ = f.SetColWidth(orderDetailSheetName, "E", "E", 14)
-	_ = f.SetColWidth(orderDetailSheetName, "F", "F", 16)
-	_ = f.SetColWidth(orderDetailSheetName, "G", "G", 14)
-	_ = f.SetColWidth(orderDetailSheetName, "H", "H", 16)
-	_ = f.SetColWidth(orderDetailSheetName, "I", "I", 16)
-	_ = f.SetColWidth(orderDetailSheetName, "J", "J", 19)
-	_ = f.SetColWidth(orderDetailSheetName, "K", "K", 14)
-	_ = f.SetColWidth(orderDetailSheetName, "L", "L", 30)
-	_ = f.SetColWidth(orderDetailSheetName, "M", "M", 25)
-
-	// Set data order item
-	for i, item := range rowItemsValues {
-		_ = f.SetSheetRow(orderDetailSheetName, "A"+strconv.Itoa(i+2), &item)
-	}
-
-	f.SetActiveSheet(0)
-
-	// Save spreadsheet by the given path.
-	fileName := "DonHang_" +
-		strings.ReplaceAll(businessInfo.Domain, ".", "") +
-		"_" +
-		strconv.Itoa(time.Now().Year()) +
-		utils.ConvertTimeIntToString(int(time.Now().Month())) +
-		utils.ConvertTimeIntToString(time.Now().Day()) +
-		utils.ConvertTimeIntToString(time.Now().Hour()) +
-		utils.ConvertTimeIntToString(time.Now().Minute()) +
-		utils.ConvertTimeIntToString(time.Now().Second()) +
-		".xlsx"
-	if err := f.SaveAs(fileName); err != nil {
-		log.WithError(err).Error("Error when SaveAs")
-		return nil, ginext.NewError(http.StatusInternalServerError, "Error when SaveAs"+err.Error())
-	}
-
-	// Save to S3 and get URL link to response
-	linkReportOrders, err := s.ExcelUpFileToS3(ctx, model.UpFileToS3Request{
-		File:      "./" + fileName,
-		Name:      fileName,
-		MediaType: "EXCEL",
-		UserID:    req.UserID,
-	})
-
-	_ = os.Remove("./" + fileName)
-	if err != nil {
-		log.WithError(err).Error("Error when Remove")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when Remove")
-	}
-
-	return linkReportOrders, nil
+	//// Config some new style
+	//styleHeader, _ := f.NewStyle(`{"font":{"bold":true, "size":14},"alignment":{"horizontal":"left","indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	//styleTitle, _ := f.NewStyle(`{"fill":{"type":"pattern","color":["#aad08e"],"pattern":1},"font":{"bold":true},"alignment":{"horizontal":"center","indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	//styleBorder, _ := f.NewStyle(`{"alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	//styleCenterHorizontal, _ := f.NewStyle(`{"alignment":{"horizontal":"center", "indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	//styleCurrency, _ := f.NewStyle(`{"number_format": 41, "alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	//styleDatetime, _ := f.NewStyle(`{"number_format": 22, "alignment":{"indent":0,"vertical":"center"},"border":[{"type":"left","color":"000000","style":1},{"type":"top","color":"000000","style":1},{"type":"bottom","color":"000000","style":1},{"type":"right","color":"000000","style":1}]}`)
+	//
+	////======================================================================================
+	////        					Sheet TỔNG QUAN ĐƠN HÀNG
+	////======================================================================================
+	//orderSheetName := "Tổng quan đơn hàng"
+	//f.SetDefaultFont("Arial")
+	//f.SetSheetName("Sheet1", orderSheetName)
+	//for i := 3; i < 500; i++ {
+	//	_ = f.SetRowHeight(orderSheetName, i, 17)
+	//}
+	//_ = f.SetRowHeight(orderSheetName, 1, 25)
+	//_ = f.SetRowHeight(orderSheetName, 2, 25)
+	//
+	//_ = f.MergeCell(orderSheetName, "A1", "Q1")
+	//_ = f.MergeCell(orderSheetName, "A2", "Q2")
+	//_ = f.SetCellValue(orderSheetName, "A1", fmt.Sprintf("%s - %s", businessInfo.Name, businessInfo.Domain))
+	//_ = f.SetCellValue(orderSheetName, "A2", "Ngày xuất báo cáo: "+utils.ConvertTimeFormatForReport(time.Now()))
+	//
+	//headers := map[string]string{
+	//	"A3": "STT", "B3": "Đơn hàng", "C3": "Ngày giờ đặt",
+	//	"D3": "Số sản phẩm", "E3": "Tổng số món", "F3": "Tổng tiền",
+	//	"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3": "Tổng cộng", "J3": "Trạng thái",
+	//	"K3": "Hình thức giao hàng", "L3": "Mã khuyến mãi", "M3": "Hình thức thanh toán",
+	//	"N3": "Tên khách hàng", "O3": "SĐT nhận", "P3": "Địa chỉ", "Q3": "Ghi chú",
+	//}
+	//for k, v := range headers {
+	//	_ = f.SetCellValue(orderSheetName, k, v)
+	//}
+	//
+	//// Set style
+	//_ = f.SetCellStyle(orderSheetName, "A2", "Q"+strconv.Itoa(3+len(orders)), styleBorder)
+	//_ = f.SetCellStyle(orderSheetName, "A3", "Q3", styleTitle)
+	//_ = f.SetCellStyle(orderSheetName, "A1", "Q1", styleHeader)
+	//_ = f.SetCellStyle(orderSheetName, "A4", "A"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderSheetName, "N4", "N"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency)
+	//_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency)
+	//_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency)
+	//_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency)
+	//_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime)
+	//
+	//// Set col width
+	//_ = f.SetColWidth(orderSheetName, "A", "A", 8)
+	//_ = f.SetColWidth(orderSheetName, "B", "B", 13)
+	//_ = f.SetColWidth(orderSheetName, "C", "C", 18)
+	//_ = f.SetColWidth(orderSheetName, "D", "D", 14)
+	//_ = f.SetColWidth(orderSheetName, "E", "E", 14)
+	//_ = f.SetColWidth(orderSheetName, "F", "F", 14)
+	//_ = f.SetColWidth(orderSheetName, "G", "G", 16)
+	//_ = f.SetColWidth(orderSheetName, "H", "H", 16)
+	//_ = f.SetColWidth(orderSheetName, "I", "I", 16)
+	//_ = f.SetColWidth(orderSheetName, "J", "J", 14)
+	//_ = f.SetColWidth(orderSheetName, "K", "K", 19)
+	//_ = f.SetColWidth(orderSheetName, "L", "L", 15)
+	//_ = f.SetColWidth(orderSheetName, "M", "M", 20)
+	//_ = f.SetColWidth(orderSheetName, "N", "N", 19)
+	//_ = f.SetColWidth(orderSheetName, "O", "O", 15)
+	//_ = f.SetColWidth(orderSheetName, "P", "P", 30)
+	//_ = f.SetColWidth(orderSheetName, "Q", "Q", 25)
+	//
+	//// Set data order for sheet
+	//rowNumber := 4
+	//var rowItemsValues [][]interface{}
+	//for index, order := range orders {
+	//	// Count Sum Item and Sum Quantity
+	//	sumQuantity := 0.0
+	//	for _, item := range order.OrderItem {
+	//		sumQuantity += item.Quantity
+	//	}
+	//	rowValues := []interface{}{
+	//		index + 1,
+	//		order.OrderNumber,
+	//		order.CreatedAt.Add(7 * time.Hour),
+	//		len(order.OrderItem),
+	//		sumQuantity,
+	//		order.OrderedGrandTotal,
+	//		order.PromotionDiscount,
+	//		order.DeliveryFee,
+	//		order.GrandTotal,
+	//	}
+	//	switch order.State {
+	//	case utils.ORDER_STATE_WAITING_CONFIRM:
+	//		rowValues = append(rowValues, "Chờ xác nhận")
+	//		break
+	//	case utils.ORDER_STATE_DELIVERING:
+	//		rowValues = append(rowValues, "Đang giao")
+	//		break
+	//	case utils.ORDER_STATE_CANCEL:
+	//		rowValues = append(rowValues, "Đã hủy")
+	//		break
+	//	case utils.ORDER_STATE_COMPLETE:
+	//		rowValues = append(rowValues, "Hoàn thành")
+	//		break
+	//	}
+	//	switch order.DeliveryMethod {
+	//	case utils.DELIVERY_METHOD_SELLER_DELIVERY:
+	//		rowValues = append(rowValues, "Tự đi giao")
+	//		break
+	//	case utils.DELIVERY_METHOD_BUYER_PICK_UP:
+	//		rowValues = append(rowValues, "Khách đến lấy")
+	//		break
+	//	}
+	//	rowValues = append(rowValues, order.PromotionCode)
+	//	rowValues = append(rowValues, order.PaymentMethod)
+	//
+	//	buyerInfo := model.BuyerInfo{}
+	//	tBuyer, _ := json.Marshal(order.BuyerInfo)
+	//	if err = json.Unmarshal(tBuyer, &buyerInfo); err != nil {
+	//		log.WithError(err).Errorf("Cannot unmarshal buyerInfo %v", err.Error())
+	//		rowValues = append(rowValues, "")
+	//		rowValues = append(rowValues, "")
+	//		rowValues = append(rowValues, "")
+	//	} else {
+	//		rowValues = append(rowValues, buyerInfo.Name)
+	//		if len(buyerInfo.PhoneNumber) > 3 {
+	//			rowValues = append(rowValues, "0"+buyerInfo.PhoneNumber[3:])
+	//		} else {
+	//			rowValues = append(rowValues, "")
+	//		}
+	//		rowValues = append(rowValues, buyerInfo.Address)
+	//	}
+	//	rowValues = append(rowValues, order.Note)
+	//
+	//	for _, item := range order.OrderItem {
+	//		itemData := []interface{}{
+	//			len(rowItemsValues) + 1,
+	//			rowValues[1],
+	//			rowValues[2],
+	//		}
+	//		name := item.ProductName
+	//		if item.SkuName != "" {
+	//			name += " - " + item.SkuName
+	//		}
+	//		itemData = append(itemData, name)
+	//		if item.ProductSellingPrice > 0 && item.ProductSellingPrice < item.ProductNormalPrice {
+	//			itemData = append(itemData, item.ProductSellingPrice)
+	//		} else {
+	//			itemData = append(itemData, item.ProductNormalPrice)
+	//		}
+	//		itemData = append(itemData, item.Quantity)
+	//		itemData = append(itemData, item.TotalAmount)
+	//		//itemData = append(itemData, rowValues[8])
+	//		itemData = append(itemData, rowValues[9])  // Trang thai
+	//		itemData = append(itemData, rowValues[12]) // hinh thuc thanh toan
+	//		itemData = append(itemData, rowValues[13]) // ten khach hang
+	//		itemData = append(itemData, rowValues[14]) // Phone
+	//		itemData = append(itemData, rowValues[15]) // Dia chi
+	//		itemData = append(itemData, item.Note)     // Note
+	//
+	//		rowItemsValues = append(rowItemsValues, itemData)
+	//	}
+	//	_ = f.SetSheetRow(orderSheetName, "A"+strconv.Itoa(rowNumber), &rowValues)
+	//	rowNumber++
+	//}
+	//
+	////======================================================================================
+	////        					Sheet Chi tiết đơn hàng
+	////======================================================================================
+	//orderDetailSheetName := "Chi tiết đơn hàng"
+	//f.NewSheet(orderDetailSheetName)
+	//for i := 3; i < 500; i++ {
+	//	_ = f.SetRowHeight(orderDetailSheetName, i, 17)
+	//}
+	//
+	//// Header for order item
+	//headersItem := map[string]string{
+	//	"A1": "STT", "B1": "Đơn hàng", "C1": "Ngày giờ đặt",
+	//	"D1": "Tên sản phẩm", "E1": "Giá bán", "F1": "Số lượng sản phẩm",
+	//	"G1": "Số tiền", "H1": "Trạng thái", "I1": "Hình thức giao hàng",
+	//	"J1": "Tên khách hàng", "K1": "SĐT nhận", "L1": "Địa chỉ",
+	//	"M1": "Ghi chú",
+	//}
+	//for k, v := range headersItem {
+	//	_ = f.SetCellValue(orderDetailSheetName, k, v)
+	//}
+	//
+	//// Set style
+	//_ = f.SetCellStyle(orderDetailSheetName, "A1", "M"+strconv.Itoa(1+len(rowItemsValues)), styleBorder)
+	//_ = f.SetCellStyle(orderDetailSheetName, "A1", "M1", styleTitle)
+	//_ = f.SetCellStyle(orderDetailSheetName, "A2", "A"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderDetailSheetName, "F2", "F"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderDetailSheetName, "J2", "J"+strconv.Itoa(1+len(rowItemsValues)), styleCenterHorizontal)
+	//_ = f.SetCellStyle(orderDetailSheetName, "E2", "E"+strconv.Itoa(1+len(rowItemsValues)), styleCurrency)
+	//_ = f.SetCellStyle(orderDetailSheetName, "G2", "G"+strconv.Itoa(1+len(rowItemsValues)), styleCurrency)
+	//_ = f.SetCellStyle(orderDetailSheetName, "C2", "C"+strconv.Itoa(1+len(rowItemsValues)), styleDatetime)
+	//
+	//// Set col width
+	//_ = f.SetColWidth(orderDetailSheetName, "A", "A", 8)
+	//_ = f.SetColWidth(orderDetailSheetName, "B", "B", 13)
+	//_ = f.SetColWidth(orderDetailSheetName, "C", "C", 18)
+	//_ = f.SetColWidth(orderDetailSheetName, "D", "D", 22)
+	//_ = f.SetColWidth(orderDetailSheetName, "E", "E", 14)
+	//_ = f.SetColWidth(orderDetailSheetName, "F", "F", 16)
+	//_ = f.SetColWidth(orderDetailSheetName, "G", "G", 14)
+	//_ = f.SetColWidth(orderDetailSheetName, "H", "H", 16)
+	//_ = f.SetColWidth(orderDetailSheetName, "I", "I", 16)
+	//_ = f.SetColWidth(orderDetailSheetName, "J", "J", 19)
+	//_ = f.SetColWidth(orderDetailSheetName, "K", "K", 14)
+	//_ = f.SetColWidth(orderDetailSheetName, "L", "L", 30)
+	//_ = f.SetColWidth(orderDetailSheetName, "M", "M", 25)
+	//
+	//// Set data order item
+	//for i, item := range rowItemsValues {
+	//	_ = f.SetSheetRow(orderDetailSheetName, "A"+strconv.Itoa(i+2), &item)
+	//}
+	//
+	//f.SetActiveSheet(0)
+	//
+	//// Save spreadsheet by the given path.
+	//fileName := "DonHang_" +
+	//	strings.ReplaceAll(businessInfo.Domain, ".", "") +
+	//	"_" +
+	//	strconv.Itoa(time.Now().Year()) +
+	//	utils.ConvertTimeIntToString(int(time.Now().Month())) +
+	//	utils.ConvertTimeIntToString(time.Now().Day()) +
+	//	utils.ConvertTimeIntToString(time.Now().Hour()) +
+	//	utils.ConvertTimeIntToString(time.Now().Minute()) +
+	//	utils.ConvertTimeIntToString(time.Now().Second()) +
+	//	".xlsx"
+	//if err := f.SaveAs(fileName); err != nil {
+	//	log.WithError(err).Error("Error when SaveAs")
+	//	return nil, ginext.NewError(http.StatusInternalServerError, "Error when SaveAs"+err.Error())
+	//}
+	//
+	//// Save to S3 and get URL link to response
+	//linkReportOrders, err := s.ExcelUpFileToS3(ctx, model.UpFileToS3Request{
+	//	File:      "./" + fileName,
+	//	Name:      fileName,
+	//	MediaType: "EXCEL",
+	//	UserID:    req.UserID,
+	//})
+	//
+	//_ = os.Remove("./" + fileName)
+	//if err != nil {
+	//	log.WithError(err).Error("Error when Remove")
+	//	return nil, ginext.NewError(http.StatusBadRequest, "Error when Remove")
+	//}
+	//
+	//return linkReportOrders, nil
+	return nil, nil
 }
 
 func (s *OrderService) ExcelUpFileToS3(ctx context.Context, data model.UpFileToS3Request) (string, error) {
@@ -1825,6 +1829,288 @@ func (s *OrderService) GetContactDelivering(ctx context.Context, req model.Order
 		}
 	}
 	return contact, nil
+}
+
+//============================== version 2 ===========================================//
+func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
+
+	// Check format phone
+	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
+		log.WithError(err).Error("Error when check format phone")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	//
+	orderGrandTotal := 0.0
+	promotionDiscount := 0.0
+	deliveryFee := 0.0
+	grandTotal := 0.0
+
+	getContactRequest := model.GetContactRequest{
+		BusinessID:  *req.BusinessID,
+		Name:        req.BuyerInfo.Name,
+		PhoneNumber: req.BuyerInfo.PhoneNumber,
+		Address:     req.BuyerInfo.Address,
+	}
+
+	// Get Contact Info
+	info, err := s.GetContactInfo(ctx, getContactRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// check warehouse
+	checkCompleted := utils.ORDER_COMPLETED
+
+	// Set buyer_id from Create Method request
+	buyerID := uuid.UUID{}
+	switch req.CreateMethod {
+	case utils.BUYER_CREATE_METHOD:
+		// buyer mustn't create product fast
+		if len(req.ListProductFast) > 0 {
+			log.Error("Buyer cannot create product fast")
+			return nil, ginext.NewError(http.StatusUnauthorized, "Bạn không có quyền tạo sản phẩm nhanh")
+		}
+
+		// with buyer state always waiting confirm
+		req.State = utils.ORDER_STATE_WAITING_CONFIRM
+
+		buyerID = req.UserID
+		if info.Data.Business.DeliveryFee == 0 || (info.Data.Business.DeliveryFee > 0 && orderGrandTotal >= info.Data.Business.MinPriceFreeShip && info.Data.Business.MinPriceFreeShip > 0) {
+			deliveryFee = 0
+		} else {
+			deliveryFee = info.Data.Business.DeliveryFee
+		}
+		break
+	case utils.SELLER_CREATE_METHOD:
+		// check buyer received or not
+		if req.BuyerReceived {
+			req.State = utils.ORDER_STATE_COMPLETE
+		}
+
+		if req.State == utils.ORDER_STATE_COMPLETE {
+			checkCompleted = utils.FAST_ORDER_COMPLETED
+		}
+
+		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
+		if err != nil {
+			log.WithError(err).Error("Error when get user info from phone number of buyer info")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if len(tUser) > 0 {
+			buyerID = tUser[0].ID
+		}
+		deliveryFee = req.DeliveryFee
+		break
+	default:
+		log.WithError(err).Error("Error when Create method, expected: [buyer, seller]")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	//
+	var lstOrderItem []model.OrderItem
+	if len(req.ListProductFast) > 0 {
+
+		// Check duplicate name
+		productFast := make(map[string]string)
+		productNormal := make(map[string]string)
+		var lstProduct []string
+		for _, v := range req.ListProductFast {
+			if v.IsProductFast { // san pham nhanh
+				if productFast[v.Name] == v.Name {
+					log.WithError(err).Errorf("Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên trong cùng một đơn hàng")
+				}
+				productFast[v.Name] = v.Name
+			} else { // san pham thuong
+				if productNormal[v.Name] == v.Name {
+					log.WithError(err).Errorf("Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên trong cùng một đơn hàng")
+				}
+				productNormal[v.Name] = v.Name
+				lstProduct = append(lstProduct, v.Name)
+			}
+		}
+		checkDuplicateProduct := model.CheckDuplicateProductRequest{
+			BusinessID: req.BusinessID,
+			Names:      lstProduct,
+		}
+
+		// call ms-product-management to check duplicate product name of product normal
+		header := make(map[string]string)
+		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
+		header["x-user-id"] = req.UserID.String()
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, header, nil, checkDuplicateProduct)
+		if err != nil {
+			log.WithError(err).Errorf("Error when create duplicated product name")
+			return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên")
+		}
+
+		// call create multi product
+		listProductFast := model.CreateProductFast{
+			BusinessID:      req.BusinessID,
+			ListProductFast: req.ListProductFast,
+		}
+
+		productFastResponse, err := s.CreateMultiProduct(ctx, header, listProductFast)
+		if err == nil {
+			lstOrderItem = productFastResponse.Data
+		}
+	}
+
+	// append ListOrderItem from request to listOrderItem received from createMultiProduct
+	for _, v := range lstOrderItem {
+		if v.SkuID == uuid.Nil {
+			log.WithError(err).Error("Error when received from createMultiProduct")
+			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		req.ListOrderItem = append(req.ListOrderItem, v)
+	}
+
+	// Check valid order item
+	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
+
+	// check can pick quantity
+	if rCheck, err := utils.CheckCanPickQuantityV2(req.UserID.String(), *req.BusinessID, req.ListOrderItem, nil); err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItemsV3 from MS Product")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	} else {
+		if rCheck.Status != utils.STATUS_SUCCESS {
+			return rCheck, nil
+		}
+	}
+
+	// Tính tổng tiền
+	for i, v := range req.ListOrderItem {
+		itemTotalAmount := 0.0
+		if v.ProductSellingPrice > 0 {
+			itemTotalAmount = v.ProductSellingPrice * v.Quantity
+		} else {
+			itemTotalAmount = v.ProductNormalPrice * v.Quantity
+		}
+		req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
+		orderGrandTotal += req.ListOrderItem[i].TotalAmount
+	}
+
+	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+		deliveryFee = 0
+	} else {
+		if deliveryFee != req.DeliveryFee {
+			log.WithError(err).Error("Error when get check valid delivery fee")
+			return nil, ginext.NewError(http.StatusBadRequest, "Cửa hàng đã cập nhật phí vận chuyển mới, vui lòng kiểm tra lại")
+		}
+	}
+
+	// Check valid grand total
+	if req.OtherDiscount > (req.OrderedGrandTotal + req.DeliveryFee - req.PromotionDiscount) {
+		log.WithError(err).Error("Error when get check valid delivery fee")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không được lớn hơn số tiền phải trả")
+	}
+
+	// Check Promotion Code
+	if req.PromotionCode != "" {
+		promotion, err := s.ProcessPromotion(ctx, *req.BusinessID, req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
+		if err != nil {
+			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
+		}
+		promotionDiscount = promotion.ValueDiscount
+	}
+
+	grandTotal = orderGrandTotal + deliveryFee - promotionDiscount - req.OtherDiscount
+	if grandTotal < 0 {
+		grandTotal = 0
+	}
+
+	// Check số tiền request lên và số tiền trong db có khớp
+	if math.Round(req.OrderedGrandTotal) != math.Round(orderGrandTotal) ||
+		math.Round(req.PromotionDiscount) != math.Round(promotionDiscount) ||
+		math.Round(req.DeliveryFee) != deliveryFee ||
+		math.Round(req.GrandTotal) != math.Round(grandTotal) {
+		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền không hợp lệ")
+	}
+
+	order := model.Order{
+		BusinessID:        *req.BusinessID,
+		ContactID:         info.Data.Contact.ID,
+		PromotionCode:     req.PromotionCode,
+		PromotionDiscount: promotionDiscount,
+		DeliveryFee:       deliveryFee,
+		OrderedGrandTotal: orderGrandTotal,
+		GrandTotal:        grandTotal,
+		State:             req.State,
+		PaymentMethod:     req.PaymentMethod,
+		DeliveryMethod:    *req.DeliveryMethod,
+		Note:              req.Note,
+		CreateMethod:      req.CreateMethod,
+		BuyerId:           &buyerID,
+		OtherDiscount:     req.OtherDiscount,
+		Email:             req.Email,
+	}
+
+	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+
+	order.CreatorID = req.UserID
+
+	buyerInfo, err := json.Marshal(req.BuyerInfo)
+	if err != nil {
+		log.WithError(err).Error("Error when parse buyerInfo")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	order.BuyerInfo.RawMessage = buyerInfo
+
+	log.Info("Begin work with DB")
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+
+	log.Info("Start DB transaction")
+
+	// create order
+	order, err = s.repo.CreateOrder(ctx, order, tx)
+	if err != nil {
+		log.WithError(err).Error("Error when CreateOrder")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+	log.WithField("order created", order).Info("Finish createOrder")
+
+	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
+		log.WithError(err).Error("Create order tracking error")
+		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	for _, orderItem := range req.ListOrderItem {
+		orderItem.OrderID = order.ID
+		orderItem.CreatorID = order.CreatorID
+		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
+		if err != nil {
+			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
+			return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		order.OrderItem = append(order.OrderItem, tm)
+	}
+
+	debit := model.Debit{}
+	if req.Debit != nil {
+		debit = *req.Debit
+	}
+
+	tx.Commit()
+	go s.CountCustomer(ctx, order)
+	go s.OrderProcessing(ctx, order, debit, checkCompleted)
+	go s.UpdateContactUser(ctx, order, order.CreatorID)
+
+	// push consumer to complete order mission
+	go CompletedOrderMission(ctx, order)
+
+	return order, nil
 }
 
 //============================== call another service ===================================//

@@ -43,6 +43,8 @@ func NewService() *Service {
 	orderTrackingHandle := handlers.NewOrderTrackingHandlers(orderTrackingService)
 
 	v1Api := s.Router.Group("/api/v1")
+	v2Api := s.Router.Group("/api/v2")
+
 
 	// Order
 	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
@@ -72,6 +74,10 @@ func NewService() *Service {
 	// Consumer
 	// 15/12/21 - Receive message from rabbitmq - version app 1.0.34.1.1
 	v1Api.POST("/consumer", ginext.WrapHandler(orderHandle.ProcessConsumer))
+
+	// version 2
+	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
+
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

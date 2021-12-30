@@ -266,6 +266,11 @@ type CheckDuplicateProductRequest struct {
 	Names      []string   `json:"names"`
 }
 
+type CheckBusinessOrderItemsRequest struct {
+	BusinessID uuid.UUID `json:"business_id" valid:"Required"`
+	ListOrderItem  []OrderItem `json:"list_order_item"`
+}
+
 type BusinessMainInfo struct {
 	ID               uuid.UUID      `json:"id"`
 	Domain           string         `json:"domain"`
