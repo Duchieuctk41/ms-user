@@ -15,13 +15,13 @@ func (OrderTracking) TableName() string {
 type OrderTrackingRequest struct {
 	UserID   uuid.UUID `json:"user_id"`
 	UserRole string    `json:"user_role"`
-	OrderID  uuid.UUID `json:"order_id" form:"order_id"`
+	OrderID  string    `json:"order_id" form:"order_id"`
 	Page     int       `json:"page" form:"page"`
 	PageSize int       `json:"page_size" form:"page_size"`
 	Sort     string    `json:"sort" form:"sort"`
 }
 
 type OrderTrackingResponse struct {
-	Data []OrderTracking        `json:"order_tracking"`
+	Data []OrderTracking        `json:"data"`
 	Meta map[string]interface{} `json:"meta"`
 }

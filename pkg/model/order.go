@@ -27,7 +27,7 @@ type Order struct {
 	BuyerInfo         postgres.Jsonb `json:"buyer_info" gorm:"null"`
 	BuyerId           *uuid.UUID     `json:"buyer_id" sql:"index" gorm:"column:buyer_id;type:uuid"`
 	DeliveryMethod    string         `json:"delivery_method" sql:"index" gorm:"column:delivery_method;"`
-	OrderItem         []OrderItem    `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id" `
+	OrderItem         []OrderItem    `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" `
 	CreateMethod      string         `json:"create_method" sql:"index" gorm:"create_method;default:'buyer'"`
 	Email             string         `json:"email" sql:"index" gorm:"type:varchar(500)"`
 	OtherDiscount     float64        `json:"other_discount" gorm:""`
@@ -148,7 +148,6 @@ type OrderUpdateBody struct {
 	BuyerID           *uuid.UUID  `json:"buyer_id"`
 	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
 	UpdaterID         *uuid.UUID  `json:"updater_id,omitempty"`
-	UserRole          string      `json:"user_role"`
 	OtherDiscount     *float64    `json:"other_discount"`
 	Email             *string     `json:"email,omitempty"`
 	ListOrderItem     []OrderItem `json:"list_order_item,omitempty"`
