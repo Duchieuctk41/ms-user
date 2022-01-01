@@ -105,7 +105,8 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
-			Data: rs,
+			Data: rs.Data,
+			Meta: rs.Meta,
 		},
 	}, nil
 }
@@ -178,7 +179,7 @@ func (h *OrderHandlers) GetOrderByContact(r *ginext.Request) (*ginext.Response, 
 	}
 
 	// get order by contact
-	res, err := h.service.GetOrderByContact(r.Context(), req)
+	rs, err := h.service.GetOrderByContact(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to GetOrderByContact: %v", err.Error())
 		return nil, ginext.NewError(http.StatusBadRequest, "Fail to GetOrderByContact"+err.Error())
@@ -187,7 +188,8 @@ func (h *OrderHandlers) GetOrderByContact(r *ginext.Request) (*ginext.Response, 
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
-			Data: res,
+			Data: rs.Data,
+			Meta: rs.Meta,
 		},
 	}, nil
 }
@@ -219,7 +221,7 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 	}
 
 	// Get contact delivering
-	res, err := h.service.GetContactDelivering(r.Context(), req)
+	rs, err := h.service.GetContactDelivering(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to get contact have order due to %v", err.Error())
 		return nil, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
@@ -228,7 +230,8 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
-			Data: res,
+			Data: rs.Data,
+			Meta: rs.Meta,
 		},
 	}, nil
 }
@@ -305,10 +308,10 @@ func (h *OrderHandlers) UpdateOrder(r *ginext.Request) (*ginext.Response, error)
 	}
 
 	// Check Permission
-	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
 
 	// update order
-	rs, err := h.service.UpdateOrder(r.Context(), req)
+	rs, err := h.service.UpdateOrder(r.Context(), req, role)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to update order: %v", err.Error())
 		return nil, ginext.NewError(http.StatusBadRequest, "Fail to update order: "+err.Error())
@@ -336,17 +339,9 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 	// Check valid request
 	req := model.UpdateDetailOrderRequest{}
 	r.MustBind(&req)
-
+	req.UpdaterID = &userID
 	// Check Permission
-	if valid.UUID(req.BusinessID) == uuid.Nil {
-		log.WithError(err).Error("Missing business ID")
-		return nil, ginext.NewError(http.StatusUnauthorized, "You need input your business ID")
-	}
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
-	if err = utils.CheckPermission(r.GinCtx, userID.String(), req.BusinessID.String(), role); err != nil {
-		log.WithError(err).Error("Unauthorized")
-		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
-	}
 
 	// parse ID from URI
 	if req.ID = utils.ParseIDFromUri(r.GinCtx); req.ID == nil {
@@ -355,7 +350,7 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 	}
 
 	// implement the business logic of UpdateDetailOrder
-	rs, err := h.service.UpdateDetailOrder(r.Context(), req)
+	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
 		return nil, ginext.NewError(http.StatusBadRequest, "Fail to update detail order: "+err.Error())
@@ -449,7 +444,8 @@ func (h *OrderHandlers) GetListOrderEcom(r *ginext.Request) (*ginext.Response, e
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
-			Data: rs,
+			Data: rs.Data,
+			Meta: rs.Meta,
 		},
 	}, nil
 }

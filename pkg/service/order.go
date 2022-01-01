@@ -45,14 +45,14 @@ func NewOrderService(repo repo.PGInterface) OrderServiceInterface {
 type OrderServiceInterface interface {
 	CreateOrder(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	ProcessConsumer(ctx context.Context, req model.ProcessConsumerRequest) (res interface{}, err error)
-	UpdateOrder(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error)
-	GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest) (res interface{}, err error)
-	GetAllOrder(ctx context.Context, req model.OrderParam) (res interface{}, err error)
-	UpdateDetailOrder(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error)
+	UpdateOrder(ctx context.Context, req model.OrderUpdateBody, userRole string) (res interface{}, err error)
+	GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest) (res model.ListOrderEcomResponse, err error)
+	GetAllOrder(ctx context.Context, req model.OrderParam) (res model.ListOrderResponse, err error)
+	UpdateDetailOrder(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error)
 	CountOrderState(ctx context.Context, req model.RevenueBusinessParam) (res interface{}, err error)
-	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res interface{}, err error)
+	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res model.ListOrderResponse, err error)
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
-	GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error)
+	GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 
 	// version 2
@@ -1072,7 +1072,7 @@ func (s *OrderService) UpdateEmailForOrderRecent(ctx context.Context, req model.
 	return res, nil
 }
 
-func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error) {
+func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBody, userRole string) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.UpdateOrder")
 
 	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
@@ -1081,7 +1081,8 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
-	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), req.UserRole); err != nil {
+	// Check permission
+	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
 		log.WithError(err).Error("Unauthorized")
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
@@ -1202,25 +1203,25 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 	return
 }
 
-func (s *OrderService) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest) (res interface{}, err error) {
+func (s *OrderService) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest) (res model.ListOrderEcomResponse, err error) {
 	log := logger.WithCtx(ctx, "OrderService.GetListOrderEcom")
 
 	// get list order ecom
 	res, err = s.repo.GetListOrderEcom(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when call func GetListOrderEcom")
-		return nil, err
+		return res, err
 	}
 	return res, nil
 }
 
-func (s *OrderService) GetAllOrder(ctx context.Context, req model.OrderParam) (res interface{}, err error) {
+func (s *OrderService) GetAllOrder(ctx context.Context, req model.OrderParam) (res model.ListOrderResponse, err error) {
 	log := logger.WithCtx(ctx, "OrderService.GetAllOrder")
 
 	rs, err := s.repo.GetAllOrder(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when call func GetListOrderEcom")
-		return nil, err
+		return res, err
 	}
 
 	if req.ContactID != "" {
@@ -1236,7 +1237,7 @@ func (s *OrderService) GetAllOrder(ctx context.Context, req model.OrderParam) (r
 	return rs, nil
 }
 
-func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error) {
+func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrder")
 
 	if len(req.ListOrderItem) == 0 {
@@ -1247,6 +1248,12 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	if err != nil {
 		log.WithError(err).Error("Error when call func GetOneOrder")
 		return nil, err
+	}
+
+	// check permission
+	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
 
 	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
@@ -1268,33 +1275,41 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 		grandTotal := 0.0
 		deliveryFee := 0.0
 
-		// check valid product
-		for _, item := range req.ListOrderItem {
-			product, err := s.GetProduct(ctx, item.ProductID.String())
-			if err == nil {
-				item.ProductImages = product.Images
+		//  Check valid order item
+		mapItemOld := make(map[string]model.OrderItem)
+		for _, v := range order.OrderItem {
+			mapItemOld[v.SkuID.String()] = v
+		}
+
+		if rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld); err != nil {
+			logrus.Errorf("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product: "+err.Error())
+		} else {
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				return rCheck, nil
 			}
-			totalAmount := 0.0
-			if item.ProductSellingPrice > 0 {
-				totalAmount = math.Round(item.ProductSellingPrice * item.Quantity)
+		}
+
+		for i, v := range req.ListOrderItem {
+			itemTotalAmount := 0.0
+			if v.ProductSellingPrice > 0 {
+				itemTotalAmount = v.ProductSellingPrice * v.Quantity
 			} else {
-				totalAmount = math.Round(item.ProductNormalPrice * item.Quantity)
+				itemTotalAmount = v.ProductNormalPrice * v.Quantity
 			}
-			orderGrandTotal += totalAmount
-			item.TotalAmount = totalAmount
-			mapItem[item.ProductID.String()] = item
+			req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
+			orderGrandTotal += req.ListOrderItem[i].TotalAmount
+			mapItem[v.SkuID.String()] = req.ListOrderItem[i]
 		}
 
 		// Check promotion discount
 		if req.PromotionDiscount != nil && math.Round(*req.PromotionDiscount) != math.Round(order.PromotionDiscount) {
-			log.WithError(err).Error("Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn "+err.Error())
 		}
 
 		// Check order grand total
 		if math.Round(orderGrandTotal) != math.Round(*req.OrderedGrandTotal) {
-			log.WithError(err).Error("Lỗi: Số tiền tổng sản phẩm không hợp lệ")
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ "+err.Error())
 		}
 
 		// Check valid delivery fee
@@ -1302,8 +1317,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			switch *req.DeliveryMethod {
 			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
 				if req.DeliveryFee != nil && *req.DeliveryFee > 0 {
-					log.WithError(err).Error("Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
-					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
+					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy "+err.Error())
 				}
 				deliveryFee = 0
 				break
@@ -1321,8 +1335,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			grandTotal = 0
 		}
 		if math.Round(grandTotal) != math.Round(*req.GrandTotal) {
-			log.WithError(err).Error("Lỗi: Số tiền phải trả không hợp lệ")
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ "+err.Error())
 		}
 	}
 
@@ -1405,13 +1418,13 @@ func (s *OrderService) CountOrderState(ctx context.Context, req model.RevenueBus
 	return res, nil
 }
 
-func (s *OrderService) GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res interface{}, err error) {
+func (s *OrderService) GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res model.ListOrderResponse, err error) {
 	log := logger.WithCtx(ctx, "OrderService.GetOrderByContact")
 
 	res, err = s.repo.GetOrderByContact(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Error("Error GetOrderByContact")
-		return nil, err
+		return res, err
 	}
 	return res, nil
 }
@@ -1808,20 +1821,20 @@ func (s *OrderService) S3PosUpload(ctx context.Context, data model.UpFileToS3Req
 	return body, nil
 }
 
-func (s *OrderService) GetContactDelivering(ctx context.Context, req model.OrderParam) (res interface{}, err error) {
+func (s *OrderService) GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error) {
 	log := logger.WithCtx(ctx, "OrderService.GetContactDelivering")
 
 	contact, err := s.repo.GetContactDelivering(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+		return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
 	}
 
 	for i, _ := range contact.Data {
 		lstContact, err := s.GetContactList(ctx, contact.Data[i].ContactID.String())
 		if err != nil {
 			log.WithError(err).Errorf("Error when get contact list due to %v", err.Error())
-			return nil, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
+			return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
 		}
 		if len(lstContact) > 0 {
 			contact.Data[i].ContactInfo = lstContact[0]
@@ -1837,7 +1850,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	// Check format phone
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
 		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
 	}
 
 	//

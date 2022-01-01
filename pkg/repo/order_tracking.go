@@ -26,19 +26,26 @@ func (r *RepoPG) GetOrderTracking(ctx context.Context, req model.OrderTrackingRe
 		defer cancel()
 	}
 
-	tx = tx.Where("order_id", []string{"order_id", "=", "?"})
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.PageSize)
+
+	tx = tx.Model(&model.OrderTracking{}).Where("order_id = ?", req.OrderID)
 
 	var total int64 = 0
 	tx.Count(&total)
 	if req.Page != 0 && req.PageSize != 0 {
-		tx = tx.Limit(req.PageSize).Offset((req.Page - 1) * req.PageSize)
+		tx = tx.Limit(pageSize).Offset(r.GetOffset(page, pageSize))
 	}
 
-	if err = tx.Order("sort").Find(rs.Data).Error; err != nil {
+	if req.Sort != "" {
+		tx = tx.Order(req.Sort)
+	}
+
+	if err = tx.Find(&rs.Data).Error; err != nil {
 		return rs, err
 	}
 
-	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
 		return rs, err
 	}
 

@@ -32,6 +32,10 @@ type OrderEcom struct {
 	OrderIDEcom       string         `json:"order_id_ecom" sql:"index" gorm:"not null" valid:"Required"`
 }
 
+func (OrderEcom) TableName() string {
+	return "order_ecom"
+}
+
 type OrderEcomRequest struct {
 	BusinessID *string    `json:"business_id" form:"business_id" valid:"Required"`
 	PageSize   int        `json:"page_size" form:"page_size"`
