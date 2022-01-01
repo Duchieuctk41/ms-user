@@ -54,7 +54,6 @@ func (d *Order) GenRandomKey(tx *gorm.DB) string {
 		if err == gorm.ErrRecordNotFound {
 			return res
 		}
-
 	}
 	return d.GenRandomKey(tx)
 }
