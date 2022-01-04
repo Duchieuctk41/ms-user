@@ -45,7 +45,6 @@ func NewService() *Service {
 	v1Api := s.Router.Group("/api/v1")
 	v2Api := s.Router.Group("/api/v2")
 
-
 	// Order
 	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
 	v1Api.GET("/get-all-order", ginext.WrapHandler(orderHandle.GetAllOrder))
@@ -57,6 +56,7 @@ func NewService() *Service {
 	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))
 	v1Api.PUT("/update-detail-order/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrder))
 	v1Api.POST("/export-order-report", ginext.WrapHandler(orderHandle.ExportOrderReport))
+	v1Api.POST("/count-quantity-in-order", ginext.WrapHandler(orderHandle.CountDeliveringQuantity))
 
 	// Order ecom
 	v1Api.GET("/order-ecom/get-list", ginext.WrapHandler(orderHandle.GetListOrderEcom))
@@ -77,8 +77,6 @@ func NewService() *Service {
 
 	// version 2
 	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
-
-
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
 	s.Router.POST("/internal/migrate", migrateHandler.Migrate)
