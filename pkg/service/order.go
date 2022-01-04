@@ -464,7 +464,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	case utils.ORDER_STATE_DELIVERING:
 		go s.ReminderProcessOrder(ctx, order.ID, uhb[0].UserID, utils.ORDER_STATE_DELIVERING)
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_DELIVERING, order.OrderNumber))
-		go s.UpdateStock(ctx, order, "order_delivering")
+		go s.UpdateStock(context.TODO(), order, "order_delivering")
 		break
 	case utils.ORDER_STATE_COMPLETE:
 		//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
@@ -531,9 +531,10 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 		}
 		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
-		if err = s.CreatePo(ctx, order, checkCompleted); err != nil {
-			log.WithError(err).Errorf("Error when call func CreatePo: " + err.Error())
-		}
+		go s.CreatePo(context.TODO(), order, checkCompleted)
+		//if err = s.CreatePo(ctx, order, checkCompleted); err != nil {
+		//	log.WithError(err).Errorf("Error when call func CreatePo: " + err.Error())
+		//}
 		break
 	case utils.ORDER_STATE_CANCEL:
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_CANCELED, order.OrderNumber))
@@ -1161,7 +1162,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	}
 
 	if preOrderState == utils.ORDER_STATE_DELIVERING && req.State != nil && *req.State == utils.ORDER_STATE_CANCEL {
-		go s.UpdateStock(ctx, order, "order_cancelled_when_delivering")
+		go s.UpdateStock(context.TODO(), order, "order_cancelled_when_delivering")
 	}
 
 	return res, err
