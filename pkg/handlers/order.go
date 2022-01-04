@@ -5,12 +5,13 @@ import (
 	"finan/ms-order-management/pkg/service"
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
+	"net/http"
+
 	"github.com/google/uuid"
 	"github.com/praslar/lib/common"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
-	"net/http"
 )
 
 type OrderHandlers struct {
@@ -540,3 +541,21 @@ func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, er
 //		},
 //	}, nil
 //}
+
+func (h *OrderHandlers) CountDeliveringQuantity(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ProcessConsumer")
+
+	req := model.CountQuantityInOrderRequest{}
+	r.MustBind(&req)
+	res, err := h.service.CountDeliveringQuantity(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Error("Fail to ProcessConsumer")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: res,
+		},
+	}, nil
+}

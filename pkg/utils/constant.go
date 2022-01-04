@@ -25,6 +25,7 @@ const (
 	TOPIC_UPDATE_SOLD_QUANTITY = "ms-product-management:update_sold_quantity"
 	TOPIC_CREATE_PO_V2         = "ms-warehouse-management:create_po_v2"
 	TOPIC_UPDATE_STOCK         = "ms-warehouse-management:update_stock"
+	TOPIC_UPDATE_STOCK_V2      = "ms-warehouse-management:update_stock_v2"
 	TOPIC_PROCESS_MISSION      = "finan-loyalty:process_mission"
 )
 
