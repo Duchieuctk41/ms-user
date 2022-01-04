@@ -1482,9 +1482,9 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	headers := map[string]string{
 		"A3": "STT", "B3": "Đơn hàng", "C3": "Ngày giờ đặt",
 		"D3": "Số sản phẩm", "E3": "Tổng số món", "F3": "Tổng tiền",
-		"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3": "Tổng cộng", "J3": "Trạng thái",
-		"K3": "Hình thức giao hàng", "L3": "Mã khuyến mãi", "M3": "Hình thức thanh toán",
-		"N3": "Tên khách hàng", "O3": "SĐT nhận", "P3": "Địa chỉ", "Q3": "Ghi chú",
+		"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3" : "Chiết khấu", "J3": "Tổng cộng", "K3": "Trạng thái",
+		"L3": "Hình thức giao hàng", "M3": "Mã khuyến mãi", "N3": "Hình thức thanh toán",
+		"O3": "Tên khách hàng", "P3": "SĐT nhận", "Q3": "Địa chỉ", "R3": "Ghi chú",
 	}
 	for k, v := range headers {
 		_ = f.SetCellValue(orderSheetName, k, v)
@@ -1494,15 +1494,16 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	_ = f.SetCellStyle(orderSheetName, "A2", "Q"+strconv.Itoa(3+len(orders)), styleBorder)
 	_ = f.SetCellStyle(orderSheetName, "A3", "Q3", styleTitle)
 	_ = f.SetCellStyle(orderSheetName, "A1", "Q1", styleHeader)
-	_ = f.SetCellStyle(orderSheetName, "A4", "A"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "N4", "N"+strconv.Itoa(3+len(orders)), styleCenterHorizontal)
-	_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency)
-	_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime)
+	_ = f.SetCellStyle(orderSheetName, "A4", "A"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // STT
+	_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Số sản phẩm
+	_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Tổng số món
+	_ = f.SetCellStyle(orderSheetName, "O4", "O"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Tên khách hàng
+	_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency) // Tổng tiền
+	_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency) // Khuyến mãi
+	_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency) // Chiết khấu
+	_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency) // Phí giao hàng
+	_ = f.SetCellStyle(orderSheetName, "J4", "J"+strconv.Itoa(3+len(orders)), styleCurrency) // Tổng cộng
+	_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime) // Ngày giờ đặt
 
 	// Set col width
 	_ = f.SetColWidth(orderSheetName, "A", "A", 8)
@@ -1514,14 +1515,15 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	_ = f.SetColWidth(orderSheetName, "G", "G", 16)
 	_ = f.SetColWidth(orderSheetName, "H", "H", 16)
 	_ = f.SetColWidth(orderSheetName, "I", "I", 16)
-	_ = f.SetColWidth(orderSheetName, "J", "J", 14)
-	_ = f.SetColWidth(orderSheetName, "K", "K", 19)
-	_ = f.SetColWidth(orderSheetName, "L", "L", 15)
-	_ = f.SetColWidth(orderSheetName, "M", "M", 20)
-	_ = f.SetColWidth(orderSheetName, "N", "N", 19)
-	_ = f.SetColWidth(orderSheetName, "O", "O", 15)
-	_ = f.SetColWidth(orderSheetName, "P", "P", 30)
-	_ = f.SetColWidth(orderSheetName, "Q", "Q", 25)
+	_ = f.SetColWidth(orderSheetName, "J", "J", 16)
+	_ = f.SetColWidth(orderSheetName, "K", "K", 14)
+	_ = f.SetColWidth(orderSheetName, "L", "L", 19)
+	_ = f.SetColWidth(orderSheetName, "M", "M", 15)
+	_ = f.SetColWidth(orderSheetName, "N", "N", 20)
+	_ = f.SetColWidth(orderSheetName, "O", "O", 19)
+	_ = f.SetColWidth(orderSheetName, "P", "P", 15)
+	_ = f.SetColWidth(orderSheetName, "Q", "Q", 30)
+	_ = f.SetColWidth(orderSheetName, "R", "R", 25)
 
 	// Set data order for sheet
 	rowNumber := 4
@@ -1541,6 +1543,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 			order.OrderedGrandTotal,
 			order.PromotionDiscount,
 			order.DeliveryFee,
+			order.OtherDiscount,
 			order.GrandTotal,
 		}
 		switch order.State {
