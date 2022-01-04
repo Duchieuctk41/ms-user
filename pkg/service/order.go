@@ -531,7 +531,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 		}
 		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
-		go s.CreatePo(context.Background(), order, checkCompleted)
+		go s.CreatePo(context.TODO(), order, checkCompleted)
 		break
 	case utils.ORDER_STATE_CANCEL:
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_CANCELED, order.OrderNumber))
