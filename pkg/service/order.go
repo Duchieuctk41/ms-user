@@ -10,7 +10,6 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
-	"github.com/xuri/excelize/v2"
 	"io"
 	"io/ioutil"
 	"math"
@@ -21,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/xuri/excelize/v2"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/logger"
@@ -57,6 +58,8 @@ type OrderServiceInterface interface {
 
 	// version 2
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
+
+	CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error)
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
@@ -280,9 +283,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		req.State = utils.ORDER_STATE_COMPLETE
 	}
 
-	if req.State == utils.ORDER_STATE_COMPLETE {
-		checkCompleted = utils.FAST_ORDER_COMPLETED
-	}
+	// if req.State == utils.ORDER_STATE_COMPLETE {
+	// 	checkCompleted = utils.FAST_ORDER_COMPLETED
+	// }
 
 	order := model.Order{
 		BusinessID:        *req.BusinessID,
@@ -713,11 +716,18 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCom
 	if len(skuIDs) > 0 {
 		tmp := strings.Join(skuIDs, ",")
 		for _, v := range order.OrderItem {
+			req := model.CountQuantityInOrderRequest{
+				BusinessID: order.BusinessID,
+				SkuID:      v.SkuID,
+				States:     []string{"delivering"},
+			}
+			countQuantityInOrder, _ := s.repo.GetCountQuantityInOrder(ctx, req, nil)
 			if strings.Contains(tmp, v.SkuID.String()) {
 				reqCreatePo.PoDetails = append(reqCreatePo.PoDetails, model.PoDetail{
-					SkuID:    v.SkuID,
-					Pricing:  v.TotalAmount / v.Quantity,
-					Quantity: v.Quantity,
+					SkuID:              v.SkuID,
+					Pricing:            v.TotalAmount / v.Quantity,
+					Quantity:           v.Quantity,
+					DeliveringQuantity: &countQuantityInOrder.Sum,
 				})
 			}
 		}
@@ -813,12 +823,19 @@ func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, track
 		log.WithError(err).Error("Error when marshal parse response to json when create stock")
 	} else {
 		for _, v := range order.OrderItem {
+			req := model.CountQuantityInOrderRequest{
+				BusinessID: order.BusinessID,
+				SkuID:      v.SkuID,
+				States:     []string{"delivering"},
+			}
+			countQuantityInOrder, _ := s.repo.GetCountQuantityInOrder(ctx, req, nil)
 			reqUpdateStock.ListStock = append(reqUpdateStock.ListStock, model.StockRequest{
-				SkuID:          v.SkuID,
-				QuantityChange: v.Quantity,
+				SkuID:              v.SkuID,
+				QuantityChange:     v.Quantity,
+				DeliveringQuantity: countQuantityInOrder.Sum,
 			})
 		}
-		go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK)
+		go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK_V2)
 	}
 	return nil
 }
@@ -946,9 +963,9 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		"DOMAIN_BUSINESS":  businessInfo.Domain,
 	}
 	if order.CreatorID != uuid.Nil {
-		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/o/" + order.OrderNumber + "?required-login=true"
+		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/order/" + order.OrderNumber + "?required-login=true"
 	} else {
-		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/o/" + order.OrderNumber
+		tParams["QRCODE"] = "https://" + businessInfo.Domain + "/order/" + order.OrderNumber
 	}
 	avatarBusiness := businessInfo.Avatar
 	if businessInfo.Avatar == "" {
@@ -1124,6 +1141,9 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
 		log.WithError(err).Errorf("Create order tracking error")
 	}
+
+	tx.Commit()
+
 	if req.State != nil && *req.State == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
 		go s.OrderCancelProcessing(ctx, order, tx)
 	} else {
@@ -1140,8 +1160,6 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	if preOrderState == utils.ORDER_STATE_DELIVERING && req.State != nil && *req.State == utils.ORDER_STATE_CANCEL {
 		go s.UpdateStock(ctx, order, "order_cancelled_when_delivering")
 	}
-
-	tx.Commit()
 
 	return res, err
 }
@@ -1888,9 +1906,9 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			req.State = utils.ORDER_STATE_COMPLETE
 		}
 
-		if req.State == utils.ORDER_STATE_COMPLETE {
-			checkCompleted = utils.FAST_ORDER_COMPLETED
-		}
+		// if req.State == utils.ORDER_STATE_COMPLETE {
+		// 	checkCompleted = utils.FAST_ORDER_COMPLETED
+		// }
 
 		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
@@ -2223,4 +2241,11 @@ func (s *OrderService) CreateMultiProduct(ctx context.Context, header map[string
 		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 	return res, nil
+}
+
+func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error) {
+	if err := common.CheckRequireValid(req); err != nil {
+		return nil, err
+	}
+	return s.repo.GetCountQuantityInOrder(ctx, req, nil)
 }

@@ -239,3 +239,13 @@ type GetOneOrderRequest struct {
 	UserRole string    `json:"user_role"`
 	UserID   uuid.UUID `json:"user_id"`
 }
+
+type CountQuantityInOrderRequest struct {
+	BusinessID uuid.UUID `json:"business_id" valid:"Required"`
+	SkuID      uuid.UUID `json:"sku_id" valid:"Required"`
+	States     []string  `json:"states" valid:"Required"`
+}
+
+type CountQuantityInOrderResponse struct {
+	Sum float64 `json:"sum"`
+}

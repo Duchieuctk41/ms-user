@@ -199,13 +199,14 @@ type PurchaseOrderRequest struct {
 
 type PoDetail struct {
 	BaseModel
-	SkuID           uuid.UUID `json:"sku_id" gorm:"not null;index;type:uuid"`
-	PoID            uuid.UUID `json:"po_id" gorm:"type:uuid;index;not null"`
-	Pricing         float64   `json:"pricing" gorm:"not null"`
-	Quantity        float64   `json:"quantity" gorm:"not null"`
-	Note            string    `json:"note"`
-	BlockedQuantity *float64  `json:"blocked_quantity,omitempty" gorm:"-"`
-	WarningValue    *float64  `json:"warning_value,omitempty" gorm:"-"`
+	SkuID              uuid.UUID `json:"sku_id" gorm:"not null;index;type:uuid"`
+	PoID               uuid.UUID `json:"po_id" gorm:"type:uuid;index;not null"`
+	Pricing            float64   `json:"pricing" gorm:"not null"`
+	Quantity           float64   `json:"quantity" gorm:"not null"`
+	Note               string    `json:"note"`
+	BlockedQuantity    *float64  `json:"blocked_quantity,omitempty" gorm:"-"`
+	WarningValue       *float64  `json:"warning_value,omitempty" gorm:"-"`
+	DeliveringQuantity *float64  `json:"delivering_quantity,omitempty"`
 }
 
 type SendNotificationRequest struct {
@@ -267,8 +268,8 @@ type CheckDuplicateProductRequest struct {
 }
 
 type CheckBusinessOrderItemsRequest struct {
-	BusinessID uuid.UUID `json:"business_id" valid:"Required"`
-	ListOrderItem  []OrderItem `json:"list_order_item"`
+	BusinessID    uuid.UUID   `json:"business_id" valid:"Required"`
+	ListOrderItem []OrderItem `json:"list_order_item"`
 }
 
 type BusinessMainInfo struct {

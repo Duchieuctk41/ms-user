@@ -571,3 +571,27 @@ func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam,
 
 	return rs, nil
 }
+
+func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	query := `
+		SELECT sum(quantity) AS SUM
+		FROM order_item a
+		LEFT JOIN orders b ON b.id = a.order_id
+		WHERE a.sku_id = ?
+		  AND a.deleted_at IS NULL
+		  AND b.deleted_at IS NULL
+		  AND b.business_id = ?
+		  AND b.state IN (?)
+		`
+
+	if err := tx.Raw(query, req.SkuID, req.BusinessID, req.States).Scan(&rs).Error; err != nil {
+		return rs, err
+	}
+
+	return rs, nil
+}
