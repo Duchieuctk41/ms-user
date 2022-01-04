@@ -531,7 +531,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 		}
 		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
-		go s.CreatePo(ctx, order, checkCompleted)
+		go s.CreatePo(context.Background(), order, checkCompleted)
 		break
 	case utils.ORDER_STATE_CANCEL:
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_CANCELED, order.OrderNumber))
@@ -1099,10 +1099,10 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	}
 
 	// Check permission
-	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
-		log.WithError(err).Error("Unauthorized")
-		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
-	}
+	// if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
+	// 	log.WithError(err).Error("Unauthorized")
+	// 	return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	// }
 
 	if req.State != nil && order.State == *req.State {
 		log.WithError(err).Errorf("Error when State not change")
