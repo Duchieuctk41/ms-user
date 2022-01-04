@@ -719,7 +719,7 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCom
 			req := model.CountQuantityInOrderRequest{
 				BusinessID: order.BusinessID,
 				SkuID:      v.SkuID,
-				States:     []string{"delivering"},
+				States:     []string{utils.ORDER_STATE_DELIVERING},
 			}
 			countQuantityInOrder, _ := s.repo.GetCountQuantityInOrder(ctx, req, nil)
 			if strings.Contains(tmp, v.SkuID.String()) {
@@ -826,7 +826,7 @@ func (s *OrderService) UpdateStock(ctx context.Context, order model.Order, track
 			req := model.CountQuantityInOrderRequest{
 				BusinessID: order.BusinessID,
 				SkuID:      v.SkuID,
-				States:     []string{"delivering"},
+				States:     []string{utils.ORDER_STATE_DELIVERING},
 			}
 			countQuantityInOrder, _ := s.repo.GetCountQuantityInOrder(ctx, req, nil)
 			reqUpdateStock.ListStock = append(reqUpdateStock.ListStock, model.StockRequest{
@@ -1500,7 +1500,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	headers := map[string]string{
 		"A3": "STT", "B3": "Đơn hàng", "C3": "Ngày giờ đặt",
 		"D3": "Số sản phẩm", "E3": "Tổng số món", "F3": "Tổng tiền",
-		"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3" : "Chiết khấu", "J3": "Tổng cộng", "K3": "Trạng thái",
+		"G3": "Khuyến mãi", "H3": "Phí giao hàng", "I3": "Chiết khấu", "J3": "Tổng cộng", "K3": "Trạng thái",
 		"L3": "Hình thức giao hàng", "M3": "Mã khuyến mãi", "N3": "Hình thức thanh toán",
 		"O3": "Tên khách hàng", "P3": "SĐT nhận", "Q3": "Địa chỉ", "R3": "Ghi chú",
 	}
@@ -1516,12 +1516,12 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Số sản phẩm
 	_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Tổng số món
 	_ = f.SetCellStyle(orderSheetName, "O4", "O"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Tên khách hàng
-	_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency) // Tổng tiền
-	_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency) // Khuyến mãi
-	_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency) // Chiết khấu
-	_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency) // Phí giao hàng
-	_ = f.SetCellStyle(orderSheetName, "J4", "J"+strconv.Itoa(3+len(orders)), styleCurrency) // Tổng cộng
-	_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime) // Ngày giờ đặt
+	_ = f.SetCellStyle(orderSheetName, "F4", "F"+strconv.Itoa(3+len(orders)), styleCurrency)         // Tổng tiền
+	_ = f.SetCellStyle(orderSheetName, "G4", "G"+strconv.Itoa(3+len(orders)), styleCurrency)         // Khuyến mãi
+	_ = f.SetCellStyle(orderSheetName, "I4", "I"+strconv.Itoa(3+len(orders)), styleCurrency)         // Chiết khấu
+	_ = f.SetCellStyle(orderSheetName, "H4", "H"+strconv.Itoa(3+len(orders)), styleCurrency)         // Phí giao hàng
+	_ = f.SetCellStyle(orderSheetName, "J4", "J"+strconv.Itoa(3+len(orders)), styleCurrency)         // Tổng cộng
+	_ = f.SetCellStyle(orderSheetName, "C4", "C"+strconv.Itoa(3+len(orders)), styleDatetime)         // Ngày giờ đặt
 
 	// Set col width
 	_ = f.SetColWidth(orderSheetName, "A", "A", 8)
