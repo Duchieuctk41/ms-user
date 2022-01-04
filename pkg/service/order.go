@@ -1474,8 +1474,8 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	_ = f.SetRowHeight(orderSheetName, 1, 25)
 	_ = f.SetRowHeight(orderSheetName, 2, 25)
 
-	_ = f.MergeCell(orderSheetName, "A1", "Q1")
-	_ = f.MergeCell(orderSheetName, "A2", "Q2")
+	_ = f.MergeCell(orderSheetName, "A1", "R1")
+	_ = f.MergeCell(orderSheetName, "A2", "R2")
 	_ = f.SetCellValue(orderSheetName, "A1", fmt.Sprintf("%s - %s", businessInfo.Name, businessInfo.Domain))
 	_ = f.SetCellValue(orderSheetName, "A2", "Ngày xuất báo cáo: "+utils.ConvertTimeFormatForReport(time.Now()))
 
@@ -1491,9 +1491,9 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	}
 
 	// Set style
-	_ = f.SetCellStyle(orderSheetName, "A2", "Q"+strconv.Itoa(3+len(orders)), styleBorder)
-	_ = f.SetCellStyle(orderSheetName, "A3", "Q3", styleTitle)
-	_ = f.SetCellStyle(orderSheetName, "A1", "Q1", styleHeader)
+	_ = f.SetCellStyle(orderSheetName, "A2", "R"+strconv.Itoa(3+len(orders)), styleBorder)
+	_ = f.SetCellStyle(orderSheetName, "A3", "R3", styleTitle)
+	_ = f.SetCellStyle(orderSheetName, "A1", "R1", styleHeader)
 	_ = f.SetCellStyle(orderSheetName, "A4", "A"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // STT
 	_ = f.SetCellStyle(orderSheetName, "D4", "D"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Số sản phẩm
 	_ = f.SetCellStyle(orderSheetName, "E4", "E"+strconv.Itoa(3+len(orders)), styleCenterHorizontal) // Tổng số món
