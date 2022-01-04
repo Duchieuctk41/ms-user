@@ -1099,10 +1099,10 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	}
 
 	// Check permission
-	// if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
-	// 	log.WithError(err).Error("Unauthorized")
-	// 	return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
-	// }
+	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
 
 	if req.State != nil && order.State == *req.State {
 		log.WithError(err).Errorf("Error when State not change")
