@@ -39,6 +39,10 @@ func (u *OrderItem) BeforeSave(tx *gorm.DB) (err error) {
 	return
 }
 
+func (OrderItem) TableName() string {
+	return "order_item"
+}
+
 type OrderItemForSendEmail struct {
 	ProductID           uuid.UUID `json:"product_id"`
 	ProductName         string    `json:"product_name"`

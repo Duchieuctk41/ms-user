@@ -122,14 +122,14 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 	}
 
 	if len(id) == 9 {
-		if err = r.DB.Model(&model.Order{}).Where("order_number = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-			return db.Order("order_item.created_at ASC")
+		if err = r.DB.Model(&model.Order{}).Where("order_number = ? AND deleted_at IS NULL", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
 		}).First(&rs).Error; err != nil {
 			return model.Order{}, err
 		}
 	} else {
-		if err = r.DB.Model(&model.Order{}).Where("id = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-			return db.Order("order_item.created_at ASC")
+		if err = r.DB.Model(&model.Order{}).Where("id = ? AND deleted_at IS NULL", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+			return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
 		}).First(&rs).Error; err != nil {
 			return model.Order{}, err
 		}
@@ -337,7 +337,7 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
 		return rs, err
 	}
-	tx.Commit()
+
 	return rs, nil
 }
 
@@ -354,13 +354,17 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
-		defer cancel()
+		tx = tx.Begin()
+		defer func() {
+			tx.Rollback()
+			cancel()
+		}()
 	}
 
 	tMap := make(map[string]model.OrderItem)
 	for i, _ := range order.OrderItem {
 		if v, ok := mapItem[order.OrderItem[i].SkuID.String()]; ok {
-			// If exists in map -> update quantity and money
+			// If exists in map -> update quantity and money.
 			// Cập nhật lại delivering quantity cho stock này
 			if v.Quantity-order.OrderItem[i].Quantity != 0 {
 				stocks = append(stocks, model.StockRequest{
@@ -401,12 +405,18 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 		}
 	}
 
-	if err := tx.Model(&model.Order{}).Save(&order).Error; err != nil {
+	for _, orderItem := range order.OrderItem {
+		if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
+			return model.Order{}, nil, err
+		}
+	}
+
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Updates(&order).Error; err != nil {
 		return model.Order{}, nil, err
 	}
 
 	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Order("order_item.created_at ASC")
+		return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
 	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
 		return model.Order{}, nil, err
 	}
@@ -439,7 +449,7 @@ func (r *RepoPG) CountOrderState(ctx context.Context, req model.RevenueBusinessP
 		"              CASE WHEN state = 'complete' THEN COUNT(*) END AS count_complete, " +
 		"              CASE WHEN state = 'cancel' THEN COUNT(*) END AS count_cancel " +
 		" 		FROM orders " +
-		" 		WHERE business_id = ? "
+		" 		WHERE business_id = ? AND deleted_at IS NULL"
 	if req.DateFrom != nil && req.DateTo != nil {
 		query += " AND updated_at BETWEEN ? AND ? "
 	}
@@ -487,7 +497,7 @@ func (r *RepoPG) GetOrderByContact(ctx context.Context, req model.OrderByContact
 	tx = tx.Model(&model.Order{})
 
 	if req.BusinessID != "" {
-		tx = tx.Where("business_id = ? ", req.BusinessID)
+		tx = tx.Where("deleted_at IS NULL AND business_id = ? ", req.BusinessID)
 	}
 
 	if req.ContactID != "" {

@@ -48,7 +48,8 @@ func (h *OrderTrackingHandlers) GetOrderTracking(r *ginext.Request) (*ginext.Res
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
-			Data: rs,
+			Data: rs.Data,
+			Meta: rs.Meta,
 		},
 	}, nil
 }
