@@ -1629,11 +1629,11 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 			itemData = append(itemData, item.Quantity)
 			itemData = append(itemData, item.TotalAmount)
 			//itemData = append(itemData, rowValues[8])
-			itemData = append(itemData, rowValues[9])  // Trang thai
-			itemData = append(itemData, rowValues[12]) // hinh thuc thanh toan
-			itemData = append(itemData, rowValues[13]) // ten khach hang
-			itemData = append(itemData, rowValues[14]) // Phone
-			itemData = append(itemData, rowValues[15]) // Dia chi
+			itemData = append(itemData, rowValues[10])  // Trang thai
+			itemData = append(itemData, rowValues[13]) // hinh thuc thanh toan
+			itemData = append(itemData, rowValues[14]) // ten khach hang
+			itemData = append(itemData, rowValues[15]) // Phone
+			itemData = append(itemData, rowValues[16]) // Dia chi
 			itemData = append(itemData, item.Note)     // Note
 
 			rowItemsValues = append(rowItemsValues, itemData)
