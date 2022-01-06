@@ -76,8 +76,8 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 						order_item.product_name ,
 						order_item.sku_name,
 						sum(order_item.quantity) total_quantity,
-						sum(order_item.price * order_item.quantity) as price,
-						sum(order_item.historical_cost * order_item.quantity) as historical_cost,
+						sum(order_item.price * order_item.quantity) as total_price,
+						sum(order_item.historical_cost * order_item.quantity) as total_historical_cost,
 						sum(order_item.price * order_item.quantity)-sum(order_item.historical_cost * order_item.quantity) as profit`)).
 			Table("order_item").
 			Joins(`inner join orders on
@@ -88,16 +88,18 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	}
 
 	var total int64
-
+	if req.StartTime != nil && req.EndTime != nil {
+		tx = tx.Where("orders.updated_at BETWEEN ? AND ?", req.StartTime, req.EndTime)
+	}
 	switch req.Sort {
 	case "profit desc":
 		tx = tx.Order("profit desc")
 	case "profit asc":
 		tx = tx.Order("profit asc")
 	case "quantity desc":
-		tx = tx.Order("quantity desc")
+		tx = tx.Order("total_quantity desc")
 	case "quantity asc":
-		tx = tx.Order("quantity asc")
+		tx = tx.Order("total_quantity asc")
 	default:
 		tx = tx.Order("profit desc")
 	}
@@ -105,8 +107,14 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	if err := tx.Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data).Error; err != nil {
 		return rs, err
 	}
-	countQuery := "SELECT count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID'  GROUP BY business_id, sku_id ,product_name ,sku_name"
-	// TODO: Pagination
+	countQuery := `SELECT count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID' `
+	if req.StartTime != nil && req.EndTime != nil {
+		countQuery += " AND orders.updated_at BETWEEN 'StartTime' AND 'EndTime' "
+		countQuery = strings.ReplaceAll(countQuery, "StartTime", req.StartTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
+		countQuery = strings.ReplaceAll(countQuery, "EndTime", req.EndTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
+	}
+	countQuery += `GROUP BY business_id, sku_id, product_name, sku_name `
+
 	countQuery = strings.ReplaceAll(countQuery, "BusinessID", *req.BusinessID)
 	if rs.Meta, err = r.GetPaginationInfo(countQuery, tx, int(total), page, pageSize); err != nil {
 		return rs, err

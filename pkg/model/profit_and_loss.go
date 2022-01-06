@@ -12,20 +12,20 @@ type ProfitAndLossRequest struct {
 	StartTime   *time.Time `json:"start_time,omitempty" form:"start_time"`
 	EndTime     *time.Time `json:"end_time,omitempty" form:"end_time"`
 	BusinessID  *string    `json:"business_id,omitempty" form:"business_id" valid:"Required"`
-	Page        int        `json:"page"`
-	PageSize    int        `json:"page_size"`
-	Sort        string     `json:"sort"`
+	Page        int        `json:"page" form:"page"`
+	PageSize    int        `json:"page_size" form:"page_size"`
+	Sort        string     `json:"sort" form:"sort"`
 }
 
 type ProfitAndLossResponse struct {
-	BusinessID     uuid.UUID `json:"business_id"`
-	SkuID          uuid.UUID `json:"sku_id"`
-	ProductName    string    `json:"profit_total"`
-	SkuName        string    `json:"sku_name"`
-	TotalQuantity  float64   `json:"total_quantity"`
-	Price          float64   `json:"price"`
-	HistoricalCost float64   `json:"historical_cost"`
-	Profit         float64   `json:"profit"`
+	BusinessID          uuid.UUID `json:"business_id"`
+	SkuID               uuid.UUID `json:"sku_id"`
+	ProductName         string    `json:"product_name"`
+	SkuName             string    `json:"sku_name"`
+	TotalQuantity       float64   `json:"total_quantity"`
+	TotalPrice          float64   `json:"total_price"`
+	TotalHistoricalCost float64   `json:"total_historical_cost"`
+	Profit              float64   `json:"profit"`
 }
 
 type GetListProfitAndLossResponse struct {
