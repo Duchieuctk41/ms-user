@@ -605,3 +605,34 @@ func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQua
 
 	return rs, nil
 }
+
+func (r *RepoPG) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	query := ""
+	query += `select contact_id,
+					count(*) as total_quantity_order,
+					sum(grand_total) as total_amount_order
+				from orders o
+				where contact_id = ?
+				and business_id = ?
+				and state = 'complete'`
+	if req.StartTime != nil && req.EndTime != nil {
+		query += " AND updated_at BETWEEN ? AND ? "
+	}
+	query += "group by contact_id"
+	rs := []model.GetTotalOrderByBusinessResponse{}
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := tx.Raw(query, req.ContactID, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return rs, nil
+		}
+	} else {
+		if err := tx.Raw(query, req.ContactID, req.BusinessID).Scan(&rs).Error; err != nil {
+			return rs, nil
+		}
+	}
+	return rs, nil
+}

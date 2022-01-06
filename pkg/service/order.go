@@ -61,6 +61,8 @@ type OrderServiceInterface interface {
 
 	CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error)
 
+	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest) (rs interface{}, err error)
+
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
 
@@ -191,7 +193,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	if rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil); err != nil {
+
+	rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil)
+	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
@@ -200,6 +204,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		}
 	}
 
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
+	}
 	// Tính tổng tiền
 	for i, v := range req.ListOrderItem {
 		itemTotalAmount := 0.0
@@ -345,6 +353,15 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	for _, orderItem := range req.ListOrderItem {
 		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
+		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
+			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
+			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
+		}
+		if orderItem.ProductSellingPrice != 0 {
+			orderItem.Price = orderItem.ProductSellingPrice
+		} else {
+			orderItem.Price = orderItem.ProductNormalPrice
+		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
 			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
@@ -1629,7 +1646,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 			itemData = append(itemData, item.Quantity)
 			itemData = append(itemData, item.TotalAmount)
 			//itemData = append(itemData, rowValues[8])
-			itemData = append(itemData, rowValues[10])  // Trang thai
+			itemData = append(itemData, rowValues[10]) // Trang thai
 			itemData = append(itemData, rowValues[13]) // hinh thuc thanh toan
 			itemData = append(itemData, rowValues[14]) // ten khach hang
 			itemData = append(itemData, rowValues[15]) // Phone
@@ -2267,4 +2284,8 @@ func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.Co
 		return nil, err
 	}
 	return s.repo.GetCountQuantityInOrder(ctx, req, nil)
+}
+
+func (s *OrderService) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest) (rs interface{}, err error) {
+	return s.repo.GetSumOrderCompleteContact(ctx, req, nil)
 }
