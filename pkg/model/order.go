@@ -234,9 +234,11 @@ type ContactDeliveringResponse struct {
 }
 
 type GetOneOrderRequest struct {
-	ID       *string   `json:"id"`
-	UserRole string    `json:"user_role"`
-	UserID   uuid.UUID `json:"user_id"`
+	ID         *string   `json:"id"`
+	UserRole   string    `json:"user_role"`
+	UserID     uuid.UUID `json:"user_id"`
+	BusinessID string    `json:"business_id" form:"business_id"`
+	BuyerID    string    `json:"buyer_id"  form:"buyer_id"`
 }
 
 type CountQuantityInOrderRequest struct {
