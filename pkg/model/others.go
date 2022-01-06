@@ -218,7 +218,7 @@ type SendNotificationRequest struct {
 }
 
 type CreateStockRequest struct {
-	ListStock      []StockRequest `json:"list_stock" valid:"Required"`
+	ListStock      []StockRequest `json:"list_stock"`
 	TrackingType   string         `json:"tracking_type" valid:"Required"`
 	TrackingInfo   postgres.Jsonb `json:"tracking_info"`
 	IDTrackingType string         `json:"id_tracking_type" valid:"Required"`
