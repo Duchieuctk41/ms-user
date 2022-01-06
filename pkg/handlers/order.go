@@ -541,13 +541,31 @@ func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, er
 //}
 
 func (h *OrderHandlers) CountDeliveringQuantity(r *ginext.Request) (*ginext.Response, error) {
-	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ProcessConsumer")
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CountDeliveringQuantity")
 
 	req := model.CountQuantityInOrderRequest{}
 	r.MustBind(&req)
 	res, err := h.service.CountDeliveringQuantity(r.Context(), req)
 	if err != nil {
-		log.WithError(err).Error("Fail to ProcessConsumer")
+		log.WithError(err).Error("Fail to CountDeliveringQuantity")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: res,
+		},
+	}, nil
+}
+
+func (h *OrderHandlers) GetSumOrderCompleteContact(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetSumOrderCompleteContact")
+
+	req := model.GetTotalOrderByBusinessRequest{}
+	r.MustBind(&req)
+	res, err := h.service.GetSumOrderCompleteContact(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Error("Fail to GetSumOrderCompleteContact")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 	return &ginext.Response{

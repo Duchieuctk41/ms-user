@@ -77,19 +77,19 @@ func CheckCanPickQuantity(userID string, req []model.OrderItem, mapItem map[stri
 	return tm.Data, nil
 }
 
-func GetProduct(skuIDs []string, businessID string) (res []model.Sku, err error) {
+func GetSkuDetail(skuIDs []string, businessID string) (res []model.SkuDetail, err error) {
 	tBD := struct {
 		ListSku    []string `json:"list_sku"`
 		BusinessID string   `json:"business_id"`
 	}{ListSku: skuIDs, BusinessID: businessID}
 
-	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/get-item-product-detail", rest.Post, nil, nil, tBD)
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/get-list-sku-detail", rest.Post, nil, nil, tBD)
 	if err != nil {
 		logrus.Errorf("Fail to GetProductInPo due to %v", err)
 		return res, fmt.Errorf("Error when get product in po info")
 	}
 	tmp := new(struct {
-		Data []model.Sku `json:"data"`
+		Data []model.SkuDetail `json:"data"`
 	})
 	if err = json.Unmarshal([]byte(body), &tmp); err != nil {
 		return res, err

@@ -107,13 +107,13 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	if err := tx.Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data).Error; err != nil {
 		return rs, err
 	}
-	countQuery := `SELECT count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID' `
+	countQuery := `select count(*) from ( select count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID' `
 	if req.StartTime != nil && req.EndTime != nil {
 		countQuery += " AND orders.updated_at BETWEEN 'StartTime' AND 'EndTime' "
 		countQuery = strings.ReplaceAll(countQuery, "StartTime", req.StartTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
 		countQuery = strings.ReplaceAll(countQuery, "EndTime", req.EndTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
 	}
-	countQuery += `GROUP BY business_id, sku_id, product_name, sku_name `
+	countQuery += `GROUP BY business_id, sku_id, product_name, sku_name) as b `
 
 	countQuery = strings.ReplaceAll(countQuery, "BusinessID", *req.BusinessID)
 	if rs.Meta, err = r.GetPaginationInfo(countQuery, tx, int(total), page, pageSize); err != nil {
