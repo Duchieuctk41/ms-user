@@ -40,6 +40,9 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 	req.UserID = userID
 	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
 
+	// check permission
+	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
+
 	req.ID = utils.ParseStringIDFromUri(r.GinCtx)
 	if req.ID == nil {
 		log.WithError(err).Error("Wrong orderNumber %v", err.Error())
@@ -81,20 +84,15 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 	req := model.OrderParam{}
 	r.MustBind(&req)
 
+	// check permission
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
+	if err := utils.CheckPermissionV2(r.Context(), role, userID, req.BusinessID, req.BuyerID); err != nil {
+		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
+	}
+
 	if err := common.CheckRequireValid(req); err != nil {
 		log.WithError(err).Error("Invalid input")
 		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input"+err.Error())
-	}
-
-	// Check Permission
-	if req.BusinessID == "" {
-		log.WithError(err).Error("Missing business ID")
-		return nil, ginext.NewError(http.StatusUnauthorized, "You need input your business ID")
-	}
-	role := r.GinCtx.Request.Header.Get("x-user-roles")
-	if err = utils.CheckPermission(r.GinCtx, userID.String(), req.BusinessID, role); err != nil {
-		log.WithError(err).Error("Unauthorized")
-		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
 
 	rs, err := h.service.GetAllOrder(r.Context(), req)

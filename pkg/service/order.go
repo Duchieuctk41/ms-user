@@ -78,11 +78,9 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 			return res, err
 		}
 	}
-
 	// check permission
-	if err = utils.CheckPermission(ctx, req.UserID.String(), order.BusinessID.String(), req.UserRole); err != nil {
-		log.WithError(err).Error("Unauthorized")
-		return res, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), req.BuyerID); err != nil {
+		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
 	}
 
 	rs := struct {
@@ -1149,7 +1147,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	tx.Commit()
 
 	if req.State != nil && *req.State == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
-		go s.OrderCancelProcessing(ctx, order, tx)
+		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
 		debit := model.Debit{}
 		if req.Debit != nil {
@@ -1394,11 +1392,11 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	}
 
 	if order.State == utils.ORDER_STATE_DELIVERING {
-		go s.UpdateStockWhenUpdateDetailOrder(ctx, order, stocks, "order_delivering")
+		go s.UpdateStockWhenUpdateDetailOrder(context.Background(), order, stocks, "order_delivering")
 	}
 
 	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
-	go s.PushConsumerSendEmail(ctx, order.ID.String(), utils.ORDER_STATE_UPDATE)
+	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), utils.ORDER_STATE_UPDATE)
 
 	return res, nil
 }
@@ -1417,7 +1415,7 @@ func (s *OrderService) UpdateStockWhenUpdateDetailOrder(ctx context.Context, ord
 	if err = json.Unmarshal(tResToJson, &reqUpdateStock.TrackingInfo); err != nil {
 		log.WithError(err).Error("Error when marshal parse response to json when create stock")
 	} else {
-		go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK)
+		go PushConsumer(context.Background(), reqUpdateStock, utils.TOPIC_UPDATE_STOCK)
 	}
 	return nil
 }
@@ -1629,7 +1627,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 			itemData = append(itemData, item.Quantity)
 			itemData = append(itemData, item.TotalAmount)
 			//itemData = append(itemData, rowValues[8])
-			itemData = append(itemData, rowValues[10])  // Trang thai
+			itemData = append(itemData, rowValues[10]) // Trang thai
 			itemData = append(itemData, rowValues[13]) // hinh thuc thanh toan
 			itemData = append(itemData, rowValues[14]) // ten khach hang
 			itemData = append(itemData, rowValues[15]) // Phone
@@ -2139,12 +2137,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	}
 
 	tx.Commit()
-	go s.CountCustomer(ctx, order)
-	go s.OrderProcessing(ctx, order, debit, checkCompleted)
-	go s.UpdateContactUser(ctx, order, order.CreatorID)
+	go s.CountCustomer(context.Background(), order)
+	go s.OrderProcessing(context.Background(), order, debit, checkCompleted)
+	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
 
 	// push consumer to complete order mission
-	go CompletedOrderMission(ctx, order)
+	go CompletedOrderMission(context.Background(), order)
 
 	return order, nil
 }

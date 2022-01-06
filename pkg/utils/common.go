@@ -2,50 +2,65 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
-	"finan/ms-order-management/conf"
 	"finan/ms-order-management/pkg/model"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/praslar/lib/common"
-	"github.com/sendgrid/rest"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/ginext"
+	"gitlab.com/goxp/cloud0/logger"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-func CheckPermission(ctx context.Context, userId string, businessID string, role string) (err error) {
-	log := logrus.WithContext(ctx).WithField("business ID", businessID)
+// check permission allow [seller | admin]
+func CheckPermission(ctx context.Context, userID string, businessID string, role string) (err error) {
+	log := logger.WithCtx(ctx, "CheckPermission")
 
 	userRoles, _ := strconv.Atoi(role)
 	if (userRoles&ADMIN_ROLE > 0) || (userRoles&ADMIN_ROLE == ADMIN_ROLE) {
 		return nil
 	}
 
-	param := map[string]string{}
-	param["user_id"] = userId
-	param["business_id"] = businessID
-	body, _, err := common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/user-has-business", rest.Get, nil, param, nil)
+	userHasBusiness, err := GetUserHasBusiness(userID, businessID)
 	if err != nil {
-		log.WithError(err).
-			Error("Error when call func SendRestAPI")
-		return ginext.NewError(http.StatusInternalServerError, MessageError()[http.StatusInternalServerError])
-	}
-	tmp := new(struct {
-		Data []UserHasBusiness `json:"data"`
-	})
-	if err = json.Unmarshal([]byte(body), &tmp); err != nil {
-		log.WithError(err).Error("Error when call func Unmarshal")
-		return ginext.NewError(http.StatusInternalServerError, MessageError()[http.StatusInternalServerError])
+		log.Errorf("Error CheckPermission GetUserHasBusiness ", err.Error())
+		return err
 	}
 
 	// Check User has this business ?
-	if len(tmp.Data) == 0 {
+	if len(userHasBusiness) == 0 {
 		log.WithError(err).Error("Fail to get user has business")
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	return nil
+}
+
+// check permission allow [buyer | seller | admin]
+func CheckPermissionV2(ctx context.Context, userRole string, userID uuid.UUID, businessID string, buyerID string) error {
+	log := logger.WithCtx(ctx, "CheckPermissionV2")
+
+	//Check roles
+	userRoles, _ := strconv.Atoi(userRole)
+	if (userRoles&ADMIN_ROLE > 0) || (userRoles&ADMIN_ROLE == ADMIN_ROLE) {
+		return nil
+	}
+
+	// Buyer or Seller can get this order
+	if buyerID != "" && userID.String() == buyerID {
+		return nil
+	}
+
+	userHasBusiness, err := GetUserHasBusiness(userID.String(), businessID)
+	if err != nil {
+		log.Errorf("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ", err.Error())
+		return err
+	}
+
+	if len(userHasBusiness) == 0 {
+		log.Errorf("Fail to get user has business due to %v", err)
 		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
 	}
 

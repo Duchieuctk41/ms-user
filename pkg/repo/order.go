@@ -271,6 +271,9 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 		defer cancel()
 	}
 
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.PageSize)
+
 	tx = tx.Model(&model.Order{})
 
 	if req.BusinessID != "" && req.SellerID == "" {
@@ -309,7 +312,7 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 		stateArr := strings.Split(req.State, ",")
 		tx = tx.Where("state IN (?) ", stateArr)
 	} else {
-		tx = tx.Where("state IN (?) ", []string{utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_WAITING_CONFIRM})
+		tx = tx.Where("state IN (?) ", []string{utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_CANCEL})
 	}
 
 	if req.Search != "" {
@@ -331,10 +334,10 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	tx = tx.Count(&total)
 
 	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Order("order_item.created_at ASC")
-	}).Find(&rs.Data)
+		return db.Order("order_item.created_at DESC")
+	}).Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data)
 
-	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
 		return rs, err
 	}
 
