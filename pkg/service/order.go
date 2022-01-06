@@ -78,11 +78,9 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 			return res, err
 		}
 	}
-
 	// check permission
-	if err = utils.CheckPermission(ctx, req.UserID.String(), order.BusinessID.String(), req.UserRole); err != nil {
-		log.WithError(err).Error("Unauthorized")
-		return res, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), req.BuyerID); err != nil {
+		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
 	}
 
 	rs := struct {
@@ -1629,7 +1627,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 			itemData = append(itemData, item.Quantity)
 			itemData = append(itemData, item.TotalAmount)
 			//itemData = append(itemData, rowValues[8])
-			itemData = append(itemData, rowValues[10])  // Trang thai
+			itemData = append(itemData, rowValues[10]) // Trang thai
 			itemData = append(itemData, rowValues[13]) // hinh thuc thanh toan
 			itemData = append(itemData, rowValues[14]) // ten khach hang
 			itemData = append(itemData, rowValues[15]) // Phone
