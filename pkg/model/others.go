@@ -80,11 +80,30 @@ type Sku struct {
 	NormalPrice     float64        `json:"normal_price"`
 	OldNormalPrice  float64        `json:"old_normal_price,omitempty"`
 	OldSellingPrice float64        `json:"old_selling_price,omitempty"`
+	ProductIsActive bool           `json:"product_is_active"`
+	SkuIsActive     bool           `json:"sku_is_active"`
 	Uom             string         `json:"uom"`
 	SkuCode         string         `json:"sku_code"`
 	Barcode         string         `json:"barcode"`
 	CanPickQuantity float64        `json:"can_pick_quantity"`
 	Type            string         `json:"type"`
+	HistoricalCost  float64        `json:"historical_cost"`
+}
+
+type SkuDetail struct {
+	SkuID          string         `json:"sku_id"`
+	BusinessID     string         `json:"business_id"`
+	ProductName    string         `json:"product_name"`
+	SkuName        string         `json:"sku_name"`
+	SoldQuantity   float64        `json:"sold_quantity"`
+	Media          pq.StringArray `json:"media"`
+	NormalPrice    float64        `json:"normal_price"`
+	SellingPrice   float64        `json:"selling_price"`
+	HistoricalCost float64        `json:"historical_cost"`
+	Note           string         `json:"note"`
+	Type           string         `json:"type"`
+	Uom            string         `json:"uom"`
+	TotalAmount    float64        `json:"total_amount" gorm:"column:total_amount"`
 }
 
 type StockForCheckValid struct {
@@ -218,7 +237,7 @@ type SendNotificationRequest struct {
 }
 
 type CreateStockRequest struct {
-	ListStock      []StockRequest `json:"list_stock" valid:"Required"`
+	ListStock      []StockRequest `json:"list_stock"`
 	TrackingType   string         `json:"tracking_type" valid:"Required"`
 	TrackingInfo   postgres.Jsonb `json:"tracking_info"`
 	IDTrackingType string         `json:"id_tracking_type" valid:"Required"`

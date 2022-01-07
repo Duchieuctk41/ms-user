@@ -271,6 +271,9 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 		defer cancel()
 	}
 
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.PageSize)
+
 	tx = tx.Model(&model.Order{})
 
 	if req.BusinessID != "" && req.SellerID == "" {
@@ -309,7 +312,7 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 		stateArr := strings.Split(req.State, ",")
 		tx = tx.Where("state IN (?) ", stateArr)
 	} else {
-		tx = tx.Where("state IN (?) ", []string{utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_WAITING_CONFIRM})
+		tx = tx.Where("state IN (?) ", []string{utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_CANCEL})
 	}
 
 	if req.Search != "" {
@@ -331,10 +334,10 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	tx = tx.Count(&total)
 
 	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Where("order_item.deleted_at is null").Order("order_item.created_at ASC")
-	}).Limit(req.PageSize).Offset((req.Page - 1) * req.PageSize).Find(&rs.Data)
+		return db.Where("order_item.deleted_at is null").Order("order_item.created_at DESC")
+	}).Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data)
 
-	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), req.Page, req.PageSize); err != nil {
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
 		return rs, err
 	}
 
@@ -603,5 +606,36 @@ func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQua
 		return rs, err
 	}
 
+	return rs, nil
+}
+
+func (r *RepoPG) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	query := ""
+	query += `select contact_id,
+					count(*) as total_quantity_order,
+					sum(grand_total) as total_amount_order
+				from orders o
+				where contact_id = ?
+				and business_id = ?
+				and state = 'complete'`
+	if req.StartTime != nil && req.EndTime != nil {
+		query += " AND updated_at BETWEEN ? AND ? "
+	}
+	query += "group by contact_id"
+	rs := []model.GetTotalOrderByBusinessResponse{}
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := tx.Raw(query, req.ContactID, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return rs, nil
+		}
+	} else {
+		if err := tx.Raw(query, req.ContactID, req.BusinessID).Scan(&rs).Error; err != nil {
+			return rs, nil
+		}
+	}
 	return rs, nil
 }

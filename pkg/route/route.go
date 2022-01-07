@@ -51,6 +51,7 @@ func NewService() *Service {
 	v1Api.GET("/count-order-state", ginext.WrapHandler(orderHandle.CountOrderState))
 	v1Api.GET("/get-order-by-contact", ginext.WrapHandler(orderHandle.GetOrderByContact))
 	v1Api.GET("/get-contact-delivering", ginext.WrapHandler(orderHandle.GetContactDelivering))
+	v1Api.GET("/get-sum-order-complete-contact", ginext.WrapHandler(orderHandle.GetSumOrderCompleteContact))
 
 	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
 	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))

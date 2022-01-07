@@ -95,3 +95,5 @@ const (
 const (
 	NOTI_TYPE_UPDATE_ORDER = "update_order"
 )
+
+const TIME_FORMAT_FOR_QUERRY = "2006-01-02 15:04:05"

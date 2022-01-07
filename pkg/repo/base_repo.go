@@ -54,6 +54,7 @@ type PGInterface interface {
 	//
 	GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error)
 	GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
+	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error)
 }
 
 type BaseModel struct {
