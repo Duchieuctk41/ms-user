@@ -2023,13 +2023,19 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	if rCheck, err := utils.CheckCanPickQuantityV2(req.UserID.String(), *req.BusinessID, req.ListOrderItem, nil); err != nil {
-		log.WithError(err).Error("Error when CheckValidOrderItemsV3 from MS Product")
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
 		if rCheck.Status != utils.STATUS_SUCCESS {
 			return rCheck, nil
 		}
+	}
+
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
 	}
 
 	// Tính tổng tiền
@@ -2140,6 +2146,15 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	for _, orderItem := range req.ListOrderItem {
 		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
+		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
+			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
+			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
+		}
+		if orderItem.ProductSellingPrice != 0 {
+			orderItem.Price = orderItem.ProductSellingPrice
+		} else {
+			orderItem.Price = orderItem.ProductNormalPrice
+		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
 			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
