@@ -121,7 +121,7 @@ type OrderParam struct {
 	OrderNumber    string     `json:"order_number" form:"order_number"`
 	PaymentMethod  string     `json:"payment_method" form:"payment_method"`
 	Note           string     `json:"note" form:"note"`
-	PageSize       int        `json:"size" form:"page_size"`
+	PageSize       int        `json:"page_size" form:"page_size"`
 	Page           int        `json:"page" form:"page"`
 	Sort           string     `json:"sort" form:"sort"`
 	BuyerID        string     `json:"buyer_id" form:"buyer_id"`

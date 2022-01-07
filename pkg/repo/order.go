@@ -334,7 +334,7 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	tx = tx.Count(&total)
 
 	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Order("order_item.created_at DESC")
+		return db.Where("order_item.deleted_at is null").Order("order_item.created_at DESC")
 	}).Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data)
 
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
