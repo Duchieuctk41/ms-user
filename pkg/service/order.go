@@ -921,7 +921,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	var orderItems []model.OrderItemForSendEmail
 	for _, item := range order.OrderItem {
 		var orderItem = model.OrderItemForSendEmail{
-			ProductID:           item.ProductID,
+			//ProductID:           item.ProductID,
 			ProductName:         item.ProductName,
 			Quantity:            item.Quantity,
 			TotalAmount:         item.TotalAmount,
@@ -1015,7 +1015,6 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		break
 	default:
 		return nil, nil
-		break
 	}
 
 	var params interface{} = tParams
@@ -1046,7 +1045,6 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		break
 	default:
 		return nil, nil
-		break
 	}
 
 	obj, resp, err := sib.TransactionalEmailsApi.SendTransacEmail(ctx, body)
@@ -1317,14 +1315,14 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		if rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld); err != nil {
-			logrus.Errorf("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product: "+err.Error())
-		} else {
-			if rCheck.Status != utils.STATUS_SUCCESS {
-				return rCheck, nil
-			}
-		}
+		//if rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld); err != nil {
+		//	logrus.Errorf("Error when CheckValidOrderItems from MS Product")
+		//	return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product: "+err.Error())
+		//} else {
+		//	if rCheck.Status != utils.STATUS_SUCCESS {
+		//		return rCheck, nil
+		//	}
+		//}
 
 		for i, v := range req.ListOrderItem {
 			itemTotalAmount := 0.0
@@ -2143,8 +2141,6 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	}
 
 	for _, orderItem := range req.ListOrderItem {
-		orderItem.CreatedAt = time.Now().UTC()
-		orderItem.UpdatedAt = time.Now().UTC()
 		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
 		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
