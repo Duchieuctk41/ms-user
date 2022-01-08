@@ -423,7 +423,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 		}
 	}
 
-	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Updates(&order).Error; err != nil {
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
 		return model.Order{}, nil, err
 	}
 
