@@ -399,6 +399,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 
 	for skuID, item := range mapItem {
 		if _, ok := tMap[skuID]; !ok {
+			item.OrderID = order.ID
 			order.OrderItem = append(order.OrderItem, item)
 			// Thêm số lượng khách đang đặt bên stock (+ quantity)
 			stocks = append(stocks, model.StockRequest{
@@ -409,8 +410,14 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	}
 
 	for _, orderItem := range order.OrderItem {
-		if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
-			return model.Order{}, nil, err
+		if orderItem.ID == uuid.Nil {
+			if err = tx.Model(&model.OrderItem{}).Create(&orderItem).Error; err != nil {
+				return model.Order{}, nil, err
+			}
+		} else {
+			if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
+				return model.Order{}, nil, err
+			}
 		}
 	}
 

@@ -13,7 +13,7 @@ import (
 type OrderItem struct {
 	BaseModel
 	OrderID             uuid.UUID      `json:"order_id" sql:"index" gorm:"column:order_id;not null;"`
-	ProductID           uuid.UUID      `json:"product_id" sql:"index" gorm:"column:product_id;not null;"`
+	//ProductID           uuid.UUID      `json:"product_id" sql:"index" gorm:"column:product_id;not null;"`
 	ProductName         string         `json:"product_name" gorm:"column:product_name;"`
 	ProductNormalPrice  float64        `json:"product_normal_price" gorm:"column:product_normal_price;"`
 	ProductSellingPrice float64        `json:"product_selling_price" gorm:"column:product_selling_price;"`
@@ -40,7 +40,7 @@ func (u *OrderItem) BeforeSave(tx *gorm.DB) (err error) {
 	return
 }
 
-func (u *OrderItem) AfterSave(tx *gorm.DB) (err error) {
+func (u *OrderItem) AfterCreate(tx *gorm.DB) (err error) {
 	// hieunm - 8/1/2022
 	// Fix bug sort order items in order wrong bc duplicate created at value
 	tx.Model(&OrderItem{}).Where("id = ?", u.ID).UpdateColumn("created_at", time.Now().UTC())
