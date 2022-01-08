@@ -384,6 +384,8 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 			order.OrderItem[i].ProductImages = v.ProductImages
 			order.OrderItem[i].SkuCode = v.SkuCode
 			order.OrderItem[i].UOM = v.UOM
+			order.OrderItem[i].Price = v.Price
+			order.OrderItem[i].HistoricalCost = v.HistoricalCost
 		} else {
 			// If not exist in map -> delete
 			tNow := time.Now()

@@ -1315,14 +1315,20 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		//if rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld); err != nil {
-		//	logrus.Errorf("Error when CheckValidOrderItems from MS Product")
-		//	return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product: "+err.Error())
-		//} else {
-		//	if rCheck.Status != utils.STATUS_SUCCESS {
-		//		return rCheck, nil
-		//	}
-		//}
+		rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld)
+		if err != nil {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		} else {
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				return rCheck, nil
+			}
+		}
+
+		mapSku := make(map[string]model.CheckValidStockResponse)
+		for _, v := range rCheck.ItemsInfo {
+			mapSku[v.ID.String()] = v
+		}
 
 		for i, v := range req.ListOrderItem {
 			itemTotalAmount := 0.0
@@ -1333,6 +1339,15 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			}
 			req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
 			orderGrandTotal += req.ListOrderItem[i].TotalAmount
+			if _, ok := mapSku[v.SkuID.String()]; ok {
+				req.ListOrderItem[i].UOM = mapSku[v.SkuID.String()].Uom
+				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
+			}
+			if req.ListOrderItem[i].ProductSellingPrice != 0 {
+				req.ListOrderItem[i].Price = v.ProductSellingPrice
+			} else {
+				req.ListOrderItem[i].Price = v.ProductNormalPrice
+			}
 			mapItem[v.SkuID.String()] = req.ListOrderItem[i]
 		}
 
