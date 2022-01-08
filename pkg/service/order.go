@@ -1892,7 +1892,6 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
 	}
 
-	//
 	orderGrandTotal := 0.0
 	promotionDiscount := 0.0
 	deliveryFee := 0.0
@@ -2144,6 +2143,8 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	}
 
 	for _, orderItem := range req.ListOrderItem {
+		orderItem.CreatedAt = time.Now().UTC()
+		orderItem.UpdatedAt = time.Now().UTC()
 		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
 		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
