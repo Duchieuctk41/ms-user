@@ -1275,7 +1275,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrder")
 
 	if len(req.ListOrderItem) == 0 {
-		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm: "+err.Error())
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
 	}
 
 	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
