@@ -626,7 +626,7 @@ func (r *RepoPG) CountOrder(ctx context.Context, creatorID uuid.UUID, tx *gorm.D
 	}
 
 	var total int64 = 0
-	if err = tx.Model(model.Order{}).Where("creator_id = ?", creatorID).Count(&total).Error; err != nil {
+	if err = tx.Model(model.Order{}).Where("creator_id = ?", creatorID).Unscoped().Count(&total).Error; err != nil {
 		return 0, err
 	}
 
