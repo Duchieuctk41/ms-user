@@ -27,6 +27,7 @@ const (
 	TOPIC_UPDATE_STOCK         = "ms-warehouse-management:update_stock"
 	TOPIC_UPDATE_STOCK_V2      = "ms-warehouse-management:update_stock_v2"
 	TOPIC_PROCESS_MISSION      = "finan-loyalty:process_mission"
+	TOPIC_SET_USER_GUIDE       = "ms-meta-data:topic_set_user_guide"
 )
 
 const CATEGORY_SELL = "cc8244c0-307f-46fd-be96-34e7c36059de"
@@ -97,3 +98,8 @@ const (
 )
 
 const TIME_FORMAT_FOR_QUERRY = "2006-01-02 15:04:05"
+
+const (
+	COMPLETED_TUTORIAL    = "completed"
+	TUTORIAL_CREATE_ORDER = "tutorial_create_order"
+)

@@ -54,6 +54,9 @@ type PGInterface interface {
 	//
 	GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error)
 	GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
+
+	// tutorial flow
+	CountOrder(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error)
 }
 
 type BaseModel struct {

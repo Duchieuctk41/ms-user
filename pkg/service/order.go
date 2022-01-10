@@ -360,6 +360,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	go s.CountCustomer(ctx, order)
 	go s.OrderProcessing(ctx, order, debit, checkCompleted)
 	go s.UpdateContactUser(ctx, order, order.CreatorID)
+	go s.CheckFirstCreate(context.Background(), order.CreatorID) // tutorial flow
 
 	// push consumer to complete order mission
 	go CompletedOrderMission(ctx, order)
@@ -2140,6 +2141,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessing(context.Background(), order, debit, checkCompleted)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
+	go s.CheckFirstCreate(context.Background(), order.CreatorID) // tutorial flow
 
 	// push consumer to complete order mission
 	go CompletedOrderMission(context.Background(), order)
@@ -2265,4 +2267,26 @@ func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.Co
 		return nil, err
 	}
 	return s.repo.GetCountQuantityInOrder(ctx, req, nil)
+}
+
+// check first create then push consumer update completed tutorial
+func (s *OrderService) CheckFirstCreate(ctx context.Context, creatorID uuid.UUID) {
+	log := logger.WithCtx(ctx, "OrderService.CheckFirstCreate")
+
+	count, err := s.repo.CountOrder(ctx, creatorID, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when count order by creator_id")
+		return
+	}
+
+	userGuideRequest := model.UserGuideRequest{
+		GuideKey: utils.TUTORIAL_CREATE_ORDER,
+		State:    utils.COMPLETED_TUTORIAL,
+		UserID:   creatorID.String(),
+	}
+	if count == 1 {
+		PushConsumer(context.Background(), userGuideRequest, utils.TOPIC_SET_USER_GUIDE)
+	}
+
+	return
 }

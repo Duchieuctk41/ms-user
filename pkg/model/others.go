@@ -314,3 +314,10 @@ type S3ResponseUpload struct {
 type DataResponseUpload struct {
 	UploadUrl string `json:"url"`
 }
+
+type UserGuideRequest struct {
+	GuideKey  string `json:"guide_key"`
+	State     string `json:"state"`
+	StepDoing int    `json:"step_doing"`
+	UserID    string `json:"user_id"`
+}
