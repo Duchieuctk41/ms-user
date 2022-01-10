@@ -61,6 +61,8 @@ type OrderServiceInterface interface {
 
 	CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error)
 
+	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest) (rs interface{}, err error)
+
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
 
@@ -189,7 +191,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	if rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil); err != nil {
+
+	rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil)
+	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
@@ -198,6 +202,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		}
 	}
 
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
+	}
 	// Tính tổng tiền
 	for i, v := range req.ListOrderItem {
 		itemTotalAmount := 0.0
@@ -343,6 +351,15 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	for _, orderItem := range req.ListOrderItem {
 		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
+		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
+			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
+			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
+		}
+		if orderItem.ProductSellingPrice != 0 {
+			orderItem.Price = orderItem.ProductSellingPrice
+		} else {
+			orderItem.Price = orderItem.ProductNormalPrice
+		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
 			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
@@ -905,7 +922,7 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 	var orderItems []model.OrderItemForSendEmail
 	for _, item := range order.OrderItem {
 		var orderItem = model.OrderItemForSendEmail{
-			ProductID:           item.ProductID,
+			//ProductID:           item.ProductID,
 			ProductName:         item.ProductName,
 			Quantity:            item.Quantity,
 			TotalAmount:         item.TotalAmount,
@@ -999,7 +1016,6 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		break
 	default:
 		return nil, nil
-		break
 	}
 
 	var params interface{} = tParams
@@ -1030,7 +1046,6 @@ func (s *OrderService) SendEmailOrder(ctx context.Context, req model.SendEmailRe
 		break
 	default:
 		return nil, nil
-		break
 	}
 
 	obj, resp, err := sib.TransactionalEmailsApi.SendTransacEmail(ctx, body)
@@ -1261,7 +1276,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrder")
 
 	if len(req.ListOrderItem) == 0 {
-		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm: "+err.Error())
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
 	}
 
 	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
@@ -1301,13 +1316,19 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		if rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld); err != nil {
-			logrus.Errorf("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product: "+err.Error())
+		rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld)
+		if err != nil {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		} else {
 			if rCheck.Status != utils.STATUS_SUCCESS {
 				return rCheck, nil
 			}
+		}
+
+		mapSku := make(map[string]model.CheckValidStockResponse)
+		for _, v := range rCheck.ItemsInfo {
+			mapSku[v.ID.String()] = v
 		}
 
 		for i, v := range req.ListOrderItem {
@@ -1319,6 +1340,15 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			}
 			req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
 			orderGrandTotal += req.ListOrderItem[i].TotalAmount
+			if _, ok := mapSku[v.SkuID.String()]; ok {
+				req.ListOrderItem[i].UOM = mapSku[v.SkuID.String()].Uom
+				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
+			}
+			if req.ListOrderItem[i].ProductSellingPrice != 0 {
+				req.ListOrderItem[i].Price = v.ProductSellingPrice
+			} else {
+				req.ListOrderItem[i].Price = v.ProductNormalPrice
+			}
 			mapItem[v.SkuID.String()] = req.ListOrderItem[i]
 		}
 
@@ -1876,7 +1906,6 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
 	}
 
-	//
 	orderGrandTotal := 0.0
 	promotionDiscount := 0.0
 	deliveryFee := 0.0
@@ -2007,13 +2036,19 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	if rCheck, err := utils.CheckCanPickQuantityV2(req.UserID.String(), *req.BusinessID, req.ListOrderItem, nil); err != nil {
-		log.WithError(err).Error("Error when CheckValidOrderItemsV3 from MS Product")
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
 		if rCheck.Status != utils.STATUS_SUCCESS {
 			return rCheck, nil
 		}
+	}
+
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
 	}
 
 	// Tính tổng tiền
@@ -2124,6 +2159,15 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	for _, orderItem := range req.ListOrderItem {
 		orderItem.OrderID = order.ID
 		orderItem.CreatorID = order.CreatorID
+		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
+			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
+			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
+		}
+		if orderItem.ProductSellingPrice != 0 {
+			orderItem.Price = orderItem.ProductSellingPrice
+		} else {
+			orderItem.Price = orderItem.ProductNormalPrice
+		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
 			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
@@ -2289,4 +2333,8 @@ func (s *OrderService) CheckFirstCreate(ctx context.Context, creatorID uuid.UUID
 	}
 
 	return
+}
+
+func (s *OrderService) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest) (rs interface{}, err error) {
+	return s.repo.GetSumOrderCompleteContact(ctx, req, nil)
 }

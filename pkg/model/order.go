@@ -121,7 +121,7 @@ type OrderParam struct {
 	OrderNumber    string     `json:"order_number" form:"order_number"`
 	PaymentMethod  string     `json:"payment_method" form:"payment_method"`
 	Note           string     `json:"note" form:"note"`
-	PageSize       int        `json:"size" form:"page_size"`
+	PageSize       int        `json:"page_size" form:"page_size"`
 	Page           int        `json:"page" form:"page"`
 	Sort           string     `json:"sort" form:"sort"`
 	BuyerID        string     `json:"buyer_id" form:"buyer_id"`
@@ -203,7 +203,7 @@ type CountOrderState struct {
 }
 
 type OrderByContactParam struct {
-	PageSize   int        `json:"size" form:"page_size"`
+	PageSize   int        `json:"page_size" form:"page_size"`
 	Page       int        `json:"page" form:"page"`
 	StartTime  *time.Time `json:"start_time" form:"start_time"`
 	EndTime    *time.Time `json:"end_time" form:"end_time"`
@@ -249,4 +249,18 @@ type CountQuantityInOrderRequest struct {
 
 type CountQuantityInOrderResponse struct {
 	Sum float64 `json:"sum"`
+}
+
+type GetTotalOrderByBusinessRequest struct {
+	BusinessID  string     `json:"business_id" form:"business_id"`
+	ContactID   string     `json:"contact_id" form:"contact_id"`
+	StartTime   *time.Time `json:"start_time" form:"start_time"`
+	EndTime     *time.Time `json:"end_time" form:"end_time"`
+	UserRole    string     `json:"user_role"`
+	UserCallAPI uuid.UUID  `json:"user_call_api"`
+}
+type GetTotalOrderByBusinessResponse struct {
+	ContactID          uuid.UUID `json:"contact_id" gorm:"null"`
+	TotalQuantityOrder int       `json:"total_quantity_order" gorm:"null"`
+	TotalAmountOrder   float64   `json:"total_amount_order" gorm:"null"`
 }

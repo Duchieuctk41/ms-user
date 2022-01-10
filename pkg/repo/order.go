@@ -334,7 +334,7 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	tx = tx.Count(&total)
 
 	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Order("order_item.created_at DESC")
+		return db.Where("order_item.deleted_at is null").Order("order_item.created_at asc")
 	}).Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data)
 
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
@@ -384,6 +384,8 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 			order.OrderItem[i].ProductImages = v.ProductImages
 			order.OrderItem[i].SkuCode = v.SkuCode
 			order.OrderItem[i].UOM = v.UOM
+			order.OrderItem[i].Price = v.Price
+			order.OrderItem[i].HistoricalCost = v.HistoricalCost
 		} else {
 			// If not exist in map -> delete
 			tNow := time.Now()
@@ -399,6 +401,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 
 	for skuID, item := range mapItem {
 		if _, ok := tMap[skuID]; !ok {
+			item.OrderID = order.ID
 			order.OrderItem = append(order.OrderItem, item)
 			// Thêm số lượng khách đang đặt bên stock (+ quantity)
 			stocks = append(stocks, model.StockRequest{
@@ -409,12 +412,18 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	}
 
 	for _, orderItem := range order.OrderItem {
-		if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
-			return model.Order{}, nil, err
+		if orderItem.ID == uuid.Nil {
+			if err = tx.Model(&model.OrderItem{}).Create(&orderItem).Error; err != nil {
+				return model.Order{}, nil, err
+			}
+		} else {
+			if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
+				return model.Order{}, nil, err
+			}
 		}
 	}
 
-	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Updates(&order).Error; err != nil {
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
 		return model.Order{}, nil, err
 	}
 
@@ -622,4 +631,29 @@ func (r *RepoPG) CountOrder(ctx context.Context, creatorID uuid.UUID, tx *gorm.D
 	}
 
 	return int(total), nil
+}
+func (r *RepoPG) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error) {
+	query := ""
+	query += `select contact_id,
+					count(*) as total_quantity_order,
+					sum(grand_total) as total_amount_order
+				from orders o
+				where contact_id = ?
+				and business_id = ?
+				and state = 'complete'`
+	if req.StartTime != nil && req.EndTime != nil {
+		query += " AND updated_at BETWEEN ? AND ? "
+	}
+	query += "group by contact_id"
+	rs := []model.GetTotalOrderByBusinessResponse{}
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := tx.Raw(query, req.ContactID, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return rs, nil
+		}
+	} else {
+		if err := tx.Raw(query, req.ContactID, req.BusinessID).Scan(&rs).Error; err != nil {
+			return rs, nil
+		}
+	}
+	return rs, nil
 }

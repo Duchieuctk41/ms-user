@@ -16,7 +16,7 @@ type AppConfig struct {
 	EnableDB  string `env:"ENABLE_DB" envDefault:"true"`
 
 	MSBusinessManagement     string `env:"MS_BUSINESS_MANAGEMENT"  envDefault:"http://localhost:8012"`
-	MSProductManagement      string `env:"MS_PRODUCT_MANAGEMENT" envDefault:"http://localhost:8084"`
+	MSProductManagement      string `env:"MS_PRODUCT_MANAGEMENT" envDefault:"http://localhost:8094"`
 	MSUserManagement         string `env:"MS_USER_MANAGEMENT"  envDefault:"http://127.0.0.1:8088"`
 	MSPromotionManagement    string `env:"MS_PROMOTION_MANAGEMENT" envDefault:"http://localhost:8083"`
 	MSConsumer               string `env:"MS_CONSUMER" envDefault:"http://127.0.0.1:8012"`
@@ -25,7 +25,6 @@ type AppConfig struct {
 	MSNotificationManagement string `env:"MS_NOTIFICATION_MANAGEMENT" envDefault:"http://localhost:8083"`
 	MSMediaManagement        string `env:"MS_MEDIA_MANAGEMENT" envDefault:"http://localhost:8082"`
 	ApiKeySendinblue         string `env:"API_KEY_SENDINBLUE" envDefault:"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"`
-
 }
 
 var config AppConfig

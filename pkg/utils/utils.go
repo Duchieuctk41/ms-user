@@ -77,19 +77,63 @@ func CheckCanPickQuantity(userID string, req []model.OrderItem, mapItem map[stri
 	return tm.Data, nil
 }
 
-func GetProduct(skuIDs []string, businessID string) (res []model.Sku, err error) {
+func CheckCanPickQuantityV4(userID string, req []model.OrderItem, mapItem map[string]model.OrderItem) (res model.CheckValidOrderItemResponse, err error) {
+	// Update req quantity
+	var tReq []model.OrderItem
+	for _, v := range req {
+		if mapItem != nil {
+			if item, ok := mapItem[v.SkuID.String()]; ok {
+				v.Quantity = v.Quantity - item.Quantity
+			}
+		}
+		tReq = append(tReq, v)
+	}
+	header := make(map[string]string)
+	header["x-user-id"] = userID
+	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v4/check-valid-order-items", rest.Post, header, nil, tReq)
+	if err != nil {
+		// parsing error
+		tm := struct {
+			Message string `json:"message"`
+		}{}
+		if err = json.Unmarshal([]byte(body), &tm); err != nil {
+			return res, err
+		}
+		return res, fmt.Errorf(tm.Message)
+	}
+	tm := struct {
+		Data model.CheckValidOrderItemResponse `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		return res, err
+	}
+
+	// set quantity
+	for i, v := range tm.Data.ItemsInfo {
+		if mapItem != nil {
+			if _, ok := mapItem[v.Sku.ID.String()]; ok {
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+			}
+		}
+	}
+
+	return tm.Data, nil
+}
+
+func GetSkuDetail(skuIDs []string, businessID string) (res []model.SkuDetail, err error) {
 	tBD := struct {
 		ListSku    []string `json:"list_sku"`
 		BusinessID string   `json:"business_id"`
 	}{ListSku: skuIDs, BusinessID: businessID}
 
-	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/get-item-product-detail", rest.Post, nil, nil, tBD)
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/get-list-sku-detail", rest.Post, nil, nil, tBD)
 	if err != nil {
 		logrus.Errorf("Fail to GetProductInPo due to %v", err)
 		return res, fmt.Errorf("Error when get product in po info")
 	}
 	tmp := new(struct {
-		Data []model.Sku `json:"data"`
+		Data []model.SkuDetail `json:"data"`
 	})
 	if err = json.Unmarshal([]byte(body), &tmp); err != nil {
 		return res, err
