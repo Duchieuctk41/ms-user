@@ -200,8 +200,8 @@ type CountOrderState struct {
 	CountComplete       int     `json:"count_complete"`
 	CountCancel         int     `json:"count_cancel"`
 	Revenue             float64 `json:"revenue"`
+	Profit              float64 `json:"profit"`
 }
-
 type OrderByContactParam struct {
 	PageSize   int        `json:"page_size" form:"page_size"`
 	Page       int        `json:"page" form:"page"`
