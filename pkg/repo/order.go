@@ -492,6 +492,14 @@ func (r *RepoPG) CountOrderState(ctx context.Context, req model.RevenueBusinessP
 		return model.CountOrderState{}, err
 	}
 
+	orverviewPandLRequest := model.OrverviewPandLRequest{
+		StartTime:  req.DateFrom,
+		EndTime:    req.DateTo,
+		BusinessID: &req.BusinessID,
+	}
+	var overviewPandL model.OverviewPandLResponse
+	overviewPandL, err = r.OverviewCost(ctx, orverviewPandLRequest, overviewPandL, nil)
+	rs.Profit = revenue.SumGrandTotal - overviewPandL.CostTotal
 	rs.Revenue = revenue.SumGrandTotal
 	return rs, nil
 }
