@@ -84,6 +84,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 						order_item.order_id = orders.id
 						and orders.state = 'complete'
 						and orders.business_id = ? `, req.BusinessID).
+			Where("order_item.deleted_at is null").
 			Group("business_id, sku_id ,product_name ,sku_name")
 	}
 
