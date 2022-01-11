@@ -89,6 +89,7 @@ const (
 
 const (
 	ORDER_COMPLETED      = "order_completed"
+	ORDER_CANCELLED      = "order_cancelled"
 	FAST_ORDER_COMPLETED = "fast_order_completed"
 )
 
