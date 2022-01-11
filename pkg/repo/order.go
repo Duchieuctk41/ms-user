@@ -626,7 +626,7 @@ func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQua
 	return rs, nil
 }
 
-func (r *RepoPG) CountOrder(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error) {
+func (r *RepoPG) CountOrderForTutorial(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error) {
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
@@ -634,7 +634,7 @@ func (r *RepoPG) CountOrder(ctx context.Context, creatorID uuid.UUID, tx *gorm.D
 	}
 
 	var total int64 = 0
-	if err = tx.Model(model.Order{}).Where("creator_id = ?", creatorID).Count(&total).Error; err != nil {
+	if err = tx.Model(model.Order{}).Where("creator_id = ?", creatorID).Unscoped().Count(&total).Error; err != nil {
 		return 0, err
 	}
 

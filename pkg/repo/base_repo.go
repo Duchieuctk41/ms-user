@@ -58,7 +58,7 @@ type PGInterface interface {
 	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error)
 
 	// tutorial flow
-	CountOrder(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error)
+	CountOrderForTutorial(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error)
 }
 
 type BaseModel struct {

@@ -187,11 +187,16 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		req.ListOrderItem = append(req.ListOrderItem, v)
 	}
 
+	// check listOrderItem empty
+	if len(req.ListOrderItem) == 0 {
+		log.Error("ListOrderItem mustn't empty")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
 	// Check valid order item
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-
 	rCheck, err := utils.CheckCanPickQuantity(req.UserID.String(), req.ListOrderItem, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
@@ -302,7 +307,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		OrderedGrandTotal: orderGrandTotal,
 		GrandTotal:        grandTotal,
 		State:             req.State,
-		PaymentMethod:     req.PaymentMethod,
+		PaymentMethod:     strings.ToLower(req.PaymentMethod),
 		DeliveryMethod:    *req.DeliveryMethod,
 		Note:              req.Note,
 		CreateMethod:      req.CreateMethod,
@@ -2032,6 +2037,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		req.ListOrderItem = append(req.ListOrderItem, v)
 	}
 
+	// check listOrderItem empty
+	if len(req.ListOrderItem) == 0 {
+		log.Error("ListOrderItem mustn't empty")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
 	// Check valid order item
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
@@ -2110,7 +2121,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		OrderedGrandTotal: orderGrandTotal,
 		GrandTotal:        grandTotal,
 		State:             req.State,
-		PaymentMethod:     req.PaymentMethod,
+		PaymentMethod:     strings.ToLower(req.PaymentMethod),
 		DeliveryMethod:    *req.DeliveryMethod,
 		Note:              req.Note,
 		CreateMethod:      req.CreateMethod,
@@ -2317,7 +2328,7 @@ func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.Co
 func (s *OrderService) CheckFirstCreate(ctx context.Context, creatorID uuid.UUID) {
 	log := logger.WithCtx(ctx, "OrderService.CheckFirstCreate")
 
-	count, err := s.repo.CountOrder(ctx, creatorID, nil)
+	count, err := s.repo.CountOrderForTutorial(ctx, creatorID, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when count order by creator_id")
 		return
