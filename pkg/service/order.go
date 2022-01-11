@@ -1084,7 +1084,7 @@ func (s *OrderService) GetDetailBusiness(ctx context.Context, businessID string)
 	})
 	if err = json.Unmarshal([]byte(bodyBusiness), &tmpResBusiness); err != nil {
 		log.WithError(err).Error("Cannot unmarshal BusinessMainInfo")
-		return res, ginext.NewError(http.StatusBadRequest, "Error when Remove")
+		return res, ginext.NewError(http.StatusBadRequest, "Cannot unmarshal BusinessMainInfo")
 	}
 	return tmpResBusiness.Data, nil
 }
