@@ -93,6 +93,9 @@ const (
 	FAST_ORDER_COMPLETED = "fast_order_completed"
 )
 
+const PO_IN = "in"
+const PO_OUT = "out"
+
 // type ms-chat
 const (
 	NOTI_TYPE_UPDATE_ORDER = "update_order"

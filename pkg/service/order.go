@@ -547,7 +547,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 		}
 		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
-		go s.CreatePo(context.Background(), order, checkCompleted, "out")
+		go s.CreatePo(context.Background(), order, checkCompleted, utils.PO_OUT)
 		//if err = s.CreatePo(ctx, order, checkCompleted); err != nil {
 		//	log.WithError(err).Errorf("Error when call func CreatePo: " + err.Error())
 		//}
@@ -1231,7 +1231,7 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 		//TODO--------Update Product sold_quantity -------------------------------------------------------------START
 		PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY_CANCEL)
 		//TODO--------Update Product sold_quantity -------------------------------------------------------------END
-		go s.CreatePo(context.Background(), order, utils.ORDER_CANCELLED, "in")
+		go s.CreatePo(context.Background(), order, utils.ORDER_CANCELLED, utils.PO_IN)
 		break
 	default:
 		break
