@@ -76,8 +76,8 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 			log.WithError(err).Error("GetOneOrder not found")
 			return res, nil
 		} else {
-			log.WithError(err).Error("Error GetOneOrder")
-			return res, err
+			log.WithError(err).Error("Record not found")
+			return res, ginext.NewError(http.StatusBadRequest, err.Error())
 		}
 	}
 	// check permission
@@ -382,7 +382,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	go s.CountCustomer(ctx, order)
 	go s.OrderProcessing(ctx, order, debit, checkCompleted)
 	go s.UpdateContactUser(ctx, order, order.CreatorID)
-	go s.CheckFirstCreate(context.Background(), order.CreatorID) // tutorial flow
+	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
 
 	// push consumer to complete order mission
 	go CompletedOrderMission(ctx, order)
@@ -1084,7 +1084,7 @@ func (s *OrderService) GetDetailBusiness(ctx context.Context, businessID string)
 	})
 	if err = json.Unmarshal([]byte(bodyBusiness), &tmpResBusiness); err != nil {
 		log.WithError(err).Error("Cannot unmarshal BusinessMainInfo")
-		return res, err
+		return res, ginext.NewError(http.StatusBadRequest, "Error when Remove")
 	}
 	return tmpResBusiness.Data, nil
 }
@@ -1497,12 +1497,13 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	orders, err := s.repo.GetAllOrderForExport(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Error("Error GetAllOrderForExport")
-		return nil, err
+		return nil, ginext.NewError(http.StatusBadRequest, "Error GetAllOrderForExport")
+
 	}
 
 	if len(orders) == 0 {
 		log.WithError(err).Error("Record not found while GetAllOrderForExport")
-		return nil, err
+		return nil, ginext.NewError(http.StatusBadRequest, "Record not found while GetAllOrderForExport")
 	}
 
 	// get business info
@@ -2119,7 +2120,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		math.Round(req.PromotionDiscount) != math.Round(promotionDiscount) ||
 		math.Round(req.DeliveryFee) != math.Round(deliveryFee) ||
 		math.Round(req.GrandTotal) != math.Round(grandTotal) {
-		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền không hợp lệ")
 	}
 
 	order := model.Order{
@@ -2206,7 +2207,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessing(context.Background(), order, debit, checkCompleted)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
-	go s.CheckFirstCreate(context.Background(), order.CreatorID) // tutorial flow
+	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
 
 	// push consumer to complete order mission
 	go CompletedOrderMission(context.Background(), order)
@@ -2335,8 +2336,8 @@ func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.Co
 }
 
 // check first create then push consumer update completed tutorial
-func (s *OrderService) CheckFirstCreate(ctx context.Context, creatorID uuid.UUID) {
-	log := logger.WithCtx(ctx, "OrderService.CheckFirstCreate")
+func (s *OrderService) CheckCompletedTutorialCreate(ctx context.Context, creatorID uuid.UUID) {
+	log := logger.WithCtx(ctx, "OrderService.CheckCompletedTutorialCreate")
 
 	count, err := s.repo.CountOrderForTutorial(ctx, creatorID, nil)
 	if err != nil {

@@ -38,7 +38,6 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 	r.MustBind(&req)
 
 	req.UserID = userID
-	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
 
 	// check permission
 	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
@@ -58,7 +57,7 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 	rs, err := h.service.GetOneOrder(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Error("Fail to GetOneOrder")
-		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+		return nil, err
 	}
 
 	return &ginext.Response{
@@ -223,7 +222,7 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 	rs, err := h.service.GetContactDelivering(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to get contact have order due to %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+		return nil, err
 	}
 
 	return &ginext.Response{
@@ -270,7 +269,7 @@ func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, er
 	rs, err := h.service.CreateOrder(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to create order %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to create order: "+err.Error())
+		return nil, err
 	}
 
 	return &ginext.Response{
@@ -313,7 +312,7 @@ func (h *OrderHandlers) UpdateOrder(r *ginext.Request) (*ginext.Response, error)
 	rs, err := h.service.UpdateOrder(r.Context(), req, role)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to update order: %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to update order: "+err.Error())
+		return nil, err
 	}
 
 	return &ginext.Response{
@@ -352,7 +351,7 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to update detail order: "+err.Error())
+		return nil, err
 	}
 	return &ginext.Response{
 		Code: http.StatusOK,
@@ -392,7 +391,7 @@ func (h *OrderHandlers) ExportOrderReport(r *ginext.Request) (*ginext.Response, 
 	res, err := h.service.ExportOrderReport(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to ExportOrderReport: %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to ExportOrderReport")
+		return nil, err
 	}
 
 	return &ginext.Response{
@@ -490,7 +489,7 @@ func (h *OrderHandlers) CreateOrderV2(r *ginext.Request) (*ginext.Response, erro
 	rs, err := h.service.CreateOrderV2(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to create order %v", err.Error())
-		return nil, ginext.NewError(http.StatusBadRequest, "Fail to create order: "+err.Error())
+		return nil, err
 	}
 
 	return &ginext.Response{
