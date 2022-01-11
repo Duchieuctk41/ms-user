@@ -2328,7 +2328,7 @@ func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.Co
 func (s *OrderService) CheckFirstCreate(ctx context.Context, creatorID uuid.UUID) {
 	log := logger.WithCtx(ctx, "OrderService.CheckFirstCreate")
 
-	count, err := s.repo.CountOrder(ctx, creatorID, nil)
+	count, err := s.repo.CountOrderForTutorial(ctx, creatorID, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when count order by creator_id")
 		return
