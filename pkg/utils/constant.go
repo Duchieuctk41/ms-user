@@ -89,8 +89,12 @@ const (
 
 const (
 	ORDER_COMPLETED      = "order_completed"
+	ORDER_CANCELLED      = "order_cancelled"
 	FAST_ORDER_COMPLETED = "fast_order_completed"
 )
+
+const PO_IN = "in"
+const PO_OUT = "out"
 
 // type ms-chat
 const (

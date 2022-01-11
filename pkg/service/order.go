@@ -552,7 +552,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			}
 		}
 		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
-		go s.CreatePo(context.Background(), order, checkCompleted)
+		go s.CreatePo(context.Background(), order, checkCompleted, utils.PO_OUT)
 		//if err = s.CreatePo(ctx, order, checkCompleted); err != nil {
 		//	log.WithError(err).Errorf("Error when call func CreatePo: " + err.Error())
 		//}
@@ -720,11 +720,11 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 	return nil
 }
 
-func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCompleted string) (err error) {
+func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCompleted string, poType string) (err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreatePo")
 	// Make data for push consumer
 	reqCreatePo := model.PurchaseOrderRequest{
-		PoType:        "out",
+		PoType:        poType,
 		Note:          "Đơn hàng " + order.OrderNumber,
 		ContactID:     order.ContactID,
 		TotalDiscount: order.OtherDiscount,
@@ -1236,6 +1236,7 @@ func (s *OrderService) OrderCancelProcessing(ctx context.Context, order model.Or
 		//TODO--------Update Product sold_quantity -------------------------------------------------------------START
 		PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY_CANCEL)
 		//TODO--------Update Product sold_quantity -------------------------------------------------------------END
+		go s.CreatePo(context.Background(), order, utils.ORDER_CANCELLED, utils.PO_IN)
 		break
 	default:
 		break
