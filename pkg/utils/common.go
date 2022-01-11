@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,7 +32,7 @@ func CheckPermission(ctx context.Context, userID string, businessID string, role
 	// Check User has this business ?
 	if len(userHasBusiness) == 0 {
 		log.WithError(err).Error("Fail to get user has business")
-		return err
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
 	}
 
 	return nil
@@ -59,7 +61,7 @@ func CheckPermissionV2(ctx context.Context, userRole string, userID uuid.UUID, b
 
 	if len(userHasBusiness) == 0 {
 		log.Errorf("Fail to get user has business due to %v", err)
-		return err
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
 	}
 
 	return nil
