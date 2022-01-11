@@ -1354,12 +1354,12 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 
 		// Check promotion discount
 		if req.PromotionDiscount != nil && math.Round(*req.PromotionDiscount) != math.Round(order.PromotionDiscount) {
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn "+err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
 		}
 
 		// Check order grand total
 		if math.Round(orderGrandTotal) != math.Round(*req.OrderedGrandTotal) {
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ "+err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
 		}
 
 		// Check valid delivery fee
@@ -1367,7 +1367,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			switch *req.DeliveryMethod {
 			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
 				if req.DeliveryFee != nil && *req.DeliveryFee > 0 {
-					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy "+err.Error())
+					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
 				}
 				deliveryFee = 0
 				break
@@ -1379,13 +1379,18 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			}
 		}
 
+		// Check other discount
+		if *req.OtherDiscount < 0 || orderGrandTotal-order.PromotionDiscount-*req.OtherDiscount < 0 {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không hợp lệ")
+		}
+
 		// Check grand total
 		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - *req.OtherDiscount
 		if grandTotal < 0 {
 			grandTotal = 0
 		}
 		if math.Round(grandTotal) != math.Round(*req.GrandTotal) {
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ "+err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
 		}
 	}
 
@@ -2072,10 +2077,10 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		}
 	}
 
-	// Check valid grand total
-	if req.OtherDiscount > (req.OrderedGrandTotal + req.DeliveryFee - req.PromotionDiscount) {
-		log.WithError(err).Error("Error when get check valid delivery fee")
-		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không được lớn hơn số tiền phải trả")
+	// Check valid Other discount
+	if req.OtherDiscount < 0 || orderGrandTotal < req.OtherDiscount {
+		log.WithField("other discount", req.OtherDiscount).Error("Error when get check valid delivery fee")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không hợp lệ")
 	}
 
 	// Check Promotion Code
@@ -2085,7 +2090,11 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
 			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
 		}
-		promotionDiscount = promotion.ValueDiscount
+		if promotion.ValueDiscount + req.OtherDiscount > orderGrandTotal {
+			promotionDiscount = orderGrandTotal - req.OtherDiscount
+		} else {
+			promotionDiscount = promotion.ValueDiscount
+		}
 	}
 
 	grandTotal = orderGrandTotal + deliveryFee - promotionDiscount - req.OtherDiscount
@@ -2096,7 +2105,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	// Check số tiền request lên và số tiền trong db có khớp
 	if math.Round(req.OrderedGrandTotal) != math.Round(orderGrandTotal) ||
 		math.Round(req.PromotionDiscount) != math.Round(promotionDiscount) ||
-		math.Round(req.DeliveryFee) != deliveryFee ||
+		math.Round(req.DeliveryFee) != math.Round(deliveryFee) ||
 		math.Round(req.GrandTotal) != math.Round(grandTotal) {
 		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền không hợp lệ")
 	}
@@ -2196,7 +2205,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 //============================== call another service ===================================//
 
 func (s *OrderService) GetProduct(ctx context.Context, productID string) (model.Product, error) {
-	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrder")
+	log := logger.WithCtx(ctx, "OrderService.GetProduct")
 
 	bodyData, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/product/"+productID, rest.Get, nil, nil, nil)
 	if err != nil {
