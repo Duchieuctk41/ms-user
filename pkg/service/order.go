@@ -1138,7 +1138,16 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckCanPickQuantity: "+err.Error())
 		} else {
+			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+			}
+			if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
+			}
 			if rCheck.Status != utils.STATUS_SUCCESS {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 				return rCheck, nil
 			}
 		}
@@ -1327,7 +1336,16 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		} else {
+			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+			}
+			if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
+			}
 			if rCheck.Status != utils.STATUS_SUCCESS {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 				return rCheck, nil
 			}
 		}
@@ -2067,7 +2085,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
 		}
-		if rCheck.Status == utils.STATUS_SUCCESS {
+		if rCheck.Status != utils.STATUS_SUCCESS {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return rCheck, nil
 		}
