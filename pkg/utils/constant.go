@@ -5,7 +5,8 @@ const ADMIN_ROLE = 64
 // Status for check valid order item
 const (
 	STATUS_SUCCESS      = "success"
-	STATUS_OUT_OF_STOCK = "out_of_stock"
+	STATUS_SKU_NOT_FOUND = "sku_not_found"
+	STATUS_QUANTITY_EMPTY = "quantity_empty"
 )
 
 const (

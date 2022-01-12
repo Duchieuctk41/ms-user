@@ -2054,16 +2054,25 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, nil)
+
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil)
 	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
-		if rCheck.Status != utils.STATUS_SUCCESS {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
+		}
+		if rCheck.Status == utils.STATUS_SUCCESS{
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return rCheck, nil
 		}
 	}
-
 	mapSku := make(map[string]model.CheckValidStockResponse)
 	for _, v := range rCheck.ItemsInfo {
 		mapSku[v.ID.String()] = v
