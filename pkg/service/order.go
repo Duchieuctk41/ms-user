@@ -1134,7 +1134,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	preOrderState := order.State
 
 	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
-		if rCheck, err := utils.CheckCanPickQuantityV4(order.CreatorID.String(), order.OrderItem, nil, order.CreateMethod); err != nil {
+		if rCheck, err := utils.CheckCanPickQuantityV4(order.CreatorID.String(), order.OrderItem, order.BusinessID.String(), nil, order.CreateMethod); err != nil {
 			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckCanPickQuantity: "+err.Error())
 		} else {
@@ -1322,7 +1322,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, req.BusinessID.String(), mapItemOld, order.CreateMethod)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -2054,16 +2054,24 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, nil, req.CreateMethod)
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
 	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	} else {
-		if rCheck.Status != utils.STATUS_SUCCESS {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
+		}
+		if rCheck.Status == utils.STATUS_SUCCESS {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return rCheck, nil
 		}
 	}
-
 	mapSku := make(map[string]model.CheckValidStockResponse)
 	for _, v := range rCheck.ItemsInfo {
 		mapSku[v.ID.String()] = v
