@@ -1129,7 +1129,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	preOrderState := order.State
 
 	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
-		if rCheck, err := utils.CheckCanPickQuantity(order.CreatorID.String(), order.OrderItem, nil); err != nil {
+		if rCheck, err := utils.CheckCanPickQuantityV4(order.CreatorID.String(), order.OrderItem, nil, order.CreateMethod); err != nil {
 			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckCanPickQuantity: "+err.Error())
 		} else {
@@ -1316,7 +1316,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantity(req.UpdaterID.String(), req.ListOrderItem, mapItemOld)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, mapItemOld, order.CreateMethod)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -2041,7 +2041,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
 
 	// check can pick quantity
-	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, nil)
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, nil, req.CreateMethod)
 	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
