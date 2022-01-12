@@ -80,10 +80,10 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 						sum(order_item.historical_cost * order_item.quantity) as total_historical_cost,
 						sum(order_item.price * order_item.quantity)-sum(order_item.historical_cost * order_item.quantity) as profit`)).
 			Table("order_item").
-			Joins(`inner join orders on
+			Joins(utils.RemoveSpace(`inner join orders on
 						order_item.order_id = orders.id
 						and orders.state = 'complete'
-						and orders.business_id = ? `, req.BusinessID).
+						and orders.business_id = ? `), req.BusinessID).
 			Where("order_item.deleted_at is null").
 			Group("business_id, sku_id ,product_name ,sku_name")
 	}
@@ -108,7 +108,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	if err := tx.Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data).Error; err != nil {
 		return rs, err
 	}
-	countQuery := `select count(*) from ( select count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID' `
+	countQuery := `select count(*) from ( select count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID' and order_item.deleted_at is null `
 	if req.StartTime != nil && req.EndTime != nil {
 		countQuery += " AND orders.updated_at BETWEEN 'StartTime' AND 'EndTime' "
 		countQuery = strings.ReplaceAll(countQuery, "StartTime", req.StartTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
@@ -117,7 +117,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	countQuery += `GROUP BY business_id, sku_id, product_name, sku_name) as b `
 
 	countQuery = strings.ReplaceAll(countQuery, "BusinessID", *req.BusinessID)
-	if rs.Meta, err = r.GetPaginationInfo(countQuery, tx, int(total), page, pageSize); err != nil {
+	if rs.Meta, err = r.GetPaginationInfo(utils.RemoveSpace(countQuery), tx, int(total), page, pageSize); err != nil {
 		return rs, err
 	}
 
@@ -130,6 +130,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 				inner join orders o on
 					oi.order_id = o.id
 					and o.state = 'complete'
+					and oi.deleted_at is null
 					and o.business_id = ? `)
 	if req.StartTime != nil && req.EndTime != nil {
 		queryTotal += " AND o.updated_at BETWEEN ? AND ? "
