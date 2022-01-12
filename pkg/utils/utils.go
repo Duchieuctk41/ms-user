@@ -77,7 +77,7 @@ func CheckCanPickQuantity(userID string, req []model.OrderItem, mapItem map[stri
 	return tm.Data, nil
 }
 
-func CheckCanPickQuantityV4(userID string, req []model.OrderItem,businessID string, mapItem map[string]model.OrderItem) (res model.CheckValidOrderItemResponse, err error) {
+func CheckCanPickQuantityV4(userID string, req []model.OrderItem,businessID string, mapItem map[string]model.OrderItem, createMethod string) (res model.CheckValidOrderItemResponse, err error) {
 	// Update req quantity
 	var tReq []model.OrderItem
 	for _, v := range req {
@@ -91,7 +91,8 @@ func CheckCanPickQuantityV4(userID string, req []model.OrderItem,businessID stri
 	header := make(map[string]string)
 	header["x-user-id"] = userID
 	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
-	header["business-id"] = businessID
+	header["x-business-id"] = businessID
+	header["x-create-method"] = createMethod
 	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v4/check-valid-order-items", rest.Post, header, nil, tReq)
 	if err != nil {
 		// parsing error
