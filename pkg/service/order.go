@@ -2103,7 +2103,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
 			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
 		}
-		if promotion.ValueDiscount + req.OtherDiscount > orderGrandTotal {
+		if promotion.ValueDiscount+req.OtherDiscount > orderGrandTotal {
 			promotionDiscount = orderGrandTotal - req.OtherDiscount
 		} else {
 			promotionDiscount = promotion.ValueDiscount
@@ -2338,22 +2338,15 @@ func (s *OrderService) CountDeliveringQuantity(ctx context.Context, req model.Co
 // check first create then push consumer update completed tutorial
 func (s *OrderService) CheckCompletedTutorialCreate(ctx context.Context, creatorID uuid.UUID) {
 	log := logger.WithCtx(ctx, "OrderService.CheckCompletedTutorialCreate")
-
-	count, err := s.repo.CountOrderForTutorial(ctx, creatorID, nil)
-	if err != nil {
-		log.WithError(err).Error("Error when count order by creator_id")
-		return
-	}
+	log.Info("CheckCompletedTutorialCreate")
 
 	userGuideRequest := model.UserGuideRequest{
 		GuideKey: utils.TUTORIAL_CREATE_ORDER,
 		State:    utils.COMPLETED_TUTORIAL,
 		UserID:   creatorID.String(),
 	}
-	if count == 1 {
-		PushConsumer(context.Background(), userGuideRequest, utils.TOPIC_SET_USER_GUIDE)
-	}
 
+	PushConsumer(context.Background(), userGuideRequest, utils.TOPIC_SET_USER_GUIDE)
 	return
 }
 
