@@ -91,6 +91,7 @@ func CheckCanPickQuantityV4(userID string, req []model.OrderItem, mapItem map[st
 	header := make(map[string]string)
 	header["x-user-id"] = userID
 	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+	header["x-create-method"] = SELLER_CREATE_METHOD
 	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v4/check-valid-order-items", rest.Post, header, nil, tReq)
 	if err != nil {
 		// parsing error
