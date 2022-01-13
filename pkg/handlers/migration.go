@@ -17,15 +17,13 @@ func NewMigrationHandler(db *gorm.DB) *MigrationHandler {
 func (h *MigrationHandler) Migrate(ctx *gin.Context) {
 
 	_ = h.db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
-	_ = h.db.Exec(`DROP type IF EXISTS order_item;`)
-	_ = h.db.Exec(`DROP type IF EXISTS orders;`)
-
 
 	models := []interface{}{
 		&model.Order{},
 		&model.OrderItem{},
 		&model.OrderTracking{},
 		&model.OrderEcom{},
+		&model.History{},
 	}
 	for _, m := range models {
 		err := h.db.AutoMigrate(m)

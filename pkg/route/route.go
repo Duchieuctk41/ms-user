@@ -33,7 +33,9 @@ func NewService() *Service {
 	}
 	repoPG := repo.NewPGRepo(db)
 
-	oderService := service2.NewOrderService(repoPG)
+	historyService := service2.NewHistoryService(repoPG)
+
+	oderService := service2.NewOrderService(repoPG, historyService)
 	ProfitAndLossService := service2.NewProfitAndLossService(repoPG)
 	//orderHandle := handlers.NewPoCategoryHandlers(oderService)
 	ProfitAndLossHandle := handlers.NewProfitAndLossHandlers(ProfitAndLossService)
@@ -41,6 +43,7 @@ func NewService() *Service {
 
 	orderTrackingService := service2.NewOrderTrackingService(repoPG)
 	orderTrackingHandle := handlers.NewOrderTrackingHandlers(orderTrackingService)
+
 
 	v1Api := s.Router.Group("/api/v1")
 	v2Api := s.Router.Group("/api/v2")
