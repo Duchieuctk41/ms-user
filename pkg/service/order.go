@@ -36,11 +36,12 @@ import (
 )
 
 type OrderService struct {
-	repo repo.PGInterface
+	repo           repo.PGInterface
+	historyService HistoryServiceInterface
 }
 
-func NewOrderService(repo repo.PGInterface) OrderServiceInterface {
-	return &OrderService{repo: repo}
+func NewOrderService(repo repo.PGInterface, historyService HistoryServiceInterface) OrderServiceInterface {
+	return &OrderService{repo: repo, historyService: historyService}
 }
 
 type OrderServiceInterface interface {
@@ -1136,15 +1137,11 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
 		if rCheck, err := utils.CheckCanPickQuantityV4(order.CreatorID.String(), order.OrderItem, order.BusinessID.String(), nil, order.CreateMethod); err != nil {
 			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, "Error when CheckCanPickQuantity: "+err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
 		} else {
 			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
 				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
-			}
-			if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
-				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
-				return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
 			}
 			if rCheck.Status != utils.STATUS_SUCCESS {
 				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
@@ -1331,18 +1328,14 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, req.BusinessID.String(), mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
 		} else {
 			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
 				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
-			}
-			if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
-				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
-				return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
 			}
 			if rCheck.Status != utils.STATUS_SUCCESS {
 				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
@@ -2075,15 +2068,11 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
 	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
 	} else {
 		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
-		}
-		if rCheck.Status == utils.STATUS_QUANTITY_EMPTY {
-			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
-			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số luợng sản phẩm phải lớn hơn 0")
 		}
 		if rCheck.Status != utils.STATUS_SUCCESS {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
@@ -2229,11 +2218,32 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		debit = *req.Debit
 	}
 
+	dataOrder, err := json.Marshal(order)
+	if err != nil {
+		log.WithError(err).Error("Error when parse buyerInfo")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	// log history
+	history := model.History{
+		BaseModel: model.BaseModel{
+			CreatorID: req.UserID,
+		},
+		ObjectID:    order.ID,
+		ObjectTable: utils.TABLE_ORDER,
+		Action:      utils.ACTION_CREATE,
+		Description: order.CreateMethod + " create order",
+		Worker:      req.UserID.String(),
+	}
+	history.Data.RawMessage = dataOrder
+
 	tx.Commit()
+
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessing(context.Background(), order, debit, checkCompleted)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
 	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
+	go s.historyService.LogHistory(context.Background(), history)
 
 	// push consumer to complete order mission
 	go CompletedOrderMission(context.Background(), order)

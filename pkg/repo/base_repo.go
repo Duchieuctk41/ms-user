@@ -59,6 +59,9 @@ type PGInterface interface {
 
 	// tutorial flow
 	CountOrderForTutorial(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error)
+
+	// log history
+	LogHistory(ctx context.Context, history model.History, tx *gorm.DB) (rs model.History, err error)
 }
 
 type BaseModel struct {
