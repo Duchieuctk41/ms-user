@@ -17,11 +17,6 @@ func NewMigrationHandler(db *gorm.DB) *MigrationHandler {
 func (h *MigrationHandler) Migrate(ctx *gin.Context) {
 
 	_ = h.db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
-	_ = h.db.Exec(`DROP type IF EXISTS order_item;`)
-	_ = h.db.Exec(`DROP type IF EXISTS orders;`)
-	_ = h.db.Exec(`DROP type IF EXISTS order_tracking;`)
-	_ = h.db.Exec(`DROP type IF EXISTS order_ecom;`)
-	_ = h.db.Exec(`DROP type IF EXISTS history;`)
 
 	models := []interface{}{
 		&model.Order{},
