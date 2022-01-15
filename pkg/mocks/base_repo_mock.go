@@ -36,7 +36,7 @@ func (m *MockPGInterface) GetCountQuantityInOrder(ctx context.Context, req model
 	panic("implement me")
 }
 
-func (m *MockPGInterface) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error) {
+func (m *MockPGInterface) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) (rs []model.GetTotalOrderByBusinessResponse,err error) {
 	panic("implement me")
 }
 
