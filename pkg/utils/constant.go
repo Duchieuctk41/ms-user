@@ -110,12 +110,14 @@ const (
 
 const (
 	TABLE_ORDER = "order"
-	TABLE_ORDER_DETAIL = "order_item"
+	TABLE_ORDER_ITEM = "order_item"
 	TABLE_ORDER_ECOM = "order_ecom"
 )
 
 const (
-	ACTION_CREATE = "create"
-	ACTION_UPDATE = "update"
+	ACTION_CREATE_ORDER = "action create order"
+	ACTION_CREATE_ORDER_ITEM = "action create order item"
+	ACTION_UPDATE_DETAIL_ORDER = "action update detail order"
+	ACTION_UPDATE_ORDER = "action update order"
 	ACTION_DELETE = "delete"
 )

@@ -205,8 +205,8 @@ type CountOrderState struct {
 type OrderByContactParam struct {
 	PageSize   int        `json:"page_size" form:"page_size"`
 	Page       int        `json:"page" form:"page"`
-	StartTime  *time.Time `json:"start_time" form:"start_time"`
-	EndTime    *time.Time `json:"end_time" form:"end_time"`
+	StartTime  *time.Time `json:"start_time,omitempty" form:"start_time"`
+	EndTime    *time.Time `json:"end_time,omitempty" form:"end_time"`
 	ContactID  string     `json:"contact_id" form:"contact_id"`
 	BusinessID string     `json:"business_id" form:"business_id"`
 }

@@ -69,6 +69,12 @@ func UUID(req *uuid.UUID) uuid.UUID {
 	return *req
 }
 
+func DayTime(in *time.Time) time.Time {
+	if in == nil {
+		return time.Time{}
+	}
+	return *in
+}
 
 //------------------------------------POINTER------------------------------------------------------------------------------------
 

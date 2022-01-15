@@ -5,6 +5,7 @@ import (
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/repo"
 	"gitlab.com/goxp/cloud0/logger"
+	"gorm.io/gorm"
 )
 
 type HistoryService struct {
@@ -16,13 +17,13 @@ func NewHistoryService(repo repo.PGInterface) HistoryServiceInterface {
 }
 
 type HistoryServiceInterface interface {
-	LogHistory(ctx context.Context, req model.History)
+	LogHistory(ctx context.Context, req model.History, tx *gorm.DB)
 }
 
-func (s *HistoryService) LogHistory(ctx context.Context, req model.History) {
+func (s *HistoryService) LogHistory(ctx context.Context, req model.History, tx *gorm.DB) {
 	log := logger.WithCtx(ctx, "HistoryService.LogHistory")
 
-	_, err := s.repo.LogHistory(ctx, req, nil)
+	_, err := s.repo.LogHistory(ctx, req, tx)
 	if err != nil {
 		log.WithError(err).Error("Fail to log history")
 		return

@@ -348,7 +348,7 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 	}
 
 	// implement the business logic of UpdateDetailOrder
-	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
+  	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
 		return nil, err

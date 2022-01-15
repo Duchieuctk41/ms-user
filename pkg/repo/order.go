@@ -2,9 +2,12 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/utils"
+	"finan/ms-order-management/pkg/valid"
 	"fmt"
+	"gitlab.com/goxp/cloud0/logger"
 	"strings"
 	"time"
 
@@ -184,12 +187,14 @@ func (r *RepoPG) OverviewSales(ctx context.Context, req model.OrverviewPandLRequ
 		" FROM orders " +
 		" WHERE business_id = ? " +
 		"  AND state = 'complete' "
-	if req.StartTime != nil && req.EndTime != nil {
+
+	// 14/01/2021 - hieucn - fix compare nil time
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		query += " AND updated_at BETWEEN ? AND ? "
 	}
 	detailSales := model.DetailSales{}
 	rs := model.OverviewPandLResponse{}
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&detailSales).Error; err != nil {
 			return rs, err
 		}
@@ -209,11 +214,12 @@ func (r *RepoPG) DetailSales(ctx context.Context, req model.OrverviewPandLReques
 		" FROM orders " +
 		" WHERE business_id = ? " +
 		"  AND state = 'complete' "
-	if req.StartTime != nil && req.EndTime != nil {
+	// 14/01/2021 - hieucn - fix compare nil time
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		query += " AND updated_at BETWEEN ? AND ? "
 	}
 	rs := model.OverviewPandLResponse{}
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
 			return rs, err
 		}
@@ -239,7 +245,8 @@ func (r *RepoPG) GetListOrderEcom(ctx context.Context, req model.OrderEcomReques
 		tx = tx.Where("order_number ilike ? ", "%"+req.Search+"%")
 	}
 
-	if req.StartTime != nil && req.EndTime != nil {
+	// 14/01/2021 - hieucn - fix compare nil time
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		tx = tx.Where("created_time between ? and ?", req.StartTime, req.EndTime)
 	}
 
@@ -354,6 +361,8 @@ func (r *RepoPG) GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx 
 }
 
 func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrder")
+
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
@@ -416,10 +425,54 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 			if err = tx.Model(&model.OrderItem{}).Create(&orderItem).Error; err != nil {
 				return model.Order{}, nil, err
 			}
+
+			// log history order detail ver1
+			go func() {
+				history := model.History{
+					BaseModel: model.BaseModel{
+						CreatorID: orderItem.UpdaterID,
+					},
+					ObjectID:    orderItem.ID,
+					ObjectTable: utils.TABLE_ORDER_ITEM,
+					Action:      utils.ACTION_UPDATE_DETAIL_ORDER,
+					Description: "Create order_item in UpdateDetailOrder ver1",
+					Worker:      orderItem.CreatorID.String(),
+				}
+
+				dataOrder, err := json.Marshal(order)
+				if err != nil {
+					log.WithError(err).Error("Error when parse order in OrderDetail ver1")
+					return
+				}
+				history.Data.RawMessage = dataOrder
+				r.LogHistory(context.Background(), history, nil)
+			}()
 		} else {
 			if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
 				return model.Order{}, nil, err
 			}
+
+			// log history order detail ver1
+			go func() {
+				history := model.History{
+					BaseModel: model.BaseModel{
+						CreatorID: orderItem.UpdaterID,
+					},
+					ObjectID:    orderItem.ID,
+					ObjectTable: utils.TABLE_ORDER_ITEM,
+					Action:      utils.ACTION_UPDATE_DETAIL_ORDER,
+					Description: "Update order_item in UpdateDetailOrder ver1",
+					Worker:      orderItem.UpdaterID.String(),
+				}
+
+				dataOrder, err := json.Marshal(order)
+				if err != nil {
+					log.WithError(err).Error("Error when parse order in OrderDetail ver1")
+					return
+				}
+				history.Data.RawMessage = dataOrder
+				r.LogHistory(context.Background(), history, nil)
+			}()
 		}
 	}
 
@@ -524,7 +577,12 @@ func (r *RepoPG) GetOrderByContact(ctx context.Context, req model.OrderByContact
 		tx = tx.Where("contact_id = ? ", req.ContactID)
 	}
 
-	if req.StartTime != nil && req.EndTime != nil {
+	//if req.StartTime != nil && req.EndTime != nil {
+	//	tx = tx.Where(" created_at BETWEEN ? AND ? ", req.StartTime, req.EndTime)
+	//}
+
+	// 14/01/2021 - hieucn - fix compare nil time
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		tx = tx.Where(" created_at BETWEEN ? AND ? ", req.StartTime, req.EndTime)
 	}
 
@@ -550,7 +608,7 @@ func (r *RepoPG) GetAllOrderForExport(ctx context.Context, req model.ExportOrder
 	tx = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 		return db.Order("order_item.created_at ASC")
 	}).Where("business_id = ?", req.BusinessID)
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		tx = tx.Where("created_at >= ? AND created_at <= ?", req.StartTime, req.EndTime)
 	}
 	if req.PaymentMethod != nil {
@@ -649,12 +707,12 @@ func (r *RepoPG) GetSumOrderCompleteContact(ctx context.Context, req model.GetTo
 				where contact_id = ?
 				and business_id = ?
 				and state = 'complete'`
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		query += " AND updated_at BETWEEN ? AND ? "
 	}
 	query += "group by contact_id"
 	rs := []model.GetTotalOrderByBusinessResponse{}
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		if err := tx.Raw(query, req.ContactID, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
 			return rs, nil
 		}

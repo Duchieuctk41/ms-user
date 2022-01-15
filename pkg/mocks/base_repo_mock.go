@@ -20,6 +20,34 @@ type MockPGInterface struct {
 	recorder *MockPGInterfaceMockRecorder
 }
 
+func (m *MockPGInterface) OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) OverviewCost(ctx context.Context, req model.OrverviewPandLRequest, overviewPandL model.OverviewPandLResponse, tx *gorm.DB) (model.OverviewPandLResponse, error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) ([]model.GetTotalOrderByBusinessResponse, error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) CountOrderForTutorial(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error) {
+	panic("implement me")
+}
+
+func (m *MockPGInterface) LogHistory(ctx context.Context, history model.History, tx *gorm.DB) (rs model.History, err error) {
+	panic("implement me")
+}
+
 func (m *MockPGInterface) GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse, err error) {
 	panic("implement me")
 }

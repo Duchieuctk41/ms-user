@@ -4,6 +4,7 @@ import (
 	"context"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/utils"
+	"finan/ms-order-management/pkg/valid"
 	"strings"
 
 	"gorm.io/gorm"
@@ -43,11 +44,11 @@ func (r *RepoPG) OverviewCost(ctx context.Context, req model.OrverviewPandLReque
 									oi.order_id = o.id
 									and o.state = 'complete'
 									and o.business_id = ? `)
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		query += " AND o.updated_at BETWEEN ? AND ? "
 	}
 	rs := CountTotal{}
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
 			return model.OverviewPandLResponse{}, err
 		}
@@ -89,7 +90,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	}
 
 	var total int64
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		tx = tx.Where("orders.updated_at BETWEEN ? AND ?", req.StartTime, req.EndTime)
 	}
 	switch req.Sort {
@@ -109,7 +110,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 		return rs, err
 	}
 	countQuery := `select count(*) from ( select count(*) FROM order_item inner join orders on order_item.order_id = orders.id and orders.state = 'complete' and orders.business_id = 'BusinessID' and order_item.deleted_at is null `
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		countQuery += " AND orders.updated_at BETWEEN 'StartTime' AND 'EndTime' "
 		countQuery = strings.ReplaceAll(countQuery, "StartTime", req.StartTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
 		countQuery = strings.ReplaceAll(countQuery, "EndTime", req.EndTime.Format(utils.TIME_FORMAT_FOR_QUERRY))
@@ -132,12 +133,12 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 					and o.state = 'complete'
 					and oi.deleted_at is null
 					and o.business_id = ? `)
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		queryTotal += " AND o.updated_at BETWEEN ? AND ? "
 	}
 
 	totalProfit := model.TotalProfitAndLossResponse{}
-	if req.StartTime != nil && req.EndTime != nil {
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		//dateFromStr, dateToStr := utils.ConvertTimestampVN(req.DateFrom, req.DateTo)
 		if err := r.DB.Raw(queryTotal, req.BusinessID, req.StartTime, req.EndTime).Scan(&totalProfit).Error; err != nil {
 			return rs, err

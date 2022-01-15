@@ -1190,6 +1190,28 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		go s.UpdateStock(context.Background(), order, "order_cancelled_when_delivering")
 	}
 
+	// log history UpdateOrder ver1
+	go func() {
+		history := model.History{
+			BaseModel: model.BaseModel{
+				CreatorID: order.UpdaterID,
+			},
+			ObjectID:    order.ID,
+			ObjectTable: utils.TABLE_ORDER,
+			Action:      utils.ACTION_UPDATE_ORDER,
+			Description: "update order in UpdateOrder ver1",
+			Worker:      order.UpdaterID.String(),
+		}
+
+		dataOrder, err := json.Marshal(order)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order in UpdateOrder ver1")
+			return
+		}
+		history.Data.RawMessage = dataOrder
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
+
 	return res, err
 }
 
@@ -1435,7 +1457,6 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	}
 
 	req.BuyerInfo = nil
-
 	common.Sync(req, &order)
 
 	res, stocks, err := s.repo.UpdateDetailOrder(ctx, order, mapItem, nil)
@@ -1450,6 +1471,28 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 
 	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
 	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), utils.ORDER_STATE_UPDATE)
+
+	// log history order detail
+	go func() {
+		history := model.History{
+			BaseModel: model.BaseModel{
+				CreatorID: order.UpdaterID,
+			},
+			ObjectID:    order.ID,
+			ObjectTable: utils.TABLE_ORDER,
+			Action:      utils.ACTION_UPDATE_DETAIL_ORDER,
+			Description: " update order in UpdateDetailOrder ver1",
+			Worker:      order.UpdaterID.String(),
+		}
+
+		dataOrder, err := json.Marshal(order)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order in OrderDetail ver1")
+			return
+		}
+		history.Data.RawMessage = dataOrder
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
 
 	return res, nil
 }
@@ -2188,6 +2231,30 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	}
 	log.WithField("order created", order).Info("Finish createOrder")
 
+	// log history create order
+	go func() {
+		// order
+		history := model.History{
+			BaseModel: model.BaseModel{
+				CreatorID: order.CreatorID,
+			},
+			ObjectID:    order.ID,
+			ObjectTable: utils.TABLE_ORDER,
+			Action:      utils.ACTION_CREATE_ORDER,
+			Description: order.CreateMethod + " call create order in CreateOrderV2 ver2",
+			Worker:      order.CreatorID.String(),
+		}
+
+		dataOrder, err := json.Marshal(order)
+		if err != nil {
+			log.WithError(err).Error("Error when parse buyerInfo")
+			return
+		}
+		history.Data.RawMessage = dataOrder
+
+		s.historyService.LogHistory(ctx, history, tx)
+	}()
+
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
 		log.WithError(err).Error("Create order tracking error")
 		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
@@ -2211,6 +2278,29 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 		}
 		order.OrderItem = append(order.OrderItem, tm)
+
+		// log history create order_item
+		func() {
+			orderItemHistory := model.History{
+				BaseModel: model.BaseModel{
+					CreatorID: orderItem.CreatorID,
+				},
+				ObjectID:    orderItem.ID,
+				ObjectTable: utils.TABLE_ORDER_ITEM,
+				Action:      utils.ACTION_CREATE_ORDER_ITEM,
+				Description: order.CreateMethod + " call create order_item in CreateOrderV2 ver2",
+				Worker:      orderItem.CreatorID.String(),
+			}
+
+			dataOrderItem, err := json.Marshal(orderItem)
+			if err != nil {
+				log.WithError(err).Error("Error when parse buyerInfo")
+				return
+			}
+			orderItemHistory.Data.RawMessage = dataOrderItem
+
+			s.historyService.LogHistory(ctx, orderItemHistory, nil)
+		}()
 	}
 
 	debit := model.Debit{}
@@ -2218,32 +2308,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		debit = *req.Debit
 	}
 
-	dataOrder, err := json.Marshal(order)
-	if err != nil {
-		log.WithError(err).Error("Error when parse buyerInfo")
-		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
-	}
-
-	// log history
-	history := model.History{
-		BaseModel: model.BaseModel{
-			CreatorID: req.UserID,
-		},
-		ObjectID:    order.ID,
-		ObjectTable: utils.TABLE_ORDER,
-		Action:      utils.ACTION_CREATE,
-		Description: order.CreateMethod + " create order",
-		Worker:      req.UserID.String(),
-	}
-	history.Data.RawMessage = dataOrder
-
 	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessing(context.Background(), order, debit, checkCompleted)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
 	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
-	go s.historyService.LogHistory(context.Background(), history)
 
 	// push consumer to complete order mission
 	go CompletedOrderMission(context.Background(), order)
