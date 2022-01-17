@@ -1199,13 +1199,13 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 			ObjectID:    order.ID,
 			ObjectTable: utils.TABLE_ORDER,
 			Action:      utils.ACTION_UPDATE_ORDER,
-			Description: "update order in UpdateOrder ver1",
+			Description: utils.ACTION_UPDATE_ORDER + " in UpdateOrder func - OrderService",
 			Worker:      order.UpdaterID.String(),
 		}
 
 		dataOrder, err := json.Marshal(order)
 		if err != nil {
-			log.WithError(err).Error("Error when parse order in UpdateOrder ver1")
+			log.WithError(err).Error("Error when parse order in  in UpdateOrder func - OrderService")
 			return
 		}
 		history.Data.RawMessage = dataOrder
@@ -1480,14 +1480,14 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			},
 			ObjectID:    order.ID,
 			ObjectTable: utils.TABLE_ORDER,
-			Action:      utils.ACTION_UPDATE_DETAIL_ORDER,
-			Description: " update order in UpdateDetailOrder ver1",
+			Action:      utils.ACTION_UPDATE_ORDER,
+			Description: utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrder func - OrderService",
 			Worker:      order.UpdaterID.String(),
 		}
 
 		dataOrder, err := json.Marshal(order)
 		if err != nil {
-			log.WithError(err).Error("Error when parse order in OrderDetail ver1")
+			log.WithError(err).Error("Error when parse order in UpdateDetailOrder func - OrderService")
 			return
 		}
 		history.Data.RawMessage = dataOrder
@@ -2241,13 +2241,13 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			ObjectID:    order.ID,
 			ObjectTable: utils.TABLE_ORDER,
 			Action:      utils.ACTION_CREATE_ORDER,
-			Description: order.CreateMethod + " call create order in CreateOrderV2 ver2",
+			Description: order.CreateMethod + " " + utils.ACTION_CREATE_ORDER + " in CreateOrderV2 func - OrderService",
 			Worker:      order.CreatorID.String(),
 		}
 
 		dataOrder, err := json.Marshal(order)
 		if err != nil {
-			log.WithError(err).Error("Error when parse buyerInfo")
+			log.WithError(err).Error("Error when parse order in CreateOrderV2 func - OrderService")
 			return
 		}
 		history.Data.RawMessage = dataOrder
@@ -2288,16 +2288,16 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 				ObjectID:    orderItem.ID,
 				ObjectTable: utils.TABLE_ORDER_ITEM,
 				Action:      utils.ACTION_CREATE_ORDER_ITEM,
-				Description: order.CreateMethod + " call create order_item in CreateOrderV2 ver2",
+				Description: order.CreateMethod + " " + utils.ACTION_CREATE_ORDER_ITEM + " in CreateOrderV2 func - OrderService",
 				Worker:      orderItem.CreatorID.String(),
 			}
 
-			dataOrderItem, err := json.Marshal(orderItem)
+			tmpData, err := json.Marshal(orderItem)
 			if err != nil {
-				log.WithError(err).Error("Error when parse buyerInfo")
+				log.WithError(err).Error("Error when parse order_item in CreateOrderV2 func - OrderService")
 				return
 			}
-			orderItemHistory.Data.RawMessage = dataOrderItem
+			orderItemHistory.Data.RawMessage = tmpData
 
 			s.historyService.LogHistory(ctx, orderItemHistory, nil)
 		}()

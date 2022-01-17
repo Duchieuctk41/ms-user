@@ -426,7 +426,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 				return model.Order{}, nil, err
 			}
 
-			// log history order detail ver1
+			// log history order_item
 			go func() {
 				history := model.History{
 					BaseModel: model.BaseModel{
@@ -434,17 +434,17 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					},
 					ObjectID:    orderItem.ID,
 					ObjectTable: utils.TABLE_ORDER_ITEM,
-					Action:      utils.ACTION_UPDATE_DETAIL_ORDER,
-					Description: "Create order_item in UpdateDetailOrder ver1",
+					Action:      utils.ACTION_UPDATE_ORDER_ITEM,
+					Description: utils.ACTION_UPDATE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
 					Worker:      orderItem.CreatorID.String(),
 				}
 
-				dataOrder, err := json.Marshal(order)
+				tmpData, err := json.Marshal(orderItem)
 				if err != nil {
-					log.WithError(err).Error("Error when parse order in OrderDetail ver1")
+					log.WithError(err).Error("Error when parse order in UpdateDetailOrder func - OrderService")
 					return
 				}
-				history.Data.RawMessage = dataOrder
+				history.Data.RawMessage = tmpData
 				r.LogHistory(context.Background(), history, nil)
 			}()
 		} else {
@@ -452,7 +452,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 				return model.Order{}, nil, err
 			}
 
-			// log history order detail ver1
+			// log history order_item
 			go func() {
 				history := model.History{
 					BaseModel: model.BaseModel{
@@ -460,17 +460,17 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					},
 					ObjectID:    orderItem.ID,
 					ObjectTable: utils.TABLE_ORDER_ITEM,
-					Action:      utils.ACTION_UPDATE_DETAIL_ORDER,
-					Description: "Update order_item in UpdateDetailOrder ver1",
+					Action:      utils.ACTION_UPDATE_ORDER_ITEM,
+					Description: utils.ACTION_UPDATE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
 					Worker:      orderItem.UpdaterID.String(),
 				}
 
-				dataOrder, err := json.Marshal(order)
+				tmpData, err := json.Marshal(orderItem)
 				if err != nil {
-					log.WithError(err).Error("Error when parse order in OrderDetail ver1")
+					log.WithError(err).Error("Error when parse orderItem in UpdateDetailOrder func - OrderService")
 					return
 				}
-				history.Data.RawMessage = dataOrder
+				history.Data.RawMessage = tmpData
 				r.LogHistory(context.Background(), history, nil)
 			}()
 		}
