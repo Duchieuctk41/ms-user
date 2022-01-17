@@ -4,8 +4,8 @@ const ADMIN_ROLE = 64
 
 // Status for check valid order item
 const (
-	STATUS_SUCCESS        = "success"
-	STATUS_SKU_NOT_FOUND  = "sku_not_found"
+	STATUS_SUCCESS       = "success"
+	STATUS_SKU_NOT_FOUND = "sku_not_found"
 )
 
 const (
@@ -109,13 +109,15 @@ const (
 )
 
 const (
-	TABLE_ORDER = "order"
-	TABLE_ORDER_DETAIL = "order_item"
+	TABLE_ORDER      = "order"
+	TABLE_ORDER_ITEM = "order_item"
 	TABLE_ORDER_ECOM = "order_ecom"
 )
 
 const (
-	ACTION_CREATE = "create"
-	ACTION_UPDATE = "update"
-	ACTION_DELETE = "delete"
+	ACTION_CREATE_ORDER = "create order"
+	ACTION_UPDATE_ORDER = "update order"
+
+	ACTION_CREATE_ORDER_ITEM = "create order item"
+	ACTION_UPDATE_ORDER_ITEM = "update order item"
 )
