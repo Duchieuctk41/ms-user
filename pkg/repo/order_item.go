@@ -42,6 +42,7 @@ func (r *RepoPG) OverviewCost(ctx context.Context, req model.OrverviewPandLReque
 								inner join orders o on
 									oi.order_id = o.id
 									and o.state = 'complete'
+									and oi.deleted_at is null
 									and o.business_id = ? `)
 	if req.StartTime != nil && req.EndTime != nil {
 		query += " AND o.updated_at BETWEEN ? AND ? "
