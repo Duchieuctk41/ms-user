@@ -149,7 +149,7 @@ func (r *RepoPG) GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm
 	}
 
 	if err = tx.Model(&model.Order{}).Where("buyer_id = ?", buyerID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return tx.Order("order_item.created_at ASC")
+		return db.Where("deleted_at is null").Order("order_item.created_at ASC")
 	}).Order("orders.created_at DESC").First(&rs).Error; err != nil {
 		return model.Order{}, err
 	}
@@ -169,7 +169,7 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 	}
 
 	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Order("order_item.created_at ASC")
+		return db.Where("order_item.deleted_at is null").Order("order_item.created_at ASC")
 	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
 		return model.Order{}, err
 	}
@@ -606,7 +606,7 @@ func (r *RepoPG) GetAllOrderForExport(ctx context.Context, req model.ExportOrder
 	}
 
 	tx = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Order("order_item.created_at ASC")
+		return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
 	}).Where("business_id = ?", req.BusinessID)
 	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		tx = tx.Where("created_at >= ? AND created_at <= ?", req.StartTime, req.EndTime)
