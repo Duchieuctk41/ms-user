@@ -7,6 +7,7 @@ import (
 	"finan/ms-order-management/pkg/valid"
 	"strings"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -86,7 +87,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 						order_item.order_id = orders.id
 						and orders.state = 'complete'
 						and orders.business_id = ? `), req.BusinessID).
-			Where("order_item.deleted_at is null").
+			Where("order_item.deleted_at is null and order_item.sku_id !=  ? ", uuid.Nil).
 			Group("business_id, sku_id ,product_name ,sku_name")
 	}
 
