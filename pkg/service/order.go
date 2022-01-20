@@ -82,7 +82,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 		}
 	}
 	// check permission
-	if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), req.BuyerID); err != nil {
+	if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), order.BuyerId.String()); err != nil {
 		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
 	}
 
