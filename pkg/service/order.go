@@ -700,6 +700,12 @@ func (s *OrderService) CreateBusinessTransaction(ctx context.Context, req model.
 
 	header := make(map[string]string)
 	header["x-user-id"] = req.CreatorID.String()
+
+	// 22-01-2022 - thanhvc - skip process complete mission case_book
+	// add more header skip-complete-mission = true, when call api to ms-transaction
+	// it will skip processing complete mission cash_book
+	header["skip-complete-mission"] = "true"
+
 	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/business-transaction/v2/create", rest.Post, header, nil, req)
 	if err != nil {
 		log.WithError(err).Error("Error when create business transaction")
