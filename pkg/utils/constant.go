@@ -28,6 +28,7 @@ const (
 	TOPIC_UPDATE_STOCK_V2      = "ms-warehouse-management:update_stock_v2"
 	TOPIC_PROCESS_MISSION      = "finan-loyalty:process_mission"
 	TOPIC_SET_USER_GUIDE       = "ms-meta-data:topic_set_user_guide"
+	TOPIC_SEND_NOTIFICATION    = "ms-notification-management:send-notification"
 )
 
 const CATEGORY_SELL = "cc8244c0-307f-46fd-be96-34e7c36059de"
@@ -120,4 +121,11 @@ const (
 
 	ACTION_CREATE_ORDER_ITEM = "create order item"
 	ACTION_UPDATE_ORDER_ITEM = "update order item"
+)
+
+const (
+	NOTI_CONTENT_WAITING_CONFIRM = "Ting ting! Bạn vừa có đơn hàng mới %v. Hãy xác nhận sẽ giao hàng ngay với khách để chốt đơn"
+
+	NOTI_CONTENT_REMINDER_DELIVERING      = "Bạn đã giao đơn %v - %v cho khách %v chưa? Nhấn để kiểm tra hoặc xác nhận đã giao"
+	NOTI_CONTENT_REMINDER_WAITING_CONFIRM = "Đơn hàng %v đang chờ xác nhận. Nhấn để thông báo cho khách đơn đã sẵn sàng giao"
 )

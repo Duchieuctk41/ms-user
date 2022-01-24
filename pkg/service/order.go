@@ -10,6 +10,7 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
+	"github.com/prometheus/common/log"
 	"io"
 	"io/ioutil"
 	"math"
@@ -381,7 +382,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	tx.Commit()
 	go s.CountCustomer(ctx, order)
-	go s.OrderProcessing(ctx, order, debit, checkCompleted)
+	go s.OrderProcessing(ctx, order, debit, checkCompleted, *req.BuyerInfo)
 	go s.UpdateContactUser(ctx, order, order.CreatorID)
 	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
 
@@ -431,7 +432,7 @@ func (s *OrderService) ProcessPromotion(ctx context.Context, businessId uuid.UUI
 	return promotion.Data, nil
 }
 
-func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit, checkCompleted string) (err error) {
+func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, debit model.Debit, checkCompleted string, buyerInfo model.BuyerInfo) (err error) {
 	log := logger.WithCtx(ctx, "OrderService.OrderProcessing")
 	// Create transaction
 	var cancel context.CancelFunc
@@ -456,7 +457,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	}
 
 	for _, state := range allState {
-		countState := s.repo.CountOneStateOrder(ctx, order.BusinessID, state, tx)
+		countState := s.repo.CountOneStateOrder(context.Background(), order.BusinessID, state, tx)
 		customFieldName := ""
 		switch state {
 		case utils.ORDER_STATE_WAITING_CONFIRM:
@@ -474,17 +475,17 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	//TODO--------Update Business custom_field--------------------------------------------------------------END
 
 	// send email
-	go s.PushConsumerSendEmail(ctx, order.ID.String(), order.State)
+	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), order.State)
 
 	switch order.State {
 
 	case utils.ORDER_STATE_WAITING_CONFIRM:
-		go s.SendNotification(ctx, uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State, order.OrderNumber)
-		go s.ReminderProcessOrder(ctx, order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM)
+		go s.SendNotificationV2(context.Background(), uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State+"_v2", fmt.Sprintf(utils.NOTI_CONTENT_WAITING_CONFIRM, utils.StrDelimitForSum(order.OrderedGrandTotal, "đ")))
+		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_WAITING_CONFIRM, order.OrderNumber))
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_WAITING_CONFIRM, order.OrderNumber))
 		break
 	case utils.ORDER_STATE_DELIVERING:
-		go s.ReminderProcessOrder(ctx, order.ID, uhb[0].UserID, utils.ORDER_STATE_DELIVERING)
+		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_DELIVERING, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_DELIVERING, order.OrderNumber, utils.StrDelimitForSum(order.OrderedGrandTotal, "đ"), buyerInfo.Name))
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_DELIVERING, order.OrderNumber))
 		go s.UpdateStock(context.Background(), order, "order_delivering")
 		break
@@ -498,7 +499,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			s.UpdateBusinessCustomField(ctx, order.BusinessID, "business_revenue", strSumGrandTotal)
 		}
 
-		//--------------------------------------------------------------------------------------------------------------------
+		//----------------------------------------------------------------------------------------------------
 
 		// Create Business transaction
 		cateIDSell, _ := uuid.Parse(utils.CATEGORY_SELL)
@@ -552,7 +553,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				return err
 			}
 		}
-		go PushConsumer(ctx, order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
+		go PushConsumer(context.Background(), order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
 		go s.CreatePo(context.Background(), order, checkCompleted, utils.PO_OUT)
 		//if err = s.CreatePo(ctx, order, checkCompleted); err != nil {
 		//	log.WithError(err).Errorf("Error when call func CreatePo: " + err.Error())
@@ -1186,7 +1187,13 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		if req.Debit != nil {
 			debit = *req.Debit
 		}
-		if err := s.OrderProcessing(ctx, order, debit, utils.ORDER_COMPLETED); err != nil {
+
+		buyerInfo := model.BuyerInfo{}
+		if err := json.Unmarshal(order.BuyerInfo.RawMessage, &buyerInfo); err != nil {
+			log.WithError(err).Errorf("Cannot unmarshal buyerInfo")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if err := s.OrderProcessing(ctx, order, debit, utils.ORDER_COMPLETED, buyerInfo); err != nil {
 			log.WithError(err).Error("Fail to create transaction")
 			return nil, err
 		}
@@ -2317,7 +2324,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
-	go s.OrderProcessing(context.Background(), order, debit, checkCompleted)
+	go s.OrderProcessing(context.Background(), order, debit, checkCompleted, *req.BuyerInfo)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
 	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
 
@@ -2325,6 +2332,52 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	go CompletedOrderMission(context.Background(), order)
 
 	return order, nil
+}
+
+func (s *OrderService) ReminderProcessOrderV2(ctx context.Context, orderId uuid.UUID, sellerID uuid.UUID, stateCheck string, content string) {
+	log := logger.WithCtx(ctx, "OrderService.ReminderProcessOrderV2")
+
+	//time.AfterFunc(60*time.Minute, func() {
+	//	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+
+	order, err := s.repo.GetOneOrder(ctx, orderId.String(), tx)
+	if err != nil {
+		log.WithError(err).Error("ReminderProcessOrder get order " + orderId.String() + " error")
+	}
+
+	if order.State == stateCheck {
+		s.SendNotificationV2(ctx, sellerID, utils.NOTIFICATION_ENTITY_KEY_ORDER, "reminder_"+order.State+"_v2", content)
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	tx.Commit()
+	//})
+}
+
+func (s *OrderService) SendNotificationV2(ctx context.Context, userId uuid.UUID, entityKey string, state string, content string) {
+	log.Infof("OrderService.SendNotificationV2")
+
+	notiRequest := model.SendNotificationRequest{
+		UserID:         userId,
+		EntityKey:      entityKey,
+		StateValue:     state,
+		Language:       "vi",
+		ContentReplace: content,
+	}
+
+	PushConsumer(ctx, notiRequest, utils.TOPIC_SEND_NOTIFICATION)
 }
 
 //============================== call another service ===================================//
