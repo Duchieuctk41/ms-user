@@ -10,7 +10,6 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
-	"github.com/prometheus/common/log"
 	"io"
 	"io/ioutil"
 	"math"
@@ -2367,7 +2366,8 @@ func (s *OrderService) ReminderProcessOrderV2(ctx context.Context, orderId uuid.
 }
 
 func (s *OrderService) SendNotificationV2(ctx context.Context, userId uuid.UUID, entityKey string, state string, content string) {
-	log.Infof("OrderService.SendNotificationV2")
+	log := logger.WithCtx(ctx, "OrderService.SendNotificationV2")
+	log.Info("begin SendNotificationV2")
 
 	notiRequest := model.SendNotificationRequest{
 		UserID:         userId,
