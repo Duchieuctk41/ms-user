@@ -236,7 +236,6 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		}
 		break
 	case utils.SELLER_CREATE_METHOD:
-
 		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
 			log.WithError(err).Error("Error when get user info from phone number of buyer info")
@@ -250,12 +249,6 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	default:
 		log.WithError(err).Error("Error when Create method, expected: [buyer, seller]")
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
-	}
-
-	if info.Data.Business.DeliveryFee == 0 || (info.Data.Business.DeliveryFee > 0 && orderGrandTotal >= info.Data.Business.MinPriceFreeShip && info.Data.Business.MinPriceFreeShip > 0) {
-		deliveryFee = 0
-	} else {
-		deliveryFee = info.Data.Business.DeliveryFee
 	}
 
 	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
