@@ -35,7 +35,7 @@ func (s *OrderTrackingService) GetOrderTracking(ctx context.Context, req model.O
 		}
 
 		// check permission
-		if err = utils.CheckPermission(ctx, req.UserID.String(), order.BusinessID.String(), req.UserRole); err != nil {
+		if err = utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), order.BuyerId.String()); err != nil {
 			return res, err
 		}
 	}
