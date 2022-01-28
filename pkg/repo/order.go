@@ -660,6 +660,35 @@ func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam,
 	return rs, nil
 }
 
+func (r *RepoPG) GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	query := `
+		 SELECT count(contact_id) as count FROM (
+		 SELECT case when contact_id is not null THEN 1 END AS contact_id FROM "orders" 
+		 WHERE business_id = ?
+		`
+
+	if req.State != "" {
+		t := strings.Split(req.State, ",")
+		query += " AND state IN (?) GROUP BY contact_id) tmp"
+		if err = tx.Raw(query, req.BusinessID, t).Scan(&rs).Error; err != nil {
+			return rs, err
+		}
+	} else {
+		query += " GROUP BY contact_id ) tmp"
+		if err = tx.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return rs, err
+		}
+	}
+
+	return rs, nil
+}
+
 func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error) {
 	var cancel context.CancelFunc
 	if tx == nil {
