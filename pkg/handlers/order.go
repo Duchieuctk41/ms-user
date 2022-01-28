@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/service"
 	"finan/ms-order-management/pkg/utils"
@@ -83,6 +84,8 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 	// Check valid request
 	req := model.OrderParam{}
 	r.MustBind(&req)
+	field, _ := json.Marshal(req)
+	log.WithField("req", string(field)).Info("OrderHandlers.GetAllOrder")
 
 	// check permission
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
@@ -256,6 +259,8 @@ func (h *OrderHandlers) GetTotalContactDelivery(r *ginext.Request) (*ginext.Resp
 	// Check valid request
 	req := model.OrderParam{}
 	r.MustBind(&req)
+	field, _ := json.Marshal(req)
+	log.WithField("req", string(field)).Info("OrderHandlers.GetTotalContactDelivery")
 
 	// Check Permission
 	if req.BusinessID == "" {
