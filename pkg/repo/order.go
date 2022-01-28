@@ -7,7 +7,9 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
+	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
+	"net/http"
 	"strings"
 	"time"
 
@@ -279,7 +281,11 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	}
 
 	page := r.GetPage(req.Page)
-	pageSize := r.GetPageSize(req.PageSize)
+	pageSize := r.GetPageSize(req.Size)
+
+	if req.PageSize > 0 {
+		pageSize = r.GetPageSize(req.PageSize)
+	}
 
 	tx = tx.Model(&model.Order{})
 
@@ -348,11 +354,23 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 		return rs, err
 	}
 
+	if rs.Meta["total_pages"].(int) > page {
+		rs.Meta["next_page"] = page + 1
+	} else {
+		rs.Meta["next_page"] = 0
+	}
+
 	return rs, nil
 }
 
 func (r *RepoPG) GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error) {
-	err = tx.Table("orders").
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	err = tx.Model(model.Order{}).
 		Select("count(*) as count, sum(grand_total) as sum_amount").
 		Where("contact_id = ?", contactID).Where("deleted_at is null").
 		Where("state = ?", "complete").
@@ -661,6 +679,8 @@ func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam,
 }
 
 func (r *RepoPG) GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetTotalContactDelivery").WithField("req", req)
+
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
@@ -677,12 +697,14 @@ func (r *RepoPG) GetTotalContactDelivery(ctx context.Context, req model.OrderPar
 		t := strings.Split(req.State, ",")
 		query += " AND state IN (?) GROUP BY contact_id) tmp"
 		if err = tx.Raw(query, req.BusinessID, t).Scan(&rs).Error; err != nil {
-			return rs, err
+			log.WithError(err).Error("error_400: Error when GetTotalContactDelivery with state")
+			return rs, ginext.NewError(http.StatusBadRequest, "Error when GetTotalContactDelivery")
 		}
 	} else {
 		query += " GROUP BY contact_id ) tmp"
 		if err = tx.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
-			return rs, err
+			log.WithError(err).Error("error_400: Error when GetTotalContactDelivery")
+			return rs, ginext.NewError(http.StatusBadRequest, "Error when GetTotalContactDelivery")
 		}
 	}
 
