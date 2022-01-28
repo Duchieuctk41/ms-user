@@ -228,6 +228,10 @@ type ContactDelivering struct {
 	ContactInfo Contact   `json:"contact_info"`
 }
 
+type TotalContactDelivery struct {
+	Count int `json:"count"`
+}
+
 type ContactDeliveringResponse struct {
 	Data []ContactDelivering    `json:"data"`
 	Meta map[string]interface{} `json:"meta"`

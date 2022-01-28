@@ -61,6 +61,7 @@ type OrderServiceInterface interface {
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 
 	CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error)
+	GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (rs model.TotalContactDelivery, err error)
 
 	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest) (rs interface{}, err error)
 
@@ -1971,6 +1972,18 @@ func (s *OrderService) GetContactDelivering(ctx context.Context, req model.Order
 			contact.Data[i].ContactInfo = lstContact[0]
 		}
 	}
+	return contact, nil
+}
+
+func (s *OrderService) GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (res model.TotalContactDelivery, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetContactDelivering")
+
+	contact, err := s.repo.GetTotalContactDelivery(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
+		return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+	}
+
 	return contact, nil
 }
 

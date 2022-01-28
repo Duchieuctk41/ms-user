@@ -234,6 +234,42 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 	}, nil
 }
 
+// GetContactDelivering - hieucn - version app 1.1.0.1.0
+func (h *OrderHandlers) GetTotalContactDelivery(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetTotalContactDelivery")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Fail to get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.OrderParam{}
+	r.MustBind(&req)
+
+	// Check Permission
+	if req.BusinessID == "" {
+		log.WithError(err).Error("Missing business ID")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
+	if err = utils.CheckPermission(r.GinCtx, userID.String(), req.BusinessID, role); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Get contact delivering
+	rs, err := h.service.GetTotalContactDelivery(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to get contact have order due to %v", err.Error())
+		return nil, err
+	}
+
+	return ginext.NewResponseData(http.StatusOK, rs), nil
+}
+
 // CreateOrderFast Create order for Web POS combine with create product fast - version app 1.0.35.1.4
 func (h *OrderHandlers) CreateOrderFast(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderFast")
@@ -348,7 +384,7 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 	}
 
 	// implement the business logic of UpdateDetailOrder
-  	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
+	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
 		return nil, err
