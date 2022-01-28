@@ -84,7 +84,11 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 	// Check valid request
 	req := model.OrderParam{}
 	r.MustBind(&req)
-	field, _ := json.Marshal(req)
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in GetAllOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
 	log.WithField("req", string(field)).Info("OrderHandlers.GetAllOrder")
 
 	// check permission
@@ -259,7 +263,11 @@ func (h *OrderHandlers) GetTotalContactDelivery(r *ginext.Request) (*ginext.Resp
 	// Check valid request
 	req := model.OrderParam{}
 	r.MustBind(&req)
-	field, _ := json.Marshal(req)
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in GetAllOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
 	log.WithField("req", string(field)).Info("OrderHandlers.GetTotalContactDelivery")
 
 	// Check Permission
