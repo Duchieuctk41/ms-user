@@ -1315,6 +1315,9 @@ func (s *OrderService) GetAllOrder(ctx context.Context, req model.OrderParam) (r
 		rs.Meta["count_complete"] = resCompleteOrders.Count
 		val := strconv.FormatFloat(resCompleteOrders.SumAmount, 'f', 0, 64)
 		rs.Meta["sum_grand_total_complete"] = val
+	} else {
+		rs.Meta["count_complete"] = 0
+		rs.Meta["sum_grand_total_complete"] = 0
 	}
 	return rs, nil
 }
@@ -1981,7 +1984,7 @@ func (s *OrderService) GetTotalContactDelivery(ctx context.Context, req model.Or
 	contact, err := s.repo.GetTotalContactDelivery(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
-		return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+		return res, err
 	}
 
 	return contact, nil

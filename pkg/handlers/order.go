@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/service"
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -82,6 +84,12 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 	// Check valid request
 	req := model.OrderParam{}
 	r.MustBind(&req)
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in GetAllOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+	log.WithField("req", string(field)).Info("OrderHandlers.GetAllOrder")
 
 	// check permission
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
@@ -100,6 +108,13 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 		return nil, ginext.NewError(http.StatusBadRequest, "Fail to get all order: "+err.Error())
 	}
 
+	r.GinCtx.Header("X-Page", fmt.Sprintf("%v", rs.Meta["page"]))
+	r.GinCtx.Header("X-Per-Page", fmt.Sprintf("%v", rs.Meta["page_size"]))
+	r.GinCtx.Header("X-Next-Page", fmt.Sprintf("%v", rs.Meta["next_page"]))
+	r.GinCtx.Header("X-Last-Page", fmt.Sprintf("%v", rs.Meta["total_pages"]))
+	r.GinCtx.Header("X-Total-Items", fmt.Sprintf("%v", rs.Meta["total_rows"]))
+	r.GinCtx.Header("X-Sum-Grand-Total-Complete", fmt.Sprintf("%v", rs.Meta["sum_grand_total_complete"]))
+	r.GinCtx.Header("X-Count-Order-Complete", fmt.Sprintf("%v", rs.Meta["count_complete"]))
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
@@ -248,6 +263,12 @@ func (h *OrderHandlers) GetTotalContactDelivery(r *ginext.Request) (*ginext.Resp
 	// Check valid request
 	req := model.OrderParam{}
 	r.MustBind(&req)
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in GetAllOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+	log.WithField("req", string(field)).Info("OrderHandlers.GetTotalContactDelivery")
 
 	// Check Permission
 	if req.BusinessID == "" {
