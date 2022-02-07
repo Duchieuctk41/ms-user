@@ -2340,14 +2340,14 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 				BaseModel: model.BaseModel{
 					CreatorID: orderItem.CreatorID,
 				},
-				ObjectID:    orderItem.ID,
+				ObjectID:    tm.ID,
 				ObjectTable: utils.TABLE_ORDER_ITEM,
 				Action:      utils.ACTION_CREATE_ORDER_ITEM,
 				Description: order.CreateMethod + " " + utils.ACTION_CREATE_ORDER_ITEM + " in CreateOrderV2 func - OrderService",
 				Worker:      orderItem.CreatorID.String(),
 			}
 
-			tmpData, err := json.Marshal(orderItem)
+			tmpData, err := json.Marshal(tm)
 			if err != nil {
 				log.WithError(err).Error("Error when parse order_item in CreateOrderV2 func - OrderService")
 				return
