@@ -463,6 +463,14 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					return
 				}
 				history.Data.RawMessage = tmpData
+
+				requestData, err := json.Marshal(mapItem)
+				if err != nil {
+					log.WithError(err).Error("Error when parse order request in UpdateDetailOrder - OrderService")
+					return
+				}
+				history.DataRequest.RawMessage = requestData
+
 				r.LogHistory(context.Background(), history, nil)
 			}()
 		} else {
@@ -489,6 +497,14 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					return
 				}
 				history.Data.RawMessage = tmpData
+
+				requestData, err := json.Marshal(mapItem)
+				if err != nil {
+					log.WithError(err).Error("Error when parse order_item request in UpdateDetailOrder - OrderService")
+					return
+				}
+				history.DataRequest.RawMessage = requestData
+
 				r.LogHistory(context.Background(), history, nil)
 			}()
 		}

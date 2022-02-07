@@ -11,7 +11,8 @@ type History struct {
 	ObjectTable string         `json:"object_table" sql:"index" gorm:"column:object_table;not null;" valid:"Required"` //object table used to define which table logged
 	Action      string         `json:"action" sql:"index" gorm:"column:action;not null;" valid:"Required"`             // description action (create, update, delete, cancel
 	Description string         `json:"description" gorm:"null"`
-	Data        postgres.Jsonb `json:"data" gorm:"null type:jsonb"`
+	Data        postgres.Jsonb `json:"data" gorm:"type:jsonb;null"`
+	DataRequest postgres.Jsonb `json:"data_request" gorm:"type:jsonb;null"`
 	Worker      string         `json:"worker" sql:"index" gorm:"column:worker;not null;" valid:"Required"`
 }
 
