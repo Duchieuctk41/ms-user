@@ -1782,7 +1782,7 @@ func (s *OrderService) ExportOrderReport(ctx context.Context, req model.ExportOr
 	headersItem := map[string]string{
 		"A1": "STT", "B1": "Đơn hàng", "C1": "Ngày giờ đặt",
 		"D1": "Tên sản phẩm", "E1": "Giá bán", "F1": "Số lượng sản phẩm",
-		"G1": "Số tiền", "H1": "Trạng thái", "I1": "Hình thức giao hàng",
+		"G1": "Số tiền", "H1": "Trạng thái", "I1": "Hình thức thanh toán",
 		"J1": "Tên khách hàng", "K1": "SĐT nhận", "L1": "Địa chỉ",
 		"M1": "Ghi chú",
 	}
