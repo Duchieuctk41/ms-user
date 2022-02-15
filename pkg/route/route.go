@@ -81,6 +81,7 @@ func NewService() *Service {
 
 	// version 2
 	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
+
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
 	s.Router.POST("/internal/migrate", migrateHandler.Migrate)
