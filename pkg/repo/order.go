@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm/clause"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -825,5 +826,5 @@ func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom,
 
 	// log time
 	elapsed := time.Since(start)
-	log.Printf("%s took %s", "Storage order ecom", elapsed)
+	log.Printf("%s took %s for %s orders", "Storage order ecom", elapsed, strconv.Itoa(len(rs)))
 }
