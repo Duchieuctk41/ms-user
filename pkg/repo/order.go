@@ -448,7 +448,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	for _, orderItem := range order.OrderItem {
 		if orderItem.ID == uuid.Nil {
 			orderItem.CreatorID = order.UpdaterID
-			//time.Sleep(3 * time.Second)
+			time.Sleep(3 * time.Second)
 			if err = tx.FirstOrCreate(&orderItem, model.OrderItem{OrderID: order.ID, SkuID: orderItem.SkuID}).Error; err != nil {
 				return model.Order{}, nil, err
 			}
@@ -461,8 +461,8 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					},
 					ObjectID:    orderItem.ID,
 					ObjectTable: utils.TABLE_ORDER_ITEM,
-					Action:      utils.ACTION_UPDATE_ORDER_ITEM,
-					Description: utils.ACTION_UPDATE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
+					Action:      utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM,
+					Description: utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
 					Worker:      orderItem.CreatorID.String(),
 				}
 
@@ -488,10 +488,69 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 				if err = tx.Where("id = ?", orderItem.ID).Delete(&orderItem).Error; err != nil {
 					return model.Order{}, nil, err
 				}
+
+				// log history order item
+				go func() {
+					history := model.History{
+						BaseModel: model.BaseModel{
+							CreatorID: order.UpdaterID,
+						},
+						ObjectID:    orderItem.ID,
+						ObjectTable: utils.TABLE_ORDER_ITEM,
+						Action:      utils.ACTION_DELETE_ORDER_ITEM,
+						Description: utils.ACTION_DELETE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
+						Worker:      order.UpdaterID.String(),
+					}
+
+					tmpData, err := json.Marshal(orderItem)
+					if err != nil {
+						log.WithError(err).Error("Error when parse orderItem in UpdateDetailOrder func - OrderService")
+						return
+					}
+					history.Data = tmpData
+
+					requestData, err := json.Marshal(mapItem)
+					if err != nil {
+						log.WithError(err).Error("Error when parse order_item request in UpdateDetailOrder - OrderService")
+						return
+					}
+					history.DataRequest = requestData
+
+					r.LogHistory(context.Background(), history, nil)
+				}()
 			} else {
 				if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Save(&orderItem).Error; err != nil {
 					return model.Order{}, nil, err
 				}
+				// log history order item
+				go func() {
+					history := model.History{
+						BaseModel: model.BaseModel{
+							CreatorID: order.UpdaterID,
+						},
+						ObjectID:    orderItem.ID,
+						ObjectTable: utils.TABLE_ORDER_ITEM,
+						Action:      utils.ACTION_UPDATE_ORDER_ITEM,
+						Description: utils.ACTION_UPDATE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
+						Worker:      order.UpdaterID.String(),
+					}
+
+					tmpData, err := json.Marshal(orderItem)
+					if err != nil {
+						log.WithError(err).Error("Error when parse orderItem in UpdateDetailOrder func - OrderService")
+						return
+					}
+					history.Data = tmpData
+
+					requestData, err := json.Marshal(mapItem)
+					if err != nil {
+						log.WithError(err).Error("Error when parse order_item request in UpdateDetailOrder - OrderService")
+						return
+					}
+					history.DataRequest = requestData
+
+					r.LogHistory(context.Background(), history, nil)
+				}()
 			}
 
 			// log history order_item
@@ -529,6 +588,36 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
 		return model.Order{}, nil, err
 	}
+
+	// log history order
+	go func() {
+		history := model.History{
+			BaseModel: model.BaseModel{
+				CreatorID: order.UpdaterID,
+			},
+			ObjectID:    order.ID,
+			ObjectTable: utils.TABLE_ORDER,
+			Action:      utils.ACTION_UPDATE_ORDER,
+			Description: utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrder func - OrderService",
+			Worker:      order.UpdaterID.String(),
+		}
+
+		tmpData, err := json.Marshal(order)
+		if err != nil {
+			log.WithError(err).Error("Error when parse orderItem in UpdateDetailOrder func - OrderService")
+			return
+		}
+		history.Data = tmpData
+
+		requestData, err := json.Marshal(mapItem)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order_item request in UpdateDetailOrder - OrderService")
+			return
+		}
+		history.DataRequest = requestData
+
+		r.LogHistory(context.Background(), history, nil)
+	}()
 
 	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 		return db.Order("order_item.created_at ASC")

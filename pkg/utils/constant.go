@@ -120,8 +120,10 @@ const (
 	ACTION_CREATE_ORDER = "create order"
 	ACTION_UPDATE_ORDER = "update order"
 
-	ACTION_CREATE_ORDER_ITEM = "create order item"
-	ACTION_UPDATE_ORDER_ITEM = "update order item"
+	ACTION_CREATE_ORDER_ITEM           = "create order item"
+	ACTION_CREATE_OR_SELECT_ORDER_ITEM = "create or select order item"
+	ACTION_DELETE_ORDER_ITEM           = "delete order item"
+	ACTION_UPDATE_ORDER_ITEM           = "update order item"
 )
 
 const (
