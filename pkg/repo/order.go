@@ -448,7 +448,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	for _, orderItem := range order.OrderItem {
 		if orderItem.ID == uuid.Nil {
 			orderItem.CreatorID = order.UpdaterID
-			time.Sleep(3 * time.Second)
+			//time.Sleep(3 * time.Second)
 			if err = tx.FirstOrCreate(&orderItem, model.OrderItem{OrderID: order.ID, SkuID: orderItem.SkuID}).Error; err != nil {
 				return model.Order{}, nil, err
 			}
