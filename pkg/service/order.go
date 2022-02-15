@@ -2479,6 +2479,17 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 			return nil, err
 		}
 		break
+		// hieunm - 15/02/2022 - process for order ecom , using upsert
+	case utils.TOPIC_UPDATE_ORDER_ECOM:
+		// Update multi product Ecom
+		var updateReq []model.OrderEcom
+		if err := json.Unmarshal([]byte(req.Payload), &updateReq); err != nil {
+			log.WithError(err).Error("error_500 : error when unmarshal payload data")
+			return nil, err
+		}
+
+		go s.repo.UpdateMultiOrderEcom(context.Background(), updateReq, nil)
+		break
 	default:
 		log.Errorf("Topic not found in this service!")
 		return nil, fmt.Errorf("Topic not found in this service!")

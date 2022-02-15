@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
+	"gorm.io/gorm/clause"
 	"net/http"
 	"strings"
 	"time"
@@ -793,4 +794,22 @@ func (r *RepoPG) GetSumOrderCompleteContact(ctx context.Context, req model.GetTo
 		}
 	}
 	return rs, nil
+}
+
+func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB) {
+	log := logger.WithCtx(ctx, "UpdateMultiOrderEcom")
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	for _, v := range rs {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			UpdateAll: true,
+		}).Create(&v).Error; err != nil {
+			log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
+		}
+	}
 }

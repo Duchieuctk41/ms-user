@@ -52,7 +52,6 @@ type PGInterface interface {
 	OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error)
 	OverviewCost(ctx context.Context, req model.OrverviewPandLRequest, overviewPandL model.OverviewPandLResponse, tx *gorm.DB) (model.OverviewPandLResponse, error)
 
-	//
 	GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error)
 	GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
 
@@ -63,6 +62,9 @@ type PGInterface interface {
 
 	// log history
 	LogHistory(ctx context.Context, history model.History, tx *gorm.DB) (rs model.History, err error)
+
+	// ecom
+	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)
 }
 
 type BaseModel struct {
