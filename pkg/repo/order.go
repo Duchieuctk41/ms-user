@@ -130,14 +130,14 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 	}
 
 	if len(id) == 9 {
-		if err = r.DB.Model(&model.Order{}).Where("order_number = ? AND deleted_at IS NULL", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-			return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
+		if err = tx.Model(&model.Order{}).Where("order_number = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+			return db.Order("order_item.created_at ASC")
 		}).First(&rs).Error; err != nil {
 			return model.Order{}, err
 		}
 	} else {
-		if err = r.DB.Model(&model.Order{}).Where("id = ? AND deleted_at IS NULL", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-			return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
+		if err = tx.Model(&model.Order{}).Where("id = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+			return db.Order("order_item.created_at ASC")
 		}).First(&rs).Error; err != nil {
 			return model.Order{}, err
 		}
@@ -154,7 +154,7 @@ func (r *RepoPG) GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm
 	}
 
 	if err = tx.Model(&model.Order{}).Where("buyer_id = ?", buyerID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Where("deleted_at is null").Order("order_item.created_at ASC")
+		return db.Order("order_item.created_at ASC")
 	}).Order("orders.created_at DESC").First(&rs).Error; err != nil {
 		return model.Order{}, err
 	}
@@ -169,13 +169,13 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 		defer cancel()
 	}
 
-	if err := tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
 		return model.Order{}, err
 	}
 
-	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Where("order_item.deleted_at is null").Order("order_item.created_at ASC")
-	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
+	if err = tx.Model(&model.Order{}).Where("orders.id = ?", order.ID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).First(&rs).Error; err != nil {
 		return model.Order{}, err
 	}
 
@@ -350,7 +350,7 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	tx = tx.Count(&total)
 
 	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Where("order_item.deleted_at is null").Order("order_item.created_at asc")
+		return db.Order("order_item.created_at asc")
 	}).Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data)
 
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
@@ -375,12 +375,13 @@ func (r *RepoPG) GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx 
 
 	err = tx.Model(model.Order{}).
 		Select("count(*) as count, sum(grand_total) as sum_amount").
-		Where("contact_id = ?", contactID).Where("deleted_at is null").
+		Where("contact_id = ?", contactID).
 		Where("state = ?", "complete").
 		Find(&res).Error
 	return
 }
 
+// 15/02/2022 - hieucn - fix multi request  call in one time
 func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
 	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrder")
 
@@ -418,15 +419,18 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 			order.OrderItem[i].HistoricalCost = v.HistoricalCost
 		} else {
 			// If not exist in map -> delete
-			tNow := time.Now()
+			tNow := gorm.DeletedAt{
+				Time: time.Now(),
+			}
 			order.OrderItem[i].DeletedAt = &tNow
+			tMap[order.OrderItem[i].SkuID.String()] = order.OrderItem[i]
+
 			// Giảm số lượng khách đang đặt cho SKU này (- delivering quantity)
 			stocks = append(stocks, model.StockRequest{
 				SkuID:          order.OrderItem[i].SkuID,
 				QuantityChange: -order.OrderItem[i].Quantity,
 			})
 		}
-		tMap[order.OrderItem[i].SkuID.String()] = order.OrderItem[i]
 	}
 
 	for skuID, item := range mapItem {
@@ -443,7 +447,9 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 
 	for _, orderItem := range order.OrderItem {
 		if orderItem.ID == uuid.Nil {
-			if err = tx.Model(&model.OrderItem{}).Create(&orderItem).Error; err != nil {
+			orderItem.CreatorID = order.UpdaterID
+			//time.Sleep(3 * time.Second)
+			if err = tx.FirstOrCreate(&orderItem, model.OrderItem{OrderID: order.ID, SkuID: orderItem.SkuID}).Error; err != nil {
 				return model.Order{}, nil, err
 			}
 
@@ -465,20 +471,27 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					log.WithError(err).Error("Error when parse order in UpdateDetailOrder func - OrderService")
 					return
 				}
-				history.Data.RawMessage = tmpData
+				history.Data = tmpData
 
 				requestData, err := json.Marshal(mapItem)
 				if err != nil {
 					log.WithError(err).Error("Error when parse order request in UpdateDetailOrder - OrderService")
 					return
 				}
-				history.DataRequest.RawMessage = requestData
+				history.DataRequest = requestData
 
 				r.LogHistory(context.Background(), history, nil)
 			}()
 		} else {
-			if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
-				return model.Order{}, nil, err
+			orderItem.UpdaterID = order.UpdaterID
+			if orderItem.DeletedAt != nil {
+				if err = tx.Where("id = ?", orderItem.ID).Delete(&orderItem).Error; err != nil {
+					return model.Order{}, nil, err
+				}
+			} else {
+				if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Save(&orderItem).Error; err != nil {
+					return model.Order{}, nil, err
+				}
 			}
 
 			// log history order_item
@@ -499,14 +512,14 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 					log.WithError(err).Error("Error when parse orderItem in UpdateDetailOrder func - OrderService")
 					return
 				}
-				history.Data.RawMessage = tmpData
+				history.Data = tmpData
 
 				requestData, err := json.Marshal(mapItem)
 				if err != nil {
 					log.WithError(err).Error("Error when parse order_item request in UpdateDetailOrder - OrderService")
 					return
 				}
-				history.DataRequest.RawMessage = requestData
+				history.DataRequest = requestData
 
 				r.LogHistory(context.Background(), history, nil)
 			}()
@@ -517,15 +530,164 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 		return model.Order{}, nil, err
 	}
 
-	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
-	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).First(&rs).Error; err != nil {
 		return model.Order{}, nil, err
 	}
 
 	tx.Commit()
 	return order, stocks, nil
 }
+
+// version 1 - UpdateDetailOrder
+//func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+//	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrder")
+//
+//	var cancel context.CancelFunc
+//	if tx == nil {
+//		tx, cancel = r.DBWithTimeout(ctx)
+//		tx = tx.Begin()
+//		defer func() {
+//			tx.Rollback()
+//			cancel()
+//		}()
+//	}
+//
+//	tMap := make(map[string]model.OrderItem)
+//	for i, _ := range order.OrderItem {
+//		if v, ok := mapItem[order.OrderItem[i].SkuID.String()]; ok {
+//			// If exists in map -> update quantity and money.
+//			// Cập nhật lại delivering quantity cho stock này
+//			if v.Quantity-order.OrderItem[i].Quantity != 0 {
+//				stocks = append(stocks, model.StockRequest{
+//					SkuID:          order.OrderItem[i].SkuID,
+//					QuantityChange: v.Quantity - order.OrderItem[i].Quantity,
+//				})
+//			}
+//			order.OrderItem[i].Quantity = v.Quantity
+//			order.OrderItem[i].TotalAmount = v.TotalAmount
+//			order.OrderItem[i].SkuName = v.SkuName
+//			order.OrderItem[i].ProductName = v.ProductName
+//			order.OrderItem[i].ProductNormalPrice = v.ProductNormalPrice
+//			order.OrderItem[i].ProductSellingPrice = v.ProductSellingPrice
+//			order.OrderItem[i].ProductImages = v.ProductImages
+//			order.OrderItem[i].SkuCode = v.SkuCode
+//			order.OrderItem[i].UOM = v.UOM
+//			order.OrderItem[i].Price = v.Price
+//			order.OrderItem[i].HistoricalCost = v.HistoricalCost
+//		} else {
+//			// If not exist in map -> delete
+//			tNow := gorm.DeletedAt{
+//				Time: time.Now(),
+//			}
+//			order.OrderItem[i].DeletedAt = &tNow
+//			// Giảm số lượng khách đang đặt cho SKU này (- delivering quantity)
+//			stocks = append(stocks, model.StockRequest{
+//				SkuID:          order.OrderItem[i].SkuID,
+//				QuantityChange: -order.OrderItem[i].Quantity,
+//			})
+//		}
+//		tMap[order.OrderItem[i].SkuID.String()] = order.OrderItem[i]
+//	}
+//
+//	for skuID, item := range mapItem {
+//		if _, ok := tMap[skuID]; !ok {
+//			item.OrderID = order.ID
+//			order.OrderItem = append(order.OrderItem, item)
+//			// Thêm số lượng khách đang đặt bên stock (+ quantity)
+//			stocks = append(stocks, model.StockRequest{
+//				SkuID:          item.SkuID,
+//				QuantityChange: item.Quantity,
+//			})
+//		}
+//	}
+//
+//	for _, orderItem := range order.OrderItem {
+//		if orderItem.ID == uuid.Nil {
+//			if err = tx.Model(&model.OrderItem{}).Create(&orderItem).Error; err != nil {
+//				return model.Order{}, nil, err
+//			}
+//
+//			// log history order_item
+//			go func() {
+//				history := model.History{
+//					BaseModel: model.BaseModel{
+//						CreatorID: orderItem.UpdaterID,
+//					},
+//					ObjectID:    orderItem.ID,
+//					ObjectTable: utils.TABLE_ORDER_ITEM,
+//					Action:      utils.ACTION_UPDATE_ORDER_ITEM,
+//					Description: utils.ACTION_UPDATE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
+//					Worker:      orderItem.CreatorID.String(),
+//				}
+//
+//				tmpData, err := json.Marshal(orderItem)
+//				if err != nil {
+//					log.WithError(err).Error("Error when parse order in UpdateDetailOrder func - OrderService")
+//					return
+//				}
+//				history.Data = tmpData
+//
+//				requestData, err := json.Marshal(mapItem)
+//				if err != nil {
+//					log.WithError(err).Error("Error when parse order request in UpdateDetailOrder - OrderService")
+//					return
+//				}
+//				history.DataRequest = requestData
+//
+//				r.LogHistory(context.Background(), history, nil)
+//			}()
+//		} else {
+//			if err = tx.Model(&model.OrderItem{}).Where("id = ?", orderItem.ID).Updates(&orderItem).Error; err != nil {
+//				return model.Order{}, nil, err
+//			}
+//
+//			// log history order_item
+//			go func() {
+//				history := model.History{
+//					BaseModel: model.BaseModel{
+//						CreatorID: orderItem.UpdaterID,
+//					},
+//					ObjectID:    orderItem.ID,
+//					ObjectTable: utils.TABLE_ORDER_ITEM,
+//					Action:      utils.ACTION_UPDATE_ORDER_ITEM,
+//					Description: utils.ACTION_UPDATE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService",
+//					Worker:      orderItem.UpdaterID.String(),
+//				}
+//
+//				tmpData, err := json.Marshal(orderItem)
+//				if err != nil {
+//					log.WithError(err).Error("Error when parse orderItem in UpdateDetailOrder func - OrderService")
+//					return
+//				}
+//				history.Data = tmpData
+//
+//				requestData, err := json.Marshal(mapItem)
+//				if err != nil {
+//					log.WithError(err).Error("Error when parse order_item request in UpdateDetailOrder - OrderService")
+//					return
+//				}
+//				history.DataRequest = requestData
+//
+//				r.LogHistory(context.Background(), history, nil)
+//			}()
+//		}
+//	}
+//
+//	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
+//		return model.Order{}, nil, err
+//	}
+//
+//	if err = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+//		return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
+//	}).Where("id = ?", order.ID).First(&order).Error; err != nil {
+//		return model.Order{}, nil, err
+//	}
+//
+//	tx.Commit()
+//	return order, stocks, nil
+//}
 
 func (r *RepoPG) CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error) {
 	var cancel context.CancelFunc
@@ -551,7 +713,7 @@ func (r *RepoPG) CountOrderState(ctx context.Context, req model.RevenueBusinessP
 		"              CASE WHEN state = 'complete' THEN COUNT(*) END AS count_complete, " +
 		"              CASE WHEN state = 'cancel' THEN COUNT(*) END AS count_cancel " +
 		" 		FROM orders " +
-		" 		WHERE business_id = ? AND deleted_at IS NULL"
+		" 		WHERE business_id = ? "
 	if req.DateFrom != nil && req.DateTo != nil {
 		query += " AND updated_at BETWEEN ? AND ? "
 	}
@@ -607,7 +769,7 @@ func (r *RepoPG) GetOrderByContact(ctx context.Context, req model.OrderByContact
 	tx = tx.Model(&model.Order{})
 
 	if req.BusinessID != "" {
-		tx = tx.Where("deleted_at IS NULL AND business_id = ? ", req.BusinessID)
+		tx = tx.Where("business_id = ? ", req.BusinessID)
 	}
 
 	if req.ContactID != "" {
@@ -643,7 +805,7 @@ func (r *RepoPG) GetAllOrderForExport(ctx context.Context, req model.ExportOrder
 	}
 
 	tx = tx.Model(&model.Order{}).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
-		return db.Where("deleted_at IS NULL").Order("order_item.created_at ASC")
+		return db.Order("order_item.created_at ASC")
 	}).Where("business_id = ?", req.BusinessID)
 	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
 		tx = tx.Where("created_at >= ? AND created_at <= ?", req.StartTime, req.EndTime)
