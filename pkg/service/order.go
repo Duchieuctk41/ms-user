@@ -1221,14 +1221,14 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 			log.WithError(err).Error("Error when parse order in  in UpdateOrder func - OrderService")
 			return
 		}
-		history.Data.RawMessage = dataOrder
+		history.Data = dataOrder
 
 		requestData, err := json.Marshal(req)
 		if err != nil {
 			log.WithError(err).Error("Error when parse order request in UpdateOrder - OrderService")
 			return
 		}
-		history.DataRequest.RawMessage = requestData
+		history.DataRequest = requestData
 
 		s.historyService.LogHistory(context.Background(), history, nil)
 	}()
@@ -1514,14 +1514,14 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			log.WithError(err).Error("Error when parse order in UpdateDetailOrder func - OrderService")
 			return
 		}
-		history.Data.RawMessage = dataOrder
+		history.Data = dataOrder
 
 		requestData, err := json.Marshal(req)
 		if err != nil {
 			log.WithError(err).Error("Error when parse order request in UpdateDetailOrder - OrderService")
 			return
 		}
-		history.DataRequest.RawMessage = requestData
+		history.DataRequest = requestData
 
 		s.historyService.LogHistory(context.Background(), history, nil)
 	}()
@@ -2298,14 +2298,14 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			log.WithError(err).Error("Error when parse order in CreateOrderV2 func - OrderService")
 			return
 		}
-		history.Data.RawMessage = dataOrder
+		history.Data = dataOrder
 
 		requestData, err := json.Marshal(req)
 		if err != nil {
 			log.WithError(err).Error("Error when parse order request in CreateOrderV2 - OrderService")
 			return
 		}
-		history.DataRequest.RawMessage = requestData
+		history.DataRequest = requestData
 
 		s.historyService.LogHistory(ctx, history, tx)
 	}()
@@ -2352,14 +2352,14 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 				log.WithError(err).Error("Error when parse order_item in CreateOrderV2 func - OrderService")
 				return
 			}
-			history.Data.RawMessage = tmpData
+			history.Data = tmpData
 
 			requestData, err := json.Marshal(req)
 			if err != nil {
 				log.WithError(err).Error("Error when parse order_item request in CreateOrderV2 - OrderService")
 				return
 			}
-			history.DataRequest.RawMessage = requestData
+			history.DataRequest = requestData
 
 			s.historyService.LogHistory(ctx, history, nil)
 		}()

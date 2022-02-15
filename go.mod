@@ -10,15 +10,18 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.2.0
 	github.com/jinzhu/gorm v1.9.16
-	github.com/lib/pq v1.3.0
+	github.com/lib/pq v1.10.2
 	github.com/praslar/lib v0.2.2
 	github.com/sendgrid/rest v2.6.5+incompatible
 	github.com/sendinblue/APIv3-go-library v2.0.0+incompatible
 	github.com/sirupsen/logrus v1.8.1
 	github.com/xuri/excelize/v2 v2.4.1
 	gitlab.com/goxp/cloud0 v1.5.0
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/text v0.3.6
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/text v0.3.7
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
-	gorm.io/gorm v1.21.15
+	gorm.io/datatypes v1.0.5
+	gorm.io/driver/postgres v1.2.3 // indirect
+	gorm.io/driver/sqlserver v1.2.1 // indirect
+	gorm.io/gorm v1.22.4
 )

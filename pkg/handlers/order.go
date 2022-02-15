@@ -404,6 +404,14 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: ID đơn hàng không đúng định dạng")
 	}
 
+	// log request information
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in UpdateDetailOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+	log.WithField("req", string(field)).Info("OrderHandlers.UpdateDetailOrder")
+
 	// implement the business logic of UpdateDetailOrder
 	rs, err := h.service.UpdateDetailOrder(r.Context(), req, role)
 	if err != nil {
