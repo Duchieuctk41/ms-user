@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm/clause"
 	"net/http"
 	"strings"
@@ -797,6 +798,7 @@ func (r *RepoPG) GetSumOrderCompleteContact(ctx context.Context, req model.GetTo
 }
 
 func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB) {
+	start := time.Now()
 	log := logger.WithCtx(ctx, "UpdateMultiOrderEcom")
 	var cancel context.CancelFunc
 	if tx == nil {
@@ -804,12 +806,24 @@ func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom,
 		defer cancel()
 	}
 
+	eg := errgroup.Group{}
+
 	for _, v := range rs {
-		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			UpdateAll: true,
-		}).Create(&v).Error; err != nil {
-			log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
-		}
+		tmp := model.OrderEcom{}
+		eg.Go(func() error {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				UpdateAll: true,
+			}).Create(&tmp).Error; err != nil {
+				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
+			}
+			return nil
+		})
 	}
+
+	_ = eg.Wait()
+
+	// log time
+	elapsed := time.Since(start)
+	log.Printf("%s took %s", "Storage order ecom", elapsed)
 }
