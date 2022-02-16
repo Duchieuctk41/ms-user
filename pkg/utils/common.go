@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"finan/ms-order-management/pkg/model"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -177,4 +178,32 @@ func RevertBeginPhone(phone string) string {
 		}
 	}
 	return phone
+}
+
+func PackHistoryModel(ctx context.Context, creatorID uuid.UUID, worker string, objectID uuid.UUID, objectTable string, action string, description string, data interface{}, reqData interface{}) (res model.History, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.PackHistoryModel")
+	res = model.History{
+		BaseModel: model.BaseModel{
+			CreatorID: creatorID,
+		},
+		ObjectID:    objectID,
+		ObjectTable: objectTable,
+		Action:      action,
+		Description: description,
+		Worker:      worker,
+	}
+
+	tmpData, err := json.Marshal(data)
+	if err != nil {
+		log.WithError(err).Error("Error when parse order in PackHistoryModel func - utils")
+		return
+	}
+	res.Data = tmpData
+	requestData, err := json.Marshal(reqData)
+	if err != nil {
+		log.WithError(err).Error("Error when parse order request in PackHistoryModel - utils")
+		return
+	}
+	res.DataRequest = requestData
+	return res, nil
 }
