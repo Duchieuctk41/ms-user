@@ -13,8 +13,8 @@ func (r *RepoPG) LogHistory(ctx context.Context, history model.History, tx *gorm
 		defer cancel()
 	}
 
-	if err := tx.Create(&history).Error; err != nil {
-		return model.History{}, err
+	if err = tx.Create(&history).Error; err != nil {
+		return rs, err
 	}
 
 	return history, nil
