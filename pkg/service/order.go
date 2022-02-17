@@ -59,6 +59,9 @@ type OrderServiceInterface interface {
 
 	// version 2
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
+	CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error)
+	UpdateDetailOrderSeller(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error)
+	GetOneOrderBuyer(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 
 	CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error)
 	GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (rs model.TotalContactDelivery, err error)
@@ -97,6 +100,39 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 		logrus.Errorf("Fail to get business detail due to %v", err)
 		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
+
+	return rs, nil
+}
+
+func (s *OrderService) GetOneOrderBuyer(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOneOrder")
+
+	order, err := s.repo.GetOneOrderBuyer(ctx, valid.String(req.ID), nil)
+	if err != nil {
+		// if err is not found return 404
+		if err == gorm.ErrRecordNotFound {
+			log.WithError(err).Error("GetOneOrder not found")
+			return res, nil
+		} else {
+			log.WithError(err).Error("Record not found")
+			return res, ginext.NewError(http.StatusBadRequest, err.Error())
+		}
+	}
+	// check permission
+	// if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), order.BuyerId.String()); err != nil {
+	// 	return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
+	// }
+
+	rs := struct {
+		model.OrderBuyerResponse
+		BusinessInfo model.BusinessMainInfo `json:"business_info"`
+	}{OrderBuyerResponse: order}
+
+	// get shop info
+	// if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.BusinessID.String()); err != nil {
+	// 	logrus.Errorf("Fail to get business detail due to %v", err)
+	// 	return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	// }
 
 	return rs, nil
 }
@@ -1529,6 +1565,216 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	return res, nil
 }
 
+func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrderSeller")
+
+	if len(req.ListOrderItem) == 0 {
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
+	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetOneOrder")
+		return nil, err
+	}
+
+	// check permission
+	if err = utils.CheckPermission(ctx, req.UpdaterID.String(), order.BusinessID.String(), userRole); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
+		if *req.OtherDiscount > (*req.OrderedGrandTotal + *req.DeliveryFee - *req.PromotionDiscount) {
+			log.WithError(err).Error("Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+		}
+	}
+
+	if order.State != utils.ORDER_STATE_WAITING_CONFIRM && order.State != utils.ORDER_STATE_DELIVERING {
+		log.WithError(err).Error("Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+	}
+
+	// Check valid order
+	mapItem := make(map[string]model.OrderItem)
+	if len(req.ListOrderItem) > 0 && req.OrderedGrandTotal != nil && req.GrandTotal != nil && req.PromotionDiscount != nil && req.OtherDiscount != nil {
+		orderGrandTotal := 0.0
+		grandTotal := 0.0
+		deliveryFee := 0.0
+
+		//  Check valid order item
+		mapItemOld := make(map[string]model.OrderItem)
+		for _, v := range order.OrderItem {
+			mapItemOld[v.SkuID.String()] = v
+		}
+
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
+		if err != nil {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+		} else {
+			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+			}
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return rCheck, nil
+			}
+		}
+
+		mapSku := make(map[string]model.CheckValidStockResponse)
+		for _, v := range rCheck.ItemsInfo {
+			mapSku[v.ID.String()] = v
+		}
+
+		for i, v := range req.ListOrderItem {
+
+			itemTotalAmount := 0.0
+			if v.Price != 0 {
+				itemTotalAmount = v.Price * v.Quantity
+			} else {
+				if v.ProductSellingPrice > 0 {
+					itemTotalAmount = v.ProductSellingPrice * v.Quantity
+				} else {
+					itemTotalAmount = v.ProductNormalPrice * v.Quantity
+				}
+			}
+
+			req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
+			orderGrandTotal += req.ListOrderItem[i].TotalAmount
+			if _, ok := mapSku[v.SkuID.String()]; ok {
+				req.ListOrderItem[i].UOM = mapSku[v.SkuID.String()].Uom
+				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
+				req.ListOrderItem[i].WholesalePrice = mapSku[v.SkuID.String()].WholesalePrice
+			}
+
+			if req.ListOrderItem[i].Price == 0 {
+				if req.ListOrderItem[i].ProductSellingPrice != 0 {
+					req.ListOrderItem[i].Price = v.ProductSellingPrice
+				} else {
+					req.ListOrderItem[i].Price = v.ProductNormalPrice
+				}
+			}
+
+			mapItem[v.SkuID.String()] = req.ListOrderItem[i]
+		}
+
+		// Check promotion discount
+		if req.PromotionDiscount != nil && math.Round(*req.PromotionDiscount) != math.Round(order.PromotionDiscount) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
+		}
+
+		// Check order grand total
+		if math.Round(orderGrandTotal) != math.Round(*req.OrderedGrandTotal) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
+		}
+
+		// Check valid delivery fee
+		if req.DeliveryMethod != nil {
+			switch *req.DeliveryMethod {
+			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
+				if req.DeliveryFee != nil && *req.DeliveryFee > 0 {
+					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
+				}
+				deliveryFee = 0
+				break
+			case utils.DELIVERY_METHOD_SELLER_DELIVERY:
+				if req.DeliveryFee != nil && *req.DeliveryFee >= 0 {
+					deliveryFee = *req.DeliveryFee
+				}
+				break
+			}
+		}
+
+		// Check other discount
+		if *req.OtherDiscount < 0 || orderGrandTotal-order.PromotionDiscount-*req.OtherDiscount < 0 {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không hợp lệ")
+		}
+
+		// Check grand total
+		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - *req.OtherDiscount
+		if grandTotal < 0 {
+			grandTotal = 0
+		}
+		if math.Round(grandTotal) != math.Round(*req.GrandTotal) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
+		}
+	}
+
+	// Check and update buyer info
+	if req.BuyerInfo != nil && req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		// Update to order record
+		req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+		buyerInfo, err := json.Marshal(req.BuyerInfo)
+		if err != nil {
+			log.WithError(err).Errorf("Error when parse buyerInfo: %v", err.Error())
+		}
+		order.BuyerInfo.RawMessage = buyerInfo
+
+		// Update address of contact
+		getContactRequest := model.GetContactRequest{
+			BusinessID:  order.BusinessID,
+			Name:        req.BuyerInfo.Name,
+			PhoneNumber: req.BuyerInfo.PhoneNumber,
+			Address:     req.BuyerInfo.Address,
+		}
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/contact/get-contact-by-phone-number", rest.Post, nil, nil, getContactRequest)
+		if err != nil {
+			log.WithError(err).Errorf("Get contact error: %v", err.Error())
+		}
+	}
+
+	req.BuyerInfo = nil
+	common.Sync(req, &order)
+
+	res, stocks, err := s.repo.UpdateDetailOrder(ctx, order, mapItem, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when UpdateDetailOrderSeller")
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	if order.State == utils.ORDER_STATE_DELIVERING {
+		go s.UpdateStockWhenUpdateDetailOrder(context.Background(), order, stocks, "order_delivering")
+	}
+
+	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
+	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), utils.ORDER_STATE_UPDATE)
+
+	// log history order detail
+	go func() {
+		history := model.History{
+			BaseModel: model.BaseModel{
+				CreatorID: order.UpdaterID,
+			},
+			ObjectID:    order.ID,
+			ObjectTable: utils.TABLE_ORDER,
+			Action:      utils.ACTION_UPDATE_ORDER,
+			Description: utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrderSeller func - OrderService",
+			Worker:      order.UpdaterID.String(),
+		}
+
+		dataOrder, err := json.Marshal(order)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order in UpdateDetailOrderSeller func - OrderService")
+			return
+		}
+		history.Data = dataOrder
+
+		requestData, err := json.Marshal(req)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order request in UpdateDetailOrderSeller - OrderService")
+			return
+		}
+		history.DataRequest = requestData
+
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
+
+	return res, nil
+}
+
 func (s *OrderService) UpdateStockWhenUpdateDetailOrder(ctx context.Context, order model.Order, listStock []model.StockRequest, trackingType string) (err error) {
 	log := logger.WithCtx(ctx, "OrderService.UpdateStockWhenUpdateDetailOrder")
 
@@ -2326,6 +2572,391 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			orderItem.Price = orderItem.ProductSellingPrice
 		} else {
 			orderItem.Price = orderItem.ProductNormalPrice
+		}
+		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
+		if err != nil {
+			log.WithError(err).Errorf("Error when CreateOrderItem: %v", err.Error())
+			return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		order.OrderItem = append(order.OrderItem, tm)
+
+		// log history create order_item
+		func() {
+			history := model.History{
+				BaseModel: model.BaseModel{
+					CreatorID: orderItem.CreatorID,
+				},
+				ObjectID:    tm.ID,
+				ObjectTable: utils.TABLE_ORDER_ITEM,
+				Action:      utils.ACTION_CREATE_ORDER_ITEM,
+				Description: order.CreateMethod + " " + utils.ACTION_CREATE_ORDER_ITEM + " in CreateOrderV2 func - OrderService",
+				Worker:      orderItem.CreatorID.String(),
+			}
+
+			tmpData, err := json.Marshal(tm)
+			if err != nil {
+				log.WithError(err).Error("Error when parse order_item in CreateOrderV2 func - OrderService")
+				return
+			}
+			history.Data = tmpData
+
+			requestData, err := json.Marshal(req)
+			if err != nil {
+				log.WithError(err).Error("Error when parse order_item request in CreateOrderV2 - OrderService")
+				return
+			}
+			history.DataRequest = requestData
+
+			s.historyService.LogHistory(ctx, history, nil)
+		}()
+	}
+
+	debit := model.Debit{}
+	if req.Debit != nil {
+		debit = *req.Debit
+	}
+
+	tx.Commit()
+
+	go s.CountCustomer(context.Background(), order)
+	go s.OrderProcessing(context.Background(), order, debit, checkCompleted, *req.BuyerInfo)
+	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
+	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
+
+	// push consumer to complete order mission
+	go CompletedOrderMission(context.Background(), order)
+
+	return order, nil
+}
+
+//============================== version 2 ===========================================//
+func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
+
+	// Check format phone
+	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
+		log.WithError(err).Error("Error when check format phone")
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+	}
+
+	orderGrandTotal := 0.0
+	promotionDiscount := 0.0
+	deliveryFee := 0.0
+	grandTotal := 0.0
+
+	getContactRequest := model.GetContactRequest{
+		BusinessID:  *req.BusinessID,
+		Name:        req.BuyerInfo.Name,
+		PhoneNumber: req.BuyerInfo.PhoneNumber,
+		Address:     req.BuyerInfo.Address,
+	}
+
+	// Get Contact Info
+	info, err := s.GetContactInfo(ctx, getContactRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// check warehouse
+	checkCompleted := utils.ORDER_COMPLETED
+
+	// Set buyer_id from Create Method request
+	buyerID := uuid.UUID{}
+	switch req.CreateMethod {
+	case utils.BUYER_CREATE_METHOD:
+		// buyer mustn't create product fast
+		if len(req.ListProductFast) > 0 {
+			log.Error("Buyer cannot create product fast")
+			return nil, ginext.NewError(http.StatusUnauthorized, "Bạn không có quyền tạo sản phẩm nhanh")
+		}
+
+		// with buyer state always waiting confirm
+		req.State = utils.ORDER_STATE_WAITING_CONFIRM
+		buyerID = req.UserID
+
+		break
+	case utils.SELLER_CREATE_METHOD:
+		// check buyer received or not
+		if req.BuyerReceived {
+			req.State = utils.ORDER_STATE_COMPLETE
+		}
+
+		// if req.State == utils.ORDER_STATE_COMPLETE {
+		// 	checkCompleted = utils.FAST_ORDER_COMPLETED
+		// }
+
+		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
+		if err != nil {
+			log.WithError(err).Error("Error when get user info from phone number of buyer info")
+			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if len(tUser) > 0 {
+			buyerID = tUser[0].ID
+		}
+		deliveryFee = req.DeliveryFee
+		break
+	default:
+		log.WithError(err).Error("Error when Create method, expected: [buyer, seller]")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	//
+	var lstOrderItem []model.OrderItem
+	if len(req.ListProductFast) > 0 {
+
+		// Check duplicate name
+		productFast := make(map[string]string)
+		productNormal := make(map[string]string)
+		var lstProduct []string
+		for _, v := range req.ListProductFast {
+			if v.IsProductFast { // san pham nhanh
+				if productFast[v.Name] == v.Name {
+					log.WithError(err).Errorf("Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên trong cùng một đơn hàng")
+				}
+				productFast[v.Name] = v.Name
+			} else { // san pham thuong
+				if productNormal[v.Name] == v.Name {
+					log.WithError(err).Errorf("Error when create duplicated product name")
+					return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên trong cùng một đơn hàng")
+				}
+				productNormal[v.Name] = v.Name
+				lstProduct = append(lstProduct, v.Name)
+			}
+		}
+		checkDuplicateProduct := model.CheckDuplicateProductRequest{
+			BusinessID: req.BusinessID,
+			Names:      lstProduct,
+		}
+
+		// call ms-product-management to check duplicate product name of product normal
+		header := make(map[string]string)
+		header["x-user-roles"] = strconv.Itoa(utils.ADMIN_ROLE)
+		header["x-user-id"] = req.UserID.String()
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/product/check-duplicate-name", rest.Post, header, nil, checkDuplicateProduct)
+		if err != nil {
+			log.WithError(err).Errorf("Error when create duplicated product name")
+			return nil, ginext.NewError(http.StatusBadRequest, "Tạo sản phẩm không được trùng tên")
+		}
+
+		// call create multi product
+		listProductFast := model.CreateProductFast{
+			BusinessID:      req.BusinessID,
+			ListProductFast: req.ListProductFast,
+		}
+
+		productFastResponse, err := s.CreateMultiProduct(ctx, header, listProductFast)
+		if err == nil {
+			lstOrderItem = productFastResponse.Data
+		}
+	}
+
+	// append ListOrderItem from request to listOrderItem received from createMultiProduct
+	for _, v := range lstOrderItem {
+		if v.SkuID == uuid.Nil {
+			log.WithError(err).Error("Error when received from createMultiProduct")
+			return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+		}
+		req.ListOrderItem = append(req.ListOrderItem, v)
+	}
+
+	// check listOrderItem empty
+	if len(req.ListOrderItem) == 0 {
+		log.Error("ListOrderItem mustn't empty")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
+	// Check valid order item
+	log.WithField("list order item", req.ListOrderItem).Info("Request Order Item")
+
+	// check can pick quantity
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
+	if err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	} else {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status != utils.STATUS_SUCCESS {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return rCheck, nil
+		}
+	}
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
+	}
+
+	// Tính tổng tiền
+	for i, v := range req.ListOrderItem {
+		itemTotalAmount := 0.0
+		if v.Price != 0 {
+			itemTotalAmount = v.Price * v.Quantity
+		} else {
+			if v.ProductSellingPrice > 0 {
+				itemTotalAmount = v.ProductSellingPrice * v.Quantity
+			} else {
+				itemTotalAmount = v.ProductNormalPrice * v.Quantity
+			}
+		}
+
+		req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
+		orderGrandTotal += req.ListOrderItem[i].TotalAmount
+	}
+
+	// check if order is match condition free ship
+	if req.CreateMethod == utils.BUYER_CREATE_METHOD {
+		if info.Data.Business.DeliveryFee == 0 || (info.Data.Business.DeliveryFee > 0 && orderGrandTotal >= info.Data.Business.MinPriceFreeShip && info.Data.Business.MinPriceFreeShip > 0) {
+			deliveryFee = 0
+		} else {
+			deliveryFee = info.Data.Business.DeliveryFee
+		}
+	}
+
+	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+		deliveryFee = 0
+	} else {
+		if deliveryFee != req.DeliveryFee {
+			log.WithError(err).Error("Error when get check valid delivery fee")
+			return nil, ginext.NewError(http.StatusBadRequest, "Cửa hàng đã cập nhật phí vận chuyển mới, vui lòng kiểm tra lại")
+		}
+	}
+
+	// Check valid Other discount
+	if req.OtherDiscount < 0 || orderGrandTotal < req.OtherDiscount {
+		log.WithField("other discount", req.OtherDiscount).Error("Error when get check valid delivery fee")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không hợp lệ")
+	}
+
+	// Check Promotion Code
+	if req.PromotionCode != "" {
+		promotion, err := s.ProcessPromotion(ctx, *req.BusinessID, req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
+		if err != nil {
+			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
+			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
+		}
+		if promotion.ValueDiscount+req.OtherDiscount > orderGrandTotal {
+			promotionDiscount = orderGrandTotal - req.OtherDiscount
+		} else {
+			promotionDiscount = promotion.ValueDiscount
+		}
+	}
+
+	grandTotal = orderGrandTotal + deliveryFee - promotionDiscount - req.OtherDiscount
+	if grandTotal < 0 {
+		grandTotal = 0
+	}
+
+	// Check số tiền request lên và số tiền trong db có khớp
+	if math.Round(req.OrderedGrandTotal) != math.Round(orderGrandTotal) ||
+		math.Round(req.PromotionDiscount) != math.Round(promotionDiscount) ||
+		math.Round(req.DeliveryFee) != math.Round(deliveryFee) ||
+		math.Round(req.GrandTotal) != math.Round(grandTotal) {
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền không hợp lệ")
+	}
+
+	order := model.Order{
+		BusinessID:        *req.BusinessID,
+		ContactID:         info.Data.Contact.ID,
+		PromotionCode:     req.PromotionCode,
+		PromotionDiscount: promotionDiscount,
+		DeliveryFee:       deliveryFee,
+		OrderedGrandTotal: orderGrandTotal,
+		GrandTotal:        grandTotal,
+		State:             req.State,
+		PaymentMethod:     strings.ToLower(req.PaymentMethod),
+		DeliveryMethod:    *req.DeliveryMethod,
+		Note:              req.Note,
+		CreateMethod:      req.CreateMethod,
+		BuyerId:           &buyerID,
+		OtherDiscount:     req.OtherDiscount,
+		Email:             req.Email,
+	}
+
+	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+
+	order.CreatorID = req.UserID
+
+	buyerInfo, err := json.Marshal(req.BuyerInfo)
+	if err != nil {
+		log.WithError(err).Error("Error when parse buyerInfo")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	order.BuyerInfo.RawMessage = buyerInfo
+
+	log.Info("Begin work with DB")
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+
+	log.Info("Start DB transaction")
+
+	// create order
+	order, err = s.repo.CreateOrder(ctx, order, tx)
+	if err != nil {
+		log.WithError(err).Error("Error when CreateOrder")
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+	log.WithField("order created", order).Info("Finish createOrder")
+
+	// log history create order
+	go func() {
+		// order
+		history := model.History{
+			BaseModel: model.BaseModel{
+				CreatorID: order.CreatorID,
+			},
+			ObjectID:    order.ID,
+			ObjectTable: utils.TABLE_ORDER,
+			Action:      utils.ACTION_CREATE_ORDER_SELLER,
+			Description: order.CreateMethod + " " + utils.ACTION_CREATE_ORDER_SELLER + " in CreateOrderV2 func - OrderService",
+			Worker:      order.CreatorID.String(),
+		}
+
+		dataOrder, err := json.Marshal(order)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order in CreateOrderV2 func - OrderService")
+			return
+		}
+		history.Data = dataOrder
+
+		requestData, err := json.Marshal(req)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order request in CreateOrderV2 - OrderService")
+			return
+		}
+		history.DataRequest = requestData
+
+		s.historyService.LogHistory(ctx, history, tx)
+	}()
+
+	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
+		log.WithError(err).Error("Create order tracking error")
+		return res, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	for _, orderItem := range req.ListOrderItem {
+		orderItem.OrderID = order.ID
+		orderItem.CreatorID = order.CreatorID
+		if _, ok := mapSku[orderItem.SkuID.String()]; ok {
+			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
+			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
+			orderItem.WholesalePrice = mapSku[orderItem.SkuID.String()].WholesalePrice
+		}
+		if orderItem.Price == 0 {
+			if orderItem.ProductSellingPrice != 0 {
+				orderItem.Price = orderItem.ProductSellingPrice
+			} else {
+				orderItem.Price = orderItem.ProductNormalPrice
+			}
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {

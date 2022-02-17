@@ -70,6 +70,52 @@ func (h *OrderHandlers) GetOneOrder(r *ginext.Request) (*ginext.Response, error)
 	}, nil
 }
 
+// GetOneOrderBuyer - return response no historical cost,  wholesale price
+func (h *OrderHandlers) GetOneOrderBuyer(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetOneOrderBuyer")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.GetOneOrderRequest{}
+	r.MustBind(&req)
+
+	req.UserID = userID
+
+	// check permission
+	req.UserRole = r.GinCtx.Request.Header.Get("x-user-roles")
+
+	req.ID = utils.ParseStringIDFromUri(r.GinCtx)
+	if req.ID == nil {
+		log.WithError(err).Error("Wrong orderNumber %v", err.Error())
+		return nil, ginext.NewError(http.StatusForbidden, "Wrong orderNumber")
+	}
+
+	if err := common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	// Get one order
+	rs, err := h.service.GetOneOrderBuyer(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Error("Fail to GetOneOrderBuyer")
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
 // GetAllOrder - convert from /api/get-all-order - version app 1.0.35.1.4
 func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetAllOrder")
@@ -426,6 +472,53 @@ func (h *OrderHandlers) UpdateDetailOrder(r *ginext.Request) (*ginext.Response, 
 	}, nil
 }
 
+// UpdateDetailOrderSeller from UpdateDetailOrder - convert from /api/v3/update-detail-order/seller/{id}
+// update input price , wholesale price
+func (h *OrderHandlers) UpdateDetailOrderSeller(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.UpdateDetailOrderSeller")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.UpdateDetailOrderRequest{}
+	r.MustBind(&req)
+	req.UpdaterID = &userID
+	// Check Permission
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
+
+	// parse ID from URI
+	if req.ID = utils.ParseIDFromUri(r.GinCtx); req.ID == nil {
+		log.WithError(err).Error("Lỗi: ID đơn hàng không đúng định dạng")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: ID đơn hàng không đúng định dạng")
+	}
+
+	// log request information
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in UpdateDetailOrderSeller")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+	log.WithField("req", string(field)).Info("OrderHandlers.UpdateDetailOrderSeller")
+
+	// implement the business logic of UpdateDetailOrder
+	rs, err := h.service.UpdateDetailOrderSeller(r.Context(), req, role)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
+		return nil, err
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
 // ExportOrderReport - convert from /api/export-order-report - version app 1.0.35.1.4
 func (h *OrderHandlers) ExportOrderReport(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ExportOrderReport")
@@ -552,6 +645,56 @@ func (h *OrderHandlers) CreateOrderV2(r *ginext.Request) (*ginext.Response, erro
 
 	// create order
 	rs, err := h.service.CreateOrderV2(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to create order %v", err.Error())
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
+// CreateOrderSeller Create order seler - update from CreateOrderV2
+// input price , wholesale price
+func (h *OrderHandlers) CreateOrderSeller(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderSeller")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.OrderBody{}
+	r.MustBind(&req)
+	req.UserID = userID
+	if err := common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	// Check Permission
+	if req.CreateMethod == utils.SELLER_CREATE_METHOD {
+		if req.BusinessID == nil {
+			log.WithError(err).Error("Missing business ID")
+			return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+		}
+
+		role := r.GinCtx.Request.Header.Get("x-user-roles")
+		if err = utils.CheckPermission(r.GinCtx, userID.String(), req.BusinessID.String(), role); err != nil {
+			log.WithError(err).Error("Unauthorized")
+			return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+		}
+	}
+
+	// create order
+	rs, err := h.service.CreateOrderSeller(r.Context(), req)
 	if err != nil {
 		log.WithError(err).Errorf("Fail to create order %v", err.Error())
 		return nil, err

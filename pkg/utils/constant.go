@@ -117,8 +117,9 @@ const (
 )
 
 const (
-	ACTION_CREATE_ORDER = "create order"
-	ACTION_UPDATE_ORDER = "update order"
+	ACTION_CREATE_ORDER        = "create order"
+	ACTION_CREATE_ORDER_SELLER = "create order seller"
+	ACTION_UPDATE_ORDER        = "update order"
 
 	ACTION_CREATE_ORDER_ITEM           = "create order item"
 	ACTION_CREATE_OR_SELECT_ORDER_ITEM = "create or select order item"
