@@ -516,12 +516,12 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	switch order.State {
 
 	case utils.ORDER_STATE_WAITING_CONFIRM:
-		go s.SendNotificationV2(context.Background(), uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State+"_v2", fmt.Sprintf(utils.NOTI_CONTENT_WAITING_CONFIRM, utils.StrDelimitForSum(order.OrderedGrandTotal, "đ")))
+		go s.SendNotificationV2(context.Background(), uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State+"_v2", fmt.Sprintf(utils.NOTI_CONTENT_WAITING_CONFIRM, utils.StrDelimitForSum(order.GrandTotal, "đ")))
 		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_WAITING_CONFIRM, order.OrderNumber))
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_WAITING_CONFIRM, order.OrderNumber))
 		break
 	case utils.ORDER_STATE_DELIVERING:
-		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_DELIVERING, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_DELIVERING, order.OrderNumber, utils.StrDelimitForSum(order.OrderedGrandTotal, "đ"), buyerInfo.Name))
+		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_DELIVERING, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_DELIVERING, order.OrderNumber, utils.StrDelimitForSum(order.GrandTotal, "đ"), buyerInfo.Name))
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_DELIVERING, order.OrderNumber))
 		go s.UpdateStock(context.Background(), order, "order_delivering")
 		break
