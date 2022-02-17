@@ -6,14 +6,15 @@ import (
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"fmt"
-	"gitlab.com/goxp/cloud0/ginext"
-	"gitlab.com/goxp/cloud0/logger"
-	"golang.org/x/sync/errgroup"
-	"gorm.io/gorm/clause"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"gitlab.com/goxp/cloud0/ginext"
+	"gitlab.com/goxp/cloud0/logger"
+	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm/clause"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -139,6 +140,30 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 			return db.Order("order_item.created_at ASC")
 		}).First(&rs).Error; err != nil {
 			return model.Order{}, err
+		}
+	}
+
+	return rs, nil
+}
+
+func (r *RepoPG) GetOneOrderBuyer(ctx context.Context, id string, tx *gorm.DB) (rs model.OrderBuyerResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if len(id) == 9 {
+		if err = tx.Table("orders").Where("order_number = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+			return db.Table("order_item").Order("order_item.created_at ASC")
+		}).First(&rs).Error; err != nil {
+			return model.OrderBuyerResponse{}, err
+		}
+	} else {
+		if err = tx.Table("orders").Where("id = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+			return db.Table("order_item").Order("order_item.created_at ASC")
+		}).First(&rs).Error; err != nil {
+			return model.OrderBuyerResponse{}, err
 		}
 	}
 

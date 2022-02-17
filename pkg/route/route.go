@@ -49,6 +49,7 @@ func NewService() *Service {
 
 	// Order
 	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
+	v1Api.GET("/get-one-order/buyer/:id", ginext.WrapHandler(orderHandle.GetOneOrderBuyer))
 	v1Api.GET("/get-all-order", ginext.WrapHandler(orderHandle.GetAllOrder))
 	v1Api.GET("/count-order-state", ginext.WrapHandler(orderHandle.CountOrderState))
 	v1Api.GET("/get-order-by-contact", ginext.WrapHandler(orderHandle.GetOrderByContact))
@@ -59,6 +60,7 @@ func NewService() *Service {
 	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
 	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))
 	v1Api.PUT("/update-detail-order/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrder))
+	v1Api.PUT("/update-detail-order/seller/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrderSeller))
 	v1Api.POST("/export-order-report", ginext.WrapHandler(orderHandle.ExportOrderReport))
 	v1Api.POST("/count-quantity-in-order", ginext.WrapHandler(orderHandle.CountDeliveringQuantity))
 
@@ -81,6 +83,7 @@ func NewService() *Service {
 
 	// version 2
 	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
+	v2Api.POST("/create-order/seller", ginext.WrapHandler(orderHandle.CreateOrderSeller))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

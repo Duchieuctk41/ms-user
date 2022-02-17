@@ -88,6 +88,7 @@ type Sku struct {
 	CanPickQuantity float64        `json:"can_pick_quantity"`
 	Type            string         `json:"type"`
 	HistoricalCost  float64        `json:"historical_cost"`
+	WholesalePrice  *float64       `json:"wholesale_price"`
 }
 
 type SkuDetail struct {
