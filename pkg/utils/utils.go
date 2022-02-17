@@ -175,7 +175,7 @@ func String(in string) *string {
 }
 
 func PushConsumer(consumer ConsumerRequest) (res []interface{}, err error) {
-	_, _, err = common.SendRestAPI(conf.LoadEnv().MSConsumer+"/events", rest.Post, nil, nil, consumer)
+	_, _, err = common.SendRestAPI(conf.LoadEnv().MSConsumer + "/events", rest.Post, nil, nil, consumer)
 	if err != nil {
 		return res, err
 	}
