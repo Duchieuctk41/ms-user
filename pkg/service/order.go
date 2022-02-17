@@ -119,9 +119,9 @@ func (s *OrderService) GetOneOrderBuyer(ctx context.Context, req model.GetOneOrd
 		}
 	}
 	// check permission
-	// if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), order.BuyerId.String()); err != nil {
-	// 	return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
-	// }
+	if err := utils.CheckPermissionV2(ctx, req.UserRole, req.UserID, order.BusinessID.String(), order.BuyerId.String()); err != nil {
+		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
+	}
 
 	rs := struct {
 		model.OrderBuyerResponse
@@ -129,10 +129,10 @@ func (s *OrderService) GetOneOrderBuyer(ctx context.Context, req model.GetOneOrd
 	}{OrderBuyerResponse: order}
 
 	// get shop info
-	// if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.BusinessID.String()); err != nil {
-	// 	logrus.Errorf("Fail to get business detail due to %v", err)
-	// 	return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
-	// }
+	if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.BusinessID.String()); err != nil {
+		logrus.Errorf("Fail to get business detail due to %v", err)
+		return res, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
 
 	return rs, nil
 }
