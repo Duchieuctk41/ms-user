@@ -47,7 +47,7 @@ func (h *PaymentOrderHistoryHandlers) CreatePaymentOrderHistory(r *ginext.Reques
 	}
 
 	// check permission
-	if err = utils.CheckPermissionV3(r.GinCtx, userID, req.BusinessID.String(), ""); err != nil {
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), req.BusinessID.String()); err != nil {
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func (h *PaymentOrderHistoryHandlers) GetListPaymentOrderHistory(r *ginext.Reque
 	}
 
 	// check permission
-	if err = utils.CheckPermissionV3(r.GinCtx, userID, req.BusinessID, ""); err != nil {
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), req.BusinessID); err != nil {
 		return nil, err
 	}
 
