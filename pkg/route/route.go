@@ -44,12 +44,15 @@ func NewService() *Service {
 	orderTrackingService := service2.NewOrderTrackingService(repoPG)
 	orderTrackingHandle := handlers.NewOrderTrackingHandlers(orderTrackingService)
 
+	paymentOrderHistoryService := service2.NewPaymentOrderHistoryService(repoPG, historyService)
+	paymentOrderHistoryHandle := handlers.NewPaymentOrderHistoryHandlers(paymentOrderHistoryService)
+
 	v1Api := s.Router.Group("/api/v1")
 	v2Api := s.Router.Group("/api/v2")
 
 	// Order
 	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
-	v1Api.GET("/get-one-order/buyer/:id", ginext.WrapHandler(orderHandle.GetOneOrderBuyer))
+	v1Api.GET("/buyer/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrderBuyer))
 	v1Api.GET("/get-all-order", ginext.WrapHandler(orderHandle.GetAllOrder))
 	v1Api.GET("/count-order-state", ginext.WrapHandler(orderHandle.CountOrderState))
 	v1Api.GET("/get-order-by-contact", ginext.WrapHandler(orderHandle.GetOrderByContact))
@@ -60,7 +63,7 @@ func NewService() *Service {
 	v1Api.POST("/create-order-for-seller", ginext.WrapHandler(orderHandle.CreateOrderFast))
 	v1Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrder))
 	v1Api.PUT("/update-detail-order/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrder))
-	v1Api.PUT("/update-detail-order/seller/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrderSeller))
+	v1Api.PUT("/seller/update-detail-order/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrderSeller))
 	v1Api.POST("/export-order-report", ginext.WrapHandler(orderHandle.ExportOrderReport))
 	v1Api.POST("/count-quantity-in-order", ginext.WrapHandler(orderHandle.CountDeliveringQuantity))
 
@@ -81,9 +84,13 @@ func NewService() *Service {
 	// 15/12/21 - Receive message from rabbitmq - version app 1.0.34.1.1
 	v1Api.POST("/consumer", ginext.WrapHandler(orderHandle.ProcessConsumer))
 
+	// Payment order history
+	v1Api.POST("/payment-order-history/create", ginext.WrapHandler(paymentOrderHistoryHandle.CreatePaymentOrderHistory))
+	v1Api.GET("/payment-order-history/get-list", ginext.WrapHandler(paymentOrderHistoryHandle.GetListPaymentOrderHistory))
+
 	// version 2
 	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
-	v2Api.POST("/create-order/seller", ginext.WrapHandler(orderHandle.CreateOrderSeller))
+	v2Api.POST("/seller/create-order", ginext.WrapHandler(orderHandle.CreateOrderSeller))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

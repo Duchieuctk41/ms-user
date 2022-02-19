@@ -39,6 +39,7 @@ type PGInterface interface {
 	GetOneOrderBuyer(ctx context.Context, id string, tx *gorm.DB) (rs model.OrderBuyerResponse, err error)
 	GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm.DB) (rs model.Order, err error)
 	UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
+	UpdateOrderV2(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
 	GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse, err error)
 	GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
 	GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error)
@@ -49,6 +50,9 @@ type PGInterface interface {
 	GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error)
 	GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error)
+
+	//
+	CreateOrderV2(ctx context.Context, order *model.Order, tx *gorm.DB) error
 
 	OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error)
 	OverviewCost(ctx context.Context, req model.OrverviewPandLRequest, overviewPandL model.OverviewPandLResponse, tx *gorm.DB) (model.OverviewPandLResponse, error)
@@ -66,6 +70,12 @@ type PGInterface interface {
 
 	// ecom
 	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)
+
+	// payment_order_history
+	CreatePaymentOrderHistory(ctx context.Context, payment *model.PaymentOrderHistory, tx *gorm.DB) (err error)
+	GetAmountTotalPaymentOrderHistory(ctx context.Context, id string, tx *gorm.DB) (rs float64, err error)
+	GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam, tx *gorm.DB) (rs []*model.PaymentOrderHistoryResponse, err error)
+	//GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam, tx *gorm.DB) (rs model.GetListPaymentOrderHistoryResponse, err error)
 }
 
 type BaseModel struct {

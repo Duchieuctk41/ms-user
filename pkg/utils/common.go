@@ -68,6 +68,47 @@ func CheckPermissionV2(ctx context.Context, userRole string, userID uuid.UUID, b
 	return nil
 }
 
+// 17/02/2022 - hieucn - check permission allow [buyer | seller], don't check admin role anymore
+func CheckPermissionV3(ctx context.Context, userID uuid.UUID, businessID string, buyerID string) error {
+	log := logger.WithCtx(ctx, "CheckPermissionV2")
+
+	// Buyer or Seller can get this order
+	if buyerID != "" && userID.String() == buyerID {
+		return nil
+	}
+
+	userHasBusiness, err := GetUserHasBusiness(userID.String(), businessID)
+	if err != nil {
+		log.Errorf("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ", err.Error())
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	if len(userHasBusiness) == 0 {
+		log.Errorf("Fail to get user has business due to %v", err)
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	return nil
+}
+
+// 17/02/2022 - hieucn - only allow [ seller ] to access
+func CheckPermissionV4(ctx context.Context, userID string, businessID string) error {
+	log := logger.WithCtx(ctx, "CheckPermissionV2")
+
+	userHasBusiness, err := GetUserHasBusiness(userID, businessID)
+	if err != nil {
+		log.Errorf("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ", err.Error())
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	if len(userHasBusiness) == 0 {
+		log.Errorf("Fail to get user has business due to %v", err)
+		return ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	return nil
+}
+
 func StrDelimitForSum(flt float64, currency string) string {
 	str := strconv.FormatFloat(flt, 'f', 0, 64)
 
@@ -199,11 +240,14 @@ func PackHistoryModel(ctx context.Context, creatorID uuid.UUID, worker string, o
 		return
 	}
 	res.Data = tmpData
-	requestData, err := json.Marshal(reqData)
-	if err != nil {
-		log.WithError(err).Error("Error when parse order request in PackHistoryModel - utils")
-		return
+	if reqData != nil {
+		requestData, err := json.Marshal(reqData)
+		if err != nil {
+			log.WithError(err).Error("Error when parse order request in PackHistoryModel - utils")
+			return res, nil
+		}
+		res.DataRequest = requestData
 	}
-	res.DataRequest = requestData
+
 	return res, nil
 }
