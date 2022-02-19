@@ -13,26 +13,28 @@ import (
 
 type Order struct {
 	BaseModel
-	BusinessID        uuid.UUID      `json:"business_id" sql:"index" gorm:"column:business_id;not null;" valid:"Required" scheme:"business_id"`
-	ContactID         uuid.UUID      `json:"contact_id" sql:"index" gorm:"column:contact_id;not null;"`
-	OrderNumber       string         `json:"order_number" sql:"index" gorm:"column:order_number;not null;"`
-	PromotionCode     string         `json:"promotion_code" gorm:"column:promotion_code;null;"`
-	OrderedGrandTotal float64        `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
-	PromotionDiscount float64        `json:"promotion_discount" gorm:"promotion_discount"`
-	DeliveryFee       float64        `json:"delivery_fee" gorm:"column:delivery_fee"`
-	GrandTotal        float64        `json:"grand_total" gorm:"grand_total"`
-	State             string         `json:"state" sql:"index" gorm:"column:state;not null;"`
-	PaymentMethod     string         `json:"payment_method" sql:"index" gorm:"column:payment_method;"`
-	Note              string         `json:"note" gorm:"column:note;null;"`
-	BuyerInfo         postgres.Jsonb `json:"buyer_info" gorm:"null"`
-	BuyerId           *uuid.UUID     `json:"buyer_id" sql:"index" gorm:"column:buyer_id;type:uuid"`
-	DeliveryMethod    string         `json:"delivery_method" sql:"index" gorm:"column:delivery_method;"`
-	OrderItem         []OrderItem    `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" `
-	CreateMethod      string         `json:"create_method" sql:"index" gorm:"create_method;default:'buyer'"`
-	Email             string         `json:"email" sql:"index" gorm:"type:varchar(500)"`
-	OtherDiscount     float64        `json:"other_discount" gorm:""`
-	IsPrinted         bool           `json:"is_printed" sql:"index" gorm:"column:is_printed;default:false"`
-	DebtAmount        float64        `json:"debt_amount" gorm:"column:debt_amount"`
+	BusinessID          uuid.UUID                     `json:"business_id" sql:"index" gorm:"column:business_id;not null;" valid:"Required" scheme:"business_id"`
+	ContactID           uuid.UUID                     `json:"contact_id" sql:"index" gorm:"column:contact_id;not null;"`
+	OrderNumber         string                        `json:"order_number" sql:"index" gorm:"column:order_number;not null;"`
+	PromotionCode       string                        `json:"promotion_code" gorm:"column:promotion_code;null;"`
+	OrderedGrandTotal   float64                       `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
+	PromotionDiscount   float64                       `json:"promotion_discount" gorm:"promotion_discount"`
+	DeliveryFee         float64                       `json:"delivery_fee" gorm:"column:delivery_fee"`
+	GrandTotal          float64                       `json:"grand_total" gorm:"grand_total"`
+	State               string                        `json:"state" sql:"index" gorm:"column:state;not null;"`
+	PaymentMethod       string                        `json:"payment_method" sql:"index" gorm:"column:payment_method;"`
+	Note                string                        `json:"note" gorm:"column:note;null;"`
+	BuyerInfo           postgres.Jsonb                `json:"buyer_info" gorm:"null"`
+	BuyerId             *uuid.UUID                    `json:"buyer_id" sql:"index" gorm:"column:buyer_id;type:uuid"`
+	DeliveryMethod      string                        `json:"delivery_method" sql:"index" gorm:"column:delivery_method;"`
+	OrderItem           []OrderItem                   `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" `
+	CreateMethod        string                        `json:"create_method" sql:"index" gorm:"create_method;default:'buyer'"`
+	Email               string                        `json:"email" sql:"index" gorm:"type:varchar(500)"`
+	OtherDiscount       float64                       `json:"other_discount" gorm:""`
+	IsPrinted           bool                          `json:"is_printed" sql:"index" gorm:"column:is_printed;default:false"`
+	DebtAmount          float64                       `json:"debt_amount" gorm:"column:debt_amount"`
+	AmountPaid          float64                       `json:"amount_paid" gorm:"column:amount_paid;null"`
+	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 }
 
 func GenerateRandomString(n int) string {
@@ -272,25 +274,27 @@ type GetTotalOrderByBusinessResponse struct {
 
 type OrderBuyerResponse struct {
 	//BaseModel
-	ID                uuid.UUID                `json:"id"`
-	BusinessID        uuid.UUID                `json:"business_id" sql:"index" gorm:"column:business_id;not null;" valid:"Required" scheme:"business_id"`
-	ContactID         uuid.UUID                `json:"contact_id" sql:"index" gorm:"column:contact_id;not null;"`
-	OrderNumber       string                   `json:"order_number" sql:"index" gorm:"column:order_number;not null;"`
-	PromotionCode     string                   `json:"promotion_code" gorm:"column:promotion_code;null;"`
-	OrderedGrandTotal float64                  `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
-	PromotionDiscount float64                  `json:"promotion_discount" gorm:"promotion_discount"`
-	DeliveryFee       float64                  `json:"delivery_fee" gorm:"column:delivery_fee"`
-	GrandTotal        float64                  `json:"grand_total" gorm:"grand_total"`
-	State             string                   `json:"state" sql:"index" gorm:"column:state;not null;"`
-	PaymentMethod     string                   `json:"payment_method" sql:"index" gorm:"column:payment_method;"`
-	Note              string                   `json:"note" gorm:"column:note;null;"`
-	BuyerInfo         postgres.Jsonb           `json:"buyer_info" gorm:"null"`
-	BuyerId           *uuid.UUID               `json:"buyer_id" sql:"index" gorm:"column:buyer_id;type:uuid"`
-	DeliveryMethod    string                   `json:"delivery_method" sql:"index" gorm:"column:delivery_method;"`
-	OrderItem         []OrderItemBuyerResponse `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" `
-	CreateMethod      string                   `json:"create_method" sql:"index" gorm:"create_method;default:'buyer'"`
-	Email             string                   `json:"email" sql:"index" gorm:"type:varchar(500)"`
-	OtherDiscount     float64                  `json:"other_discount" gorm:""`
-	IsPrinted         bool                     `json:"is_printed" sql:"index" gorm:"column:is_printed;default:false"`
-	DebtAmount        float64                  `json:"debt_amount" gorm:"column:debt_amount"`
+	ID                  uuid.UUID                     `json:"id"`
+	BusinessID          uuid.UUID                     `json:"business_id"`
+	ContactID           uuid.UUID                     `json:"contact_id"`
+	OrderNumber         string                        `json:"order_number"`
+	PromotionCode       string                        `json:"promotion_code"`
+	OrderedGrandTotal   float64                       `json:"ordered_grand_total"`
+	PromotionDiscount   float64                       `json:"promotion_discount"`
+	DeliveryFee         float64                       `json:"delivery_fee"`
+	GrandTotal          float64                       `json:"grand_total"`
+	State               string                        `json:"state"`
+	PaymentMethod       string                        `json:"payment_method"`
+	Note                string                        `json:"note"`
+	BuyerInfo           postgres.Jsonb                `json:"buyer_info"`
+	BuyerId             *uuid.UUID                    `json:"buyer_id"`
+	DeliveryMethod      string                        `json:"delivery_method"`
+	OrderItem           []OrderItemBuyerResponse      `json:"order_item"`
+	CreateMethod        string                        `json:"create_method"`
+	Email               string                        `json:"email" sql:"index"`
+	OtherDiscount       float64                       `json:"other_discount"`
+	IsPrinted           bool                          `json:"is_printed"`
+	DebtAmount          float64                       `json:"debt_amount"`
+	AmountPaid          float64                       `json:"amount_paid"`
+	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history"`
 }

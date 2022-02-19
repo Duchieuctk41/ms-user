@@ -5,6 +5,8 @@ import (
 	"finan/ms-order-management/conf"
 	"finan/ms-order-management/pkg/model"
 	"fmt"
+	"gitlab.com/goxp/cloud0/ginext"
+	"gitlab.com/goxp/cloud0/logger"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"context"
 	"github.com/astaxie/beego/logs"
 	"github.com/google/uuid"
 	"github.com/praslar/lib/common"
@@ -138,6 +141,69 @@ func CheckCanPickQuantityV4(userID string, req []model.OrderItem, businessID str
 	return tm.Data, nil
 }
 
+func CheckCanPickQuantityV5(ctx context.Context, userID string, req []model.OrderItem, businessID string, mapItem map[string]model.OrderItem, createMethod string) (res model.CheckValidOrderItemResponse, err error) {
+	log := logger.WithCtx(ctx, "utils.CheckCanPickQuantityV5")
+
+	// Update req quantity
+	var tReq []model.OrderItem
+	for _, v := range req {
+		// check empty quantity
+		if err := CheckEmptyQuantity(v.Quantity); err != nil {
+			return res, err
+		}
+
+		if mapItem != nil {
+			if item, ok := mapItem[v.SkuID.String()]; ok {
+				v.Quantity = v.Quantity - item.Quantity
+			}
+		}
+		tReq = append(tReq, v)
+	}
+	header := make(map[string]string)
+	header["x-user-id"] = userID
+	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+	header["x-business-id"] = businessID
+	header["x-create-method"] = createMethod
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v4/check-valid-order-items", rest.Post, header, nil, tReq)
+	if err != nil {
+		// parsing error
+		tm := struct {
+			Message string `json:"message"`
+		}{}
+		if err = json.Unmarshal([]byte(body), &tm); err != nil {
+			return res, err
+		}
+		return res, fmt.Errorf(tm.Message)
+	}
+	tm := struct {
+		Data model.CheckValidOrderItemResponse `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return res, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+
+	// set quantity
+	for i, v := range tm.Data.ItemsInfo {
+		if mapItem != nil {
+			if _, ok := mapItem[v.Sku.ID.String()]; ok {
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+			}
+		}
+	}
+
+	if tm.Data.Status == STATUS_SKU_NOT_FOUND {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return res, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+	}
+	if tm.Data.Status != STATUS_SUCCESS {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return tm.Data, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product")
+	}
+
+	return tm.Data, nil
+}
+
 func GetSkuDetail(skuIDs []string, businessID string) (res []model.SkuDetail, err error) {
 	tBD := struct {
 		ListSku    []string `json:"list_sku"`
@@ -175,7 +241,7 @@ func String(in string) *string {
 }
 
 func PushConsumer(consumer ConsumerRequest) (res []interface{}, err error) {
-	_, _, err = common.SendRestAPI(conf.LoadEnv().MSConsumer + "/events", rest.Post, nil, nil, consumer)
+	_, _, err = common.SendRestAPI(conf.LoadEnv().MSConsumer+"/events", rest.Post, nil, nil, consumer)
 	if err != nil {
 		return res, err
 	}

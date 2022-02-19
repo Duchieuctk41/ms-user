@@ -111,15 +111,17 @@ const (
 )
 
 const (
-	TABLE_ORDER      = "order"
-	TABLE_ORDER_ITEM = "order_item"
-	TABLE_ORDER_ECOM = "order_ecom"
+	TABLE_ORDER                 = "order"
+	TABLE_ORDER_ITEM            = "order_item"
+	TABLE_ORDER_ECOM            = "order_ecom"
+	TABLE_PAYMENT_ORDER_HISTORY = "payment_order_history"
 )
 
 const (
-	ACTION_CREATE_ORDER        = "create order"
-	ACTION_CREATE_ORDER_SELLER = "create order seller"
-	ACTION_UPDATE_ORDER        = "update order"
+	ACTION_CREATE_ORDER                 = "create order"
+	ACTION_CREATE_ORDER_SELLER          = "create order seller"
+	ACTION_UPDATE_ORDER                 = "update order"
+	ACTION_CREATE_PAYMENT_ORDER_HISTORY = "create payment_order_history"
 
 	ACTION_CREATE_ORDER_ITEM           = "create order item"
 	ACTION_CREATE_OR_SELECT_ORDER_ITEM = "create or select order item"

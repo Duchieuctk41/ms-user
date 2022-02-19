@@ -34,6 +34,23 @@ func (r *RepoPG) CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 	return order, nil
 }
 
+func (r *RepoPG) CreateOrderV2(ctx context.Context, order *model.Order, tx *gorm.DB) error {
+	log := logger.WithCtx(ctx, "RepoPG.CreateOrderV1")
+
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if err := tx.Create(&order).Error; err != nil {
+		log.WithError(err).Error("error_500: create order in CreateOrderV1 - RepoPG")
+		return ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	return nil
+}
+
 func (r *RepoPG) CountOneStateOrder(ctx context.Context, businessId uuid.UUID, state string, tx *gorm.DB) int {
 	var cancel context.CancelFunc
 	if tx == nil {
@@ -123,6 +140,8 @@ func (r *RepoPG) GetContactHaveOrder(ctx context.Context, businessId uuid.UUID, 
 }
 
 func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs model.Order, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetOneOrder")
+
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
@@ -132,14 +151,30 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 	if len(id) == 9 {
 		if err = tx.Model(&model.Order{}).Where("order_number = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 			return db.Order("order_item.created_at ASC")
+		}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
 		}).First(&rs).Error; err != nil {
-			return model.Order{}, err
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOneOrder - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrder - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
 		}
 	} else {
 		if err = tx.Model(&model.Order{}).Where("id = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 			return db.Order("order_item.created_at ASC")
+		}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
 		}).First(&rs).Error; err != nil {
-			return model.Order{}, err
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOneOrder - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrder - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
 		}
 	}
 
@@ -147,6 +182,8 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 }
 
 func (r *RepoPG) GetOneOrderBuyer(ctx context.Context, id string, tx *gorm.DB) (rs model.OrderBuyerResponse, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetOneOrderBuyer")
+
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
@@ -156,14 +193,30 @@ func (r *RepoPG) GetOneOrderBuyer(ctx context.Context, id string, tx *gorm.DB) (
 	if len(id) == 9 {
 		if err = tx.Table("orders").Where("order_number = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 			return db.Table("order_item").Order("order_item.created_at ASC")
+		}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
 		}).First(&rs).Error; err != nil {
-			return model.OrderBuyerResponse{}, err
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOnePaymentSource - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrderBuyer - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
 		}
 	} else {
 		if err = tx.Table("orders").Where("id = ?", id).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 			return db.Table("order_item").Order("order_item.created_at ASC")
+		}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+			return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
 		}).First(&rs).Error; err != nil {
-			return model.OrderBuyerResponse{}, err
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOnePaymentSource - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrderBuyer - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
 		}
 	}
 
@@ -204,6 +257,24 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 	}
 
 	tx.Commit()
+	return order, nil
+}
+
+// 17/02/2022 - hieucn - just update order, don't get order, preload order_item in update func anymore
+func (r *RepoPG) UpdateOrderV2(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error) {
+	log := logger.WithCtx(ctx, "OrderHandlers.UpdateOrderV2")
+
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
+		log.WithError(err).Error("error_500: Error when UpdateOrderV2 - RepoPG")
+		return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
 	return order, nil
 }
 

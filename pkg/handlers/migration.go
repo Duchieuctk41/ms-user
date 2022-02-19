@@ -24,6 +24,7 @@ func (h *MigrationHandler) Migrate(ctx *gin.Context) {
 		&model.OrderTracking{},
 		&model.OrderEcom{},
 		&model.History{},
+		&model.PaymentOrderHistory{},
 	}
 	for _, m := range models {
 		err := h.db.AutoMigrate(m)
