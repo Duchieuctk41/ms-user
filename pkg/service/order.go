@@ -79,7 +79,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 		return nil, err
 	}
 	// check permission
-	if err = utils.CheckPermissionV3(ctx, req.UserID, order.BusinessID.String(), order.BuyerId.String()); err != nil {
+	if err = utils.CheckPermissionV4(ctx, req.UserID.String(), order.BusinessID.String()); err != nil {
 		return nil, err
 	}
 
