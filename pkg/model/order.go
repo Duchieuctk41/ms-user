@@ -27,14 +27,14 @@ type Order struct {
 	BuyerInfo           postgres.Jsonb                `json:"buyer_info" gorm:"null"`
 	BuyerId             *uuid.UUID                    `json:"buyer_id" sql:"index" gorm:"column:buyer_id;type:uuid"`
 	DeliveryMethod      string                        `json:"delivery_method" sql:"index" gorm:"column:delivery_method;"`
-	OrderItem           []OrderItem                   `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" `
+	OrderItem           []OrderItem                   `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;" `
 	CreateMethod        string                        `json:"create_method" sql:"index" gorm:"create_method;default:'buyer'"`
 	Email               string                        `json:"email" sql:"index" gorm:"type:varchar(500)"`
 	OtherDiscount       float64                       `json:"other_discount" gorm:""`
 	IsPrinted           bool                          `json:"is_printed" sql:"index" gorm:"column:is_printed;default:false"`
 	DebtAmount          float64                       `json:"debt_amount" gorm:"column:debt_amount"`
 	AmountPaid          float64                       `json:"amount_paid" gorm:"column:amount_paid;null"`
-	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history" gorm:"foreignkey:order_id;association_foreignkey:id;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history" gorm:"foreignkey:order_id;association_foreignkey:id"`
 }
 
 func GenerateRandomString(n int) string {
@@ -85,6 +85,8 @@ type OrderBody struct {
 	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
 	DeliveryFee       float64     `json:"delivery_fee"`
 	DeliveryMethod    *string     `json:"delivery_method" valid:"Required" schema:"delivery_method"`
+	PaymentSourceID   uuid.UUID   `json:"payment_source_id" valid:"Required"`
+	PaymentSourceName string      `json:"payment_source_name" valid:"Required"`
 	CreateMethod      string      `json:"create_method" valid:"Required"`
 	OtherDiscount     float64     `json:"other_discount"`
 	Email             string      `json:"email"`
@@ -289,12 +291,12 @@ type OrderBuyerResponse struct {
 	BuyerInfo           postgres.Jsonb                `json:"buyer_info"`
 	BuyerId             *uuid.UUID                    `json:"buyer_id"`
 	DeliveryMethod      string                        `json:"delivery_method"`
-	OrderItem           []OrderItemBuyerResponse      `json:"order_item"`
+	OrderItem           []OrderItemBuyerResponse      `json:"order_item" gorm:"foreignkey:order_id;association_foreignkey:id;" `
 	CreateMethod        string                        `json:"create_method"`
 	Email               string                        `json:"email" sql:"index"`
 	OtherDiscount       float64                       `json:"other_discount"`
 	IsPrinted           bool                          `json:"is_printed"`
 	DebtAmount          float64                       `json:"debt_amount"`
 	AmountPaid          float64                       `json:"amount_paid"`
-	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history"`
+	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history" gorm:"foreignkey:order_id;association_foreignkey:id;"`
 }

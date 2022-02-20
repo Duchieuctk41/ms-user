@@ -51,7 +51,7 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 	}
 
 	// check totalPayment vs order_grand_total
-	if totalPayment >= order.OrderedGrandTotal {
+	if totalPayment >= order.GrandTotal {
 		log.WithError(err).Error("error_400: Khách đã thanh toán đủ tiền")
 		return res, ginext.NewError(http.StatusInternalServerError, "Khách đã thanh toán đủ tiền")
 	}
@@ -65,11 +65,11 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 		Name:            valid.String(req.Name),
 		PaymentMethod:   valid.String(req.PaymentMethod),
 		PaymentSourceID: valid.UUID(req.PaymentSourceID),
-		Day:             time.Now(),
+		Day:             time.Now().UTC(),
 	}
 
 	// check debt_amount vs request amount
-	debtAmount := order.OrderedGrandTotal - totalPayment
+	debtAmount := order.GrandTotal - totalPayment
 	if debtAmount <= valid.Float64(req.Amount) {
 		payment.Amount = debtAmount
 	} else {
