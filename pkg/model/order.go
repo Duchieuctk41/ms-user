@@ -85,8 +85,8 @@ type OrderBody struct {
 	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
 	DeliveryFee       float64     `json:"delivery_fee"`
 	DeliveryMethod    *string     `json:"delivery_method" valid:"Required" schema:"delivery_method"`
-	PaymentSourceID   uuid.UUID   `json:"payment_source_id" valid:"Required"`
-	PaymentSourceName string      `json:"payment_source_name" valid:"Required"`
+	PaymentSourceID   *uuid.UUID  `json:"payment_source_id"`
+	PaymentSourceName *string     `json:"payment_source_name"`
 	CreateMethod      string      `json:"create_method" valid:"Required"`
 	OtherDiscount     float64     `json:"other_discount"`
 	Email             string      `json:"email"`

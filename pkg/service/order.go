@@ -2923,6 +2923,14 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
 
+	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
+	if req.State != utils.ORDER_STATE_WAITING_CONFIRM {
+		if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
+			log.WithError(err).Error("error_400: Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
+			return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
+		}
+	}
+
 	// Check format phone
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
 		log.WithError(err).Error("Error when check format phone")
@@ -3063,10 +3071,10 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 
 	tx.Commit()
 	paymentOrderHistory := model.PaymentOrderHistory{
-		Name:            req.PaymentSourceName,
+		Name:            valid.String(req.PaymentSourceName),
 		Day:             time.Now().UTC(),
 		OrderID:         order.ID,
-		PaymentSourceID: req.PaymentSourceID,
+		PaymentSourceID: valid.UUID(req.PaymentSourceID),
 		Amount:          order.GrandTotal,
 		PaymentMethod:   req.PaymentMethod,
 	}
