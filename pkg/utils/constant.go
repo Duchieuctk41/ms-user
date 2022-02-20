@@ -1,6 +1,10 @@
 package utils
 
-const ADMIN_ROLE = 64
+const (
+	ADMIN_ROLE  = 64
+	BUYER_ROLE  = 1
+	SELLER_ROLE = 256
+)
 
 // Status for check valid order item
 const (

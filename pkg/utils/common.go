@@ -109,6 +109,30 @@ func CheckPermissionV4(ctx context.Context, userID string, businessID string) er
 	return nil
 }
 
+// 17/02/2022 - hieucn - check permission allow [seller | buyer], don't check admin role anymore
+func CheckPermissionV5(ctx context.Context, userID string, businessID string, buyerID string) (int, error) {
+	log := logger.WithCtx(ctx, "CheckPermissionV5")
+
+	role := 0
+	userHasBusiness, err := GetUserHasBusiness(userID, businessID)
+	if err != nil {
+		log.Errorf("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ", err.Error())
+		return 0, ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	if len(userHasBusiness) > 0 {
+		role = SELLER_ROLE
+	}
+
+	// Buyer or Seller can get this order
+	if role == 0 && buyerID != "" && userID != buyerID {
+		log.Error("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ")
+		return 0, ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
+	}
+
+	return role, nil
+}
+
 func StrDelimitForSum(flt float64, currency string) string {
 	str := strconv.FormatFloat(flt, 'f', 0, 64)
 

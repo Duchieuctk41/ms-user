@@ -79,15 +79,75 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 		return nil, err
 	}
 	// check permission
-	if err = utils.CheckPermissionV4(ctx, req.UserID.String(), order.BusinessID.String()); err != nil {
+	role, err := utils.CheckPermissionV5(ctx, req.UserID.String(), order.BusinessID.String(), order.BuyerId.String())
+	if err != nil {
 		return nil, err
 	}
 
+	if role == utils.BUYER_ROLE {
+		rs := struct {
+			Order        model.OrderBuyerResponse
+			BusinessInfo model.BusinessMainInfo `json:"business_info"`
+		}{}
+		rs.Order = model.OrderBuyerResponse{
+			ID:                  order.ID,
+			BusinessID:          order.BusinessID,
+			ContactID:           order.ContactID,
+			OrderNumber:         order.OrderNumber,
+			PromotionCode:       order.PromotionCode,
+			OrderedGrandTotal:   order.OrderedGrandTotal,
+			DeliveryFee:         order.DeliveryFee,
+			GrandTotal:          order.GrandTotal,
+			State:               order.State,
+			PaymentMethod:       order.PaymentMethod,
+			Note:                order.Note,
+			BuyerInfo:           order.BuyerInfo,
+			BuyerId:             order.BuyerId,
+			DeliveryMethod:      order.DeliveryMethod,
+			CreateMethod:        order.CreateMethod,
+			Email:               order.Email,
+			OtherDiscount:       order.OtherDiscount,
+			IsPrinted:           order.IsPrinted,
+			DebtAmount:          order.DebtAmount,
+			AmountPaid:          order.AmountPaid,
+			PaymentOrderHistory: order.PaymentOrderHistory,
+		}
+		for _, orderItem := range order.OrderItem {
+			o := model.OrderItemBuyerResponse{
+				ID:                  orderItem.ID,
+				BusinessID:          order.BusinessID,
+				OrderID:             orderItem.OrderID,
+				ProductName:         orderItem.ProductName,
+				ProductNormalPrice:  orderItem.ProductNormalPrice,
+				ProductSellingPrice: orderItem.ProductSellingPrice,
+				ProductImages:       orderItem.ProductImages,
+				Quantity:            orderItem.Quantity,
+				TotalAmount:         orderItem.TotalAmount,
+				Note:                orderItem.Note,
+				SkuID:               orderItem.SkuID,
+				SkuCode:             orderItem.SkuCode,
+				SkuName:             orderItem.SkuName,
+				UOM:                 orderItem.UOM,
+				ProductType:         orderItem.ProductType,
+				CanPickQuantity:     orderItem.CanPickQuantity,
+				SkuActive:           orderItem.SkuActive,
+				Price:               orderItem.Price,
+			}
+			rs.Order.OrderItem = append(rs.Order.OrderItem, o)
+		}
+
+		// get shop info
+		if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.Order.BusinessID.String()); err != nil {
+			log.Errorf("Fail to get business detail due to %v", err)
+			return res, err
+		}
+		return rs, nil
+
+	}
 	rs := struct {
 		model.Order
 		BusinessInfo model.BusinessMainInfo `json:"business_info"`
 	}{Order: order}
-
 	// get shop info
 	if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.BusinessID.String()); err != nil {
 		log.Errorf("Fail to get business detail due to %v", err)
@@ -543,8 +603,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 			Table:           "income",
 		}
 
-		err = s.CreateBusinessTransaction(ctx, businessTransaction)
-		if err != nil {
+		if err = s.CreateBusinessTransaction(ctx, businessTransaction); err != nil {
 			log.WithError(err).Errorf("Error when create business transaction: " + err.Error())
 			return err
 		}
@@ -569,8 +628,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				CreatedAt:       time.Now(),
 				UpdatedAt:       time.Now(),
 			}
-			err = s.CreateContactTransaction(ctx, contactTransaction)
-			if err != nil {
+			if err = s.CreateContactTransaction(ctx, contactTransaction); err != nil {
 				log.WithError(err).Errorf("Error when contact transaction: " + err.Error())
 				return err
 			}
@@ -587,6 +645,168 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 	default:
 		break
 	}
+
+	return nil
+}
+
+func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order, debit model.Debit, checkCompleted string, buyerInfo model.BuyerInfo, paymentOrderHistory model.PaymentOrderHistory) (err error) {
+	log := logger.WithCtx(ctx, "OrderService.OrderProcessingV2")
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+	//TODO--------Update Business custom_field--------------------------------------------------------------START
+	allState := []string{utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_CANCEL}
+
+	// get seller_id from business_id
+	uhb, err := utils.GetUserHasBusiness("", order.BusinessID.String())
+	if err != nil {
+		log.WithError(err).Errorf("Error when get user has busines: %v", err.Error())
+		return
+	}
+	if len(uhb) == 0 {
+		log.Error("Error: Empty user has business info")
+		return
+	}
+
+	for _, state := range allState {
+		countState := s.repo.CountOneStateOrder(context.Background(), order.BusinessID, state, tx)
+		customFieldName := ""
+		switch state {
+		case utils.ORDER_STATE_WAITING_CONFIRM:
+			customFieldName = "order_waiting_confirm_count"
+		case utils.ORDER_STATE_DELIVERING:
+			customFieldName = "order_delivering_count"
+		case utils.ORDER_STATE_COMPLETE:
+			customFieldName = "order_complete_count"
+		case utils.ORDER_STATE_CANCEL:
+			customFieldName = "order_cancel_count"
+		}
+		s.UpdateBusinessCustomField(ctx, order.BusinessID, customFieldName, strconv.Itoa(countState))
+	}
+
+	//TODO--------Update Business custom_field--------------------------------------------------------------END
+
+	// send email
+	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), order.State)
+
+	switch order.State {
+
+	case utils.ORDER_STATE_WAITING_CONFIRM:
+		go s.SendNotificationV2(context.Background(), uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State+"_v2", fmt.Sprintf(utils.NOTI_CONTENT_WAITING_CONFIRM, utils.StrDelimitForSum(order.GrandTotal, "đ")))
+		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_WAITING_CONFIRM, order.OrderNumber))
+		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_WAITING_CONFIRM, order.OrderNumber))
+		break
+	case utils.ORDER_STATE_DELIVERING:
+
+		// Create Payment order history
+		if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
+			return err
+		}
+
+		// Create Business transaction
+		if err = s.CreateBusinessTransactionV2(ctx, order, paymentOrderHistory, uhb[0].UserID); err != nil {
+			return err
+		}
+
+		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_DELIVERING, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_DELIVERING, order.OrderNumber, utils.StrDelimitForSum(order.GrandTotal, "đ"), buyerInfo.Name))
+		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_DELIVERING, order.OrderNumber))
+		go s.UpdateStock(context.Background(), order, "order_delivering")
+		break
+	case utils.ORDER_STATE_COMPLETE:
+		//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
+		revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
+			BusinessID: order.BusinessID.String(),
+		}, tx)
+		if err == nil {
+			strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
+			s.UpdateBusinessCustomField(ctx, order.BusinessID, "business_revenue", strSumGrandTotal)
+		}
+
+		//----------------------------------------------------------------------------------------------------
+
+		// Create Payment order history
+		if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
+			return err
+		}
+
+		// Create Business transaction
+		if err = s.CreateBusinessTransactionV2(ctx, order, paymentOrderHistory, uhb[0].UserID); err != nil {
+			return err
+		}
+
+		if err = s.CreateContactTransactionV2(ctx, order, debit, uhb[0].UserID); err != nil {
+			return err
+		}
+
+		go PushConsumer(context.Background(), order.OrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
+		go s.CreatePo(context.Background(), order, checkCompleted, utils.PO_OUT)
+		//if err = s.CreatePo(ctx, order, checkCompleted); err != nil {
+		//	log.WithError(err).Errorf("Error when call func CreatePo: " + err.Error())
+		//}
+		break
+	case utils.ORDER_STATE_CANCEL:
+		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_CANCELED, order.OrderNumber))
+		break
+	default:
+		break
+	}
+
+	return nil
+}
+
+func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID) error {
+	log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
+	payment.CreatorID = userID
+
+	// get amount-total of payment_order_history
+	totalPayment, err := s.repo.GetAmountTotalPaymentOrderHistory(ctx, order.ID.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	// check totalPayment vs order_grand_total
+	if totalPayment >= order.GrandTotal {
+		log.Error("error_400: Khách đã thanh toán đủ tiền")
+		return ginext.NewError(http.StatusBadRequest, "Khách đã thanh toán đủ tiền")
+	}
+
+	// check debt_amount vs request amount
+	debtAmount := order.GrandTotal - totalPayment
+	if debtAmount <= payment.Amount {
+		payment.Amount = debtAmount
+	}
+
+	// get shop info
+	if err = s.repo.CreatePaymentOrderHistory(ctx, payment, nil); err != nil {
+		log.Errorf("Fail to CreatePaymentOrderHistory due to %v", err)
+		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	// log history payment_order_history
+	go func() {
+		desc := utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY + " in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
+		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_PAYMENT_ORDER_HISTORY, utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY, desc, payment, nil)
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
+
+	// count
+	order.AmountPaid = totalPayment + payment.Amount
+	order.UpdaterID = userID
+	if _, err = s.repo.UpdateOrderV2(ctx, order, nil); err != nil {
+		return err
+	}
+
+	// log history payment_order_history
+	go func() {
+		desc := utils.ACTION_UPDATE_ORDER + " amount_paid in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
+		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, payment, nil)
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
 
 	return nil
 }
@@ -748,6 +968,47 @@ func (s *OrderService) CreateBusinessTransaction(ctx context.Context, req model.
 	return nil
 }
 
+func (s *OrderService) CreateBusinessTransactionV2(ctx context.Context, order model.Order, payment model.PaymentOrderHistory, userID uuid.UUID) error {
+	log := logger.WithCtx(ctx, "OrderService.CreateBusinessTransactionV2")
+	// Create Business transaction
+	cateIDSell, _ := uuid.Parse(utils.CATEGORY_SELL)
+	businessTransaction := model.BusinessTransaction{
+		ID:                uuid.New(),
+		CreatorID:         userID,
+		BusinessID:        order.BusinessID,
+		Day:               time.Now().UTC(),
+		Amount:            payment.Amount,
+		Currency:          "VND",
+		TransactionType:   "in",
+		Status:            "paid",
+		Action:            "create",
+		Description:       "Đơn hàng " + order.OrderNumber,
+		CategoryID:        cateIDSell,
+		CategoryName:      "Bán hàng",
+		LatestSyncTime:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		OrderNumber:       order.OrderNumber,
+		Table:             "income",
+		PaymentMethod:     order.PaymentMethod,
+		PaymentSourceID:   payment.PaymentSourceID,
+		PaymentSourceName: payment.Name,
+	}
+
+	header := make(map[string]string)
+	header["x-user-id"] = userID.String()
+
+	// 22-01-2022 - thanhvc - skip process complete mission case_book
+	// add more header skip-complete-mission = true, when call api to ms-transaction
+	// it will skip processing complete mission cash_book
+	header["skip-complete-mission"] = "true"
+
+	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
+	if err != nil {
+		log.WithError(err).Error("Error when create business transaction in CreateBusinessTransactionV2")
+		return err
+	}
+	return nil
+}
+
 func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.ContactTransaction) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateContactTransaction")
 
@@ -757,6 +1018,40 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 	if err != nil {
 		log.WithError(err).Error("Error when create contact transaction")
 		return err
+	}
+	return nil
+}
+
+func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order model.Order, debit model.Debit, userID uuid.UUID) error {
+	log := logger.WithCtx(ctx, "OrderService.CreateContactTransactionV2")
+	if valid.Float64(debit.BuyerPay) < order.GrandTotal {
+		contactTransaction := model.ContactTransaction{
+			ID:              uuid.New(),
+			CreatorID:       userID,
+			BusinessID:      order.BusinessID,
+			Amount:          order.GrandTotal - valid.Float64(debit.BuyerPay),
+			ContactID:       order.ContactID,
+			Currency:        "VND",
+			TransactionType: "in",
+			Status:          "create",
+			Action:          "create",
+			Description:     debit.Note,
+			StartTime:       time.Now().UTC(),
+			Images:          debit.Images,
+			LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+			OrderNumber:     order.OrderNumber,
+			Table:           "lent",
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
+		}
+
+		header := make(map[string]string)
+		header["x-user-id"] = userID.String()
+		_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v1/contact-transaction/create", rest.Post, header, nil, contactTransaction)
+		if err != nil {
+			log.WithError(err).Error("Error when create contact transaction in CreateContactTransaction")
+			return err
+		}
 	}
 	return nil
 }
@@ -2769,14 +3064,23 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	}
 
 	tx.Commit()
+	paymentOrderHistory := model.PaymentOrderHistory{
+		Name:            req.PaymentSourceName,
+		Day:             time.Now().UTC(),
+		OrderID:         order.ID,
+		PaymentSourceID: req.PaymentSourceID,
+		Amount:          order.GrandTotal,
+		PaymentMethod:   req.PaymentMethod,
+	}
 
 	debit := model.Debit{}
 	if req.Debit != nil {
 		debit = *req.Debit
+		paymentOrderHistory.Amount = valid.Float64(req.Debit.BuyerPay)
 	}
 
 	go s.CountCustomer(context.Background(), order)
-	go s.OrderProcessing(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo)
+	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
 	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
 

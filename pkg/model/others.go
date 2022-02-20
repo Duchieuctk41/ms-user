@@ -171,6 +171,8 @@ type BusinessTransaction struct {
 	LatestSyncTime     string         `json:"latest_sync_time"`
 	OrderNumber        string         `json:"order_number"`
 	Table              string         `json:"table"`
+	PaymentSourceID    uuid.UUID      `json:"payment_source_id"`
+	PaymentSourceName  string         `json:"payment_source_name"`
 }
 
 type ContactTransaction struct {
