@@ -19,8 +19,9 @@ type AppConfig struct {
 	MSProductManagement      string `env:"MS_PRODUCT_MANAGEMENT" envDefault:"http://localhost:8094"`
 	MSUserManagement         string `env:"MS_USER_MANAGEMENT"  envDefault:"http://127.0.0.1:8088"`
 	MSPromotionManagement    string `env:"MS_PROMOTION_MANAGEMENT" envDefault:"http://localhost:8083"`
-	MSConsumer               string `env:"MS_CONSUMER" envDefault:"http://127.0.0.1:8012"`
+	MSConsumer               string `env:"MS_CONSUMER" envDefault:"http://127.0.0.1:8011"`
 	MSTransactionManagement  string `env:"MS_TRANSACTION_MANAGEMENT" envDefault:"http://localhost:8084"`
+	MSFinanTransaction       string `env:"MS_FINAN_TRANSACTION" envDefault:"http://localhost:8084"`
 	MSChat                   string `env:"MS_CHAT" envDefault:"http://ms-chat"`
 	MSNotificationManagement string `env:"MS_NOTIFICATION_MANAGEMENT" envDefault:"http://localhost:8083"`
 	MSMediaManagement        string `env:"MS_MEDIA_MANAGEMENT" envDefault:"http://localhost:8082"`

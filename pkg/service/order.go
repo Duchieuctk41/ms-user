@@ -563,7 +563,6 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 
 	case utils.ORDER_STATE_WAITING_CONFIRM:
 		go s.SendNotificationV2(context.Background(), uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State+"_v2", fmt.Sprintf(utils.NOTI_CONTENT_WAITING_CONFIRM, utils.StrDelimitForSum(order.GrandTotal, "đ")))
-		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_WAITING_CONFIRM, order.OrderNumber))
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_WAITING_CONFIRM, order.OrderNumber))
 		break
 	case utils.ORDER_STATE_DELIVERING:
@@ -698,7 +697,6 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 
 	case utils.ORDER_STATE_WAITING_CONFIRM:
 		go s.SendNotificationV2(context.Background(), uhb[0].UserID, utils.NOTIFICATION_ENTITY_KEY_ORDER, order.State+"_v2", fmt.Sprintf(utils.NOTI_CONTENT_WAITING_CONFIRM, utils.StrDelimitForSum(order.GrandTotal, "đ")))
-		go s.ReminderProcessOrderV2(context.Background(), order.ID, uhb[0].UserID, utils.ORDER_STATE_WAITING_CONFIRM, fmt.Sprintf(utils.NOTI_CONTENT_REMINDER_WAITING_CONFIRM, order.OrderNumber))
 		go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_WAITING_CONFIRM, order.OrderNumber))
 		break
 	case utils.ORDER_STATE_DELIVERING:
@@ -1001,7 +999,7 @@ func (s *OrderService) CreateBusinessTransactionV2(ctx context.Context, order mo
 	// it will skip processing complete mission cash_book
 	header["skip-complete-mission"] = "true"
 
-	_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
+	_, _, err := common.SendRestAPI(conf.LoadEnv().MSFinanTransaction+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
 	if err != nil {
 		log.WithError(err).Error("Error when create business transaction in CreateBusinessTransactionV2")
 		return err
@@ -1047,7 +1045,7 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 
 		header := make(map[string]string)
 		header["x-user-id"] = userID.String()
-		_, _, err := common.SendRestAPI(conf.LoadEnv().MSTransactionManagement+"/api/v1/contact-transaction/create", rest.Post, header, nil, contactTransaction)
+		_, _, err := common.SendRestAPI(conf.LoadEnv().MSFinanTransaction+"/api/v1/contact-transaction/create", rest.Post, header, nil, contactTransaction)
 		if err != nil {
 			log.WithError(err).Error("Error when create contact transaction in CreateContactTransaction")
 			return err
