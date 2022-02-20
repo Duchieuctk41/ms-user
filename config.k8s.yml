@@ -7,4 +7,4 @@ metadata:
 data:
   API_KEY_SENDINBLUE: "{{ .Env.API_KEY_SENDINBLUE }}"
   DB_NAME: "{{ .Env.DB_NAME }}"
-  MS_FINAN_MANAGEMENT: "http://ms-finan-transaction"
+  FINAN_TRANSACTION: "http://finan-transaction"

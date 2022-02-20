@@ -86,10 +86,10 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 
 	if role == utils.BUYER_ROLE {
 		rs := struct {
-			Order        model.OrderBuyerResponse
+			model.OrderBuyerResponse
 			BusinessInfo model.BusinessMainInfo `json:"business_info"`
 		}{}
-		rs.Order = model.OrderBuyerResponse{
+		rs.OrderBuyerResponse = model.OrderBuyerResponse{
 			ID:                  order.ID,
 			BusinessID:          order.BusinessID,
 			ContactID:           order.ContactID,
@@ -133,11 +133,11 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 				SkuActive:           orderItem.SkuActive,
 				Price:               orderItem.Price,
 			}
-			rs.Order.OrderItem = append(rs.Order.OrderItem, o)
+			rs.OrderBuyerResponse.OrderItem = append(rs.OrderBuyerResponse.OrderItem, o)
 		}
 
 		// get shop info
-		if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.Order.BusinessID.String()); err != nil {
+		if rs.BusinessInfo, err = s.GetDetailBusiness(ctx, rs.OrderBuyerResponse.BusinessID.String()); err != nil {
 			log.Errorf("Fail to get business detail due to %v", err)
 			return res, err
 		}
@@ -999,7 +999,7 @@ func (s *OrderService) CreateBusinessTransactionV2(ctx context.Context, order mo
 	// it will skip processing complete mission cash_book
 	header["skip-complete-mission"] = "true"
 
-	_, _, err := common.SendRestAPI(conf.LoadEnv().MSFinanTransaction+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
+	_, _, err := common.SendRestAPI(conf.LoadEnv().FinanTransaction+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
 	if err != nil {
 		log.WithError(err).Error("Error when create business transaction in CreateBusinessTransactionV2")
 		return err
@@ -1045,7 +1045,7 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 
 		header := make(map[string]string)
 		header["x-user-id"] = userID.String()
-		_, _, err := common.SendRestAPI(conf.LoadEnv().MSFinanTransaction+"/api/v1/contact-transaction/create", rest.Post, header, nil, contactTransaction)
+		_, _, err := common.SendRestAPI(conf.LoadEnv().FinanTransaction+"/api/v1/contact-transaction/create", rest.Post, header, nil, contactTransaction)
 		if err != nil {
 			log.WithError(err).Error("Error when create contact transaction in CreateContactTransaction")
 			return err

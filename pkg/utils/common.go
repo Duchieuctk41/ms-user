@@ -113,7 +113,7 @@ func CheckPermissionV4(ctx context.Context, userID string, businessID string) er
 func CheckPermissionV5(ctx context.Context, userID string, businessID string, buyerID string) (int, error) {
 	log := logger.WithCtx(ctx, "CheckPermissionV5")
 
-	role := 0
+	role := BUYER_ROLE
 	userHasBusiness, err := GetUserHasBusiness(userID, businessID)
 	if err != nil {
 		log.Errorf("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ", err.Error())
@@ -125,7 +125,7 @@ func CheckPermissionV5(ctx context.Context, userID string, businessID string, bu
 	}
 
 	// Buyer or Seller can get this order
-	if role == 0 && buyerID != "" && userID != buyerID {
+	if role != SELLER_ROLE && userID != buyerID {
 		log.Error("Error CheckSelectOrUpdateAnotherOrder GetUserHasBusiness ")
 		return 0, ginext.NewError(http.StatusUnauthorized, MessageError()[http.StatusUnauthorized])
 	}
