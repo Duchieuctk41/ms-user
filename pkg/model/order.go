@@ -149,6 +149,8 @@ type OrderUpdateBody struct {
 	GrandTotal        *float64    `json:"grand_total" gorm:"grand_total"`
 	State             *string     `json:"state"`
 	PaymentMethod     *string     `json:"payment_method"`
+	PaymentSourceID   *uuid.UUID  `json:"payment_source_id"`
+	PaymentSourceName *string     `json:"payment_source_name"`
 	Note              *string     `json:"note"`
 	BuyerID           *uuid.UUID  `json:"buyer_id"`
 	BuyerInfo         *BuyerInfo  `json:"buyer_info"`

@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"finan/ms-order-management/conf"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/repo"
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
 	"github.com/google/uuid"
+	"github.com/praslar/lib/common"
+	"github.com/sendgrid/rest"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
 	"gorm.io/gorm"
@@ -98,6 +101,16 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
+	// set description
+	desc := "Thanh toán trước một phần cho đơn" + order.OrderNumber
+	if order.GrandTotal <= payment.Amount {
+		desc = "Thanh toán trước cho đơn" + order.OrderNumber
+	}
+	// Create Business transaction
+	if err = s.CreateBusinessTransactionV2(ctx, order, payment, desc, userID); err != nil {
+		return res, err
+	}
+
 	// count
 	order.AmountPaid = totalPayment + payment.Amount
 	order.UpdaterID = userID
@@ -126,4 +139,46 @@ func (s *PaymentOrderHistoryService) GetListPaymentOrderHistory(ctx context.Cont
 	}
 
 	return res, nil
+}
+
+func (s *PaymentOrderHistoryService) CreateBusinessTransactionV2(ctx context.Context, order model.Order, payment model.PaymentOrderHistory, desc string, userID uuid.UUID) error {
+	log := logger.WithCtx(ctx, "OrderService.CreateBusinessTransactionV2 - PaymentOrderHistoryService")
+	// Create Business transaction
+	cateIDSell, _ := uuid.Parse(utils.CATEGORY_SELL)
+	businessTransaction := model.BusinessTransaction{
+		ID:                uuid.New(),
+		CreatorID:         userID,
+		BusinessID:        order.BusinessID,
+		Day:               time.Now().UTC(),
+		Amount:            payment.Amount,
+		Currency:          "VND",
+		TransactionType:   "in",
+		Status:            "paid",
+		Action:            "create",
+		Description:       desc,
+		CategoryID:        cateIDSell,
+		CategoryName:      "Bán hàng",
+		LatestSyncTime:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		ObjectKey:         order.OrderNumber,
+		ObjectType:        "order",
+		Table:             "income",
+		PaymentMethod:     order.PaymentMethod,
+		PaymentSourceID:   payment.PaymentSourceID,
+		PaymentSourceName: payment.Name,
+	}
+
+	header := make(map[string]string)
+	header["x-user-id"] = userID.String()
+
+	// 22-01-2022 - thanhvc - skip process complete mission case_book
+	// add more header skip-complete-mission = true, when call api to ms-transaction
+	// it will skip processing complete mission cash_book
+	header["skip-complete-mission"] = "true"
+
+	_, _, err := common.SendRestAPI(conf.LoadEnv().FinanTransaction+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
+	if err != nil {
+		log.WithError(err).Error("Error when create business transaction in CreateBusinessTransactionV2 - PaymentOrderHistoryService")
+		return err
+	}
+	return nil
 }
