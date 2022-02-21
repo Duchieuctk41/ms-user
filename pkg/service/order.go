@@ -757,7 +757,6 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 			}
 		} else {
 
-			debit.BuyerPay = valid.Float64Pointer(order.AmountPaid)
 			if err = s.CreateContactTransactionV2(ctx, order, debit, uhb[0].UserID); err != nil {
 				return err
 			}
@@ -1045,12 +1044,12 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 
 func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order model.Order, debit model.Debit, userID uuid.UUID) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateContactTransactionV2")
-	if valid.Float64(debit.BuyerPay) >= 0 && valid.Float64(debit.BuyerPay) < order.GrandTotal {
+	if valid.Float64(debit.BuyerPay) >= 0 && valid.Float64(debit.BuyerPay) < order.GrandTotal-order.AmountPaid {
 		contactTransaction := model.ContactTransaction{
 			ID:              uuid.New(),
 			CreatorID:       userID,
 			BusinessID:      order.BusinessID,
-			Amount:          order.GrandTotal - valid.Float64(debit.BuyerPay),
+			Amount:          order.GrandTotal - (order.AmountPaid + valid.Float64(debit.BuyerPay)),
 			ContactID:       order.ContactID,
 			Currency:        "VND",
 			TransactionType: "in",
