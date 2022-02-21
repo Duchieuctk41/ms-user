@@ -772,3 +772,43 @@ func (h *OrderHandlers) GetSumOrderCompleteContact(r *ginext.Request) (*ginext.R
 		},
 	}, nil
 }
+
+// UpdateOrder - convert from /api/v5/update-order/{id} - version app 1.0.35.1.4
+// Update order for web POS, taken from UpdateOrderV5 function in ms-order-management
+func (h *OrderHandlers) UpdateOrderV2(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.UpdateOrder")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.OrderUpdateBody{}
+	r.MustBind(&req)
+	if req.ID = utils.ParseIDFromUri(r.GinCtx); req.ID == nil {
+		return nil, ginext.NewError(http.StatusForbidden, "Wrong ID")
+	}
+
+	req.UpdaterID = &userID
+	if err := common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	// update order
+	rs, err := h.service.UpdateOrderV2(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to update order: %v", err.Error())
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}

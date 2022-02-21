@@ -169,7 +169,8 @@ type BusinessTransaction struct {
 	PayoutID           uuid.UUID      `json:"payout_id,omitempty"`
 	Action             string         `json:"action"`
 	LatestSyncTime     string         `json:"latest_sync_time"`
-	OrderNumber        string         `json:"order_number"`
+	ObjectKey          string         `json:"object_key"`
+	ObjectType         string         `json:"object_type"`
 	Table              string         `json:"table"`
 	PaymentSourceID    uuid.UUID      `json:"payment_source_id"`
 	PaymentSourceName  string         `json:"payment_source_name"`
