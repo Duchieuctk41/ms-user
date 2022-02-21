@@ -24,7 +24,7 @@ type PaymentOrderHistoryRequest struct {
 	OrderID         *uuid.UUID `json:"order_id" valid:"Required"`
 	Name            *string    `json:"name"`
 	PaymentSourceID *uuid.UUID `json:"payment_source_id" valid:"Required"`
-	Amount          *float64   `json:"amount" valid:"Required"`
+	Amount          *float64   `json:"amount,omitempty" valid:"Required"`
 	PaymentMethod   *string    `json:"payment_method" valid:"Required"`
 }
 

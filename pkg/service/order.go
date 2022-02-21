@@ -625,7 +625,8 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				StartTime:       time.Now().UTC(),
 				Images:          debit.Images,
 				LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-				OrderNumber:     order.OrderNumber,
+				ObjectKey:       order.OrderNumber,
+				ObjectType:      "order",
 				Table:           "lent",
 				CreatedAt:       time.Now(),
 				UpdatedAt:       time.Now(),
@@ -705,7 +706,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 	case utils.ORDER_STATE_DELIVERING:
 
 		// Create Payment order history
-		if valid.Float64(debit.BuyerPay) != 0 {
+		if valid.Float64(debit.BuyerPay) > 0 {
 			if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
 				return err
 			}
@@ -739,7 +740,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 		//----------------------------------------------------------------------------------------------------
 
 		// Create Payment order history
-		if valid.Float64(debit.BuyerPay) != 0 {
+		if valid.Float64(debit.BuyerPay) > 0 {
 			if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
 				return err
 			}
@@ -756,7 +757,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 			}
 		} else {
 
-			debit.BuyerPay = valid.Float64Pointer(order.GrandTotal)
+			debit.BuyerPay = valid.Float64Pointer(order.AmountPaid)
 			if err = s.CreateContactTransactionV2(ctx, order, debit, uhb[0].UserID); err != nil {
 				return err
 			}
@@ -1044,7 +1045,7 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 
 func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order model.Order, debit model.Debit, userID uuid.UUID) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateContactTransactionV2")
-	if valid.Float64(debit.BuyerPay) < order.GrandTotal {
+	if valid.Float64(debit.BuyerPay) >= 0 && valid.Float64(debit.BuyerPay) < order.GrandTotal {
 		contactTransaction := model.ContactTransaction{
 			ID:              uuid.New(),
 			CreatorID:       userID,
@@ -1059,7 +1060,8 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 			StartTime:       time.Now().UTC(),
 			Images:          debit.Images,
 			LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-			OrderNumber:     order.OrderNumber,
+			ObjectKey:       order.OrderNumber,
+			ObjectType:      "order",
 			Table:           "lent",
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
@@ -2948,7 +2950,7 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
 	debit := model.Debit{}
 	paymentOrderHistory := model.PaymentOrderHistory{}
-	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) != 0 {
+	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 {
 		if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
 			log.WithError(err).Error("error_400: Invalid input:[PaymentSourceID or PaymentSourceName Can not be empty]")
 			return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
@@ -3576,7 +3578,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 	} else {
 		debit := model.Debit{}
 		paymentOrderHistory := model.PaymentOrderHistory{}
-		if req.Debit != nil && *req.Debit.BuyerPay != 0 {
+		if req.Debit != nil && *req.Debit.BuyerPay > 0 {
 			if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
 				log.WithError(err).Error("error_400: Invalid input:[PaymentSourceID or PaymentSourceName Can not be empty]")
 				return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")

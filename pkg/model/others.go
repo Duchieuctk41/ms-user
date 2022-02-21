@@ -191,7 +191,8 @@ type ContactTransaction struct {
 	Action          string         `json:"action"`
 	ID              uuid.UUID      `json:"id"`
 	LatestSyncTime  string         `json:"latest_sync_time"`
-	OrderNumber     string         `json:"order_number"`
+	ObjectKey       string         `json:"order_number"`
+	ObjectType      string         `json:"object_type"`
 	Table           string         `json:"table"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
