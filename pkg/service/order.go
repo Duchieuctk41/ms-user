@@ -712,7 +712,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 
 			// set description
 			desc := "Thanh toán trước một phần cho đơn" + order.OrderNumber
-			if order.GrandTotal < paymentOrderHistory.Amount {
+			if order.GrandTotal <= paymentOrderHistory.Amount {
 				desc = "Thanh toán trước cho đơn" + order.OrderNumber
 			}
 

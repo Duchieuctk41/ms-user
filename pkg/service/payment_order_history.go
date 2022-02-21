@@ -101,9 +101,13 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
-	// create business transaction
+	// set description
+	desc := "Thanh toán trước một phần cho đơn" + order.OrderNumber
+	if order.GrandTotal <= payment.Amount {
+		desc = "Thanh toán trước cho đơn" + order.OrderNumber
+	}
 	// Create Business transaction
-	if err = s.CreateBusinessTransactionV2(ctx, order, payment, userID); err != nil {
+	if err = s.CreateBusinessTransactionV2(ctx, order, payment, desc, userID); err != nil {
 		return res, err
 	}
 
@@ -137,7 +141,7 @@ func (s *PaymentOrderHistoryService) GetListPaymentOrderHistory(ctx context.Cont
 	return res, nil
 }
 
-func (s *PaymentOrderHistoryService) CreateBusinessTransactionV2(ctx context.Context, order model.Order, payment model.PaymentOrderHistory, userID uuid.UUID) error {
+func (s *PaymentOrderHistoryService) CreateBusinessTransactionV2(ctx context.Context, order model.Order, payment model.PaymentOrderHistory, desc string, userID uuid.UUID) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateBusinessTransactionV2 - PaymentOrderHistoryService")
 	// Create Business transaction
 	cateIDSell, _ := uuid.Parse(utils.CATEGORY_SELL)
@@ -151,7 +155,7 @@ func (s *PaymentOrderHistoryService) CreateBusinessTransactionV2(ctx context.Con
 		TransactionType:   "in",
 		Status:            "paid",
 		Action:            "create",
-		Description:       "Đơn hàng " + order.OrderNumber,
+		Description:       desc,
 		CategoryID:        cateIDSell,
 		CategoryName:      "Bán hàng",
 		LatestSyncTime:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
