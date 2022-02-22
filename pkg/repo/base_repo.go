@@ -77,6 +77,11 @@ type PGInterface interface {
 	GetAmountTotalPaymentOrderHistory(ctx context.Context, id string, tx *gorm.DB) (rs float64, err error)
 	GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam, tx *gorm.DB) (rs []*model.PaymentOrderHistoryResponse, err error)
 	//GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam, tx *gorm.DB) (rs model.GetListPaymentOrderHistoryResponse, err error)
+
+	//web pro
+	CountOrder(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.OrderTotal, error)
+	OverviewCostPandL(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.CostTotal, error)
+	GetOrderItemRevenueAnalytics(ctx context.Context, input model.GetOrderRevenueAnalyticsParam, tx *gorm.DB) (rs model.ListOrderRevenueAnalyticsResponse, err error)
 }
 
 type BaseModel struct {

@@ -859,3 +859,67 @@ func (h *OrderHandlers) UpdateOrderV2(r *ginext.Request) (*ginext.Response, erro
 		},
 	}, nil
 }
+
+func (h *OrderHandlers) OverviewOrder(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OverviewOrder When get overview")
+	owner, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	var req model.OrverviewRequest
+	r.MustBind(&req)
+
+	if err := common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input"+err.Error())
+	}
+	//Check Permission
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
+	if err := utils.CheckPermission(r.GinCtx, owner.String(), *req.BusinessID, role); err != nil {
+		return nil, err
+	}
+
+	rs, err := h.service.OverviewOrder(r.GinCtx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return ginext.NewResponseData(http.StatusOK, rs), nil
+}
+
+func (h *OrderHandlers) GetOrderItemRevenueAnalytics(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "GetOrderItemRevenueAnalytics When get overview")
+	owner, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	var req model.GetOrderRevenueAnalyticsParam
+	r.MustBind(&req)
+
+	if err := common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input"+err.Error())
+	}
+	//Check Permission
+	role := r.GinCtx.Request.Header.Get("x-user-roles")
+	if err := utils.CheckPermission(r.GinCtx, owner.String(), req.BusinessID, role); err != nil {
+		return nil, err
+	}
+
+	rs, err := h.service.GetOrderItemRevenueAnalytics(r.GinCtx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs.Data,
+			Meta: rs.Meta,
+		},
+	}, nil
+}
