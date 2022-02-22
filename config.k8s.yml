@@ -8,3 +8,11 @@ data:
   API_KEY_SENDINBLUE: "{{ .Env.API_KEY_SENDINBLUE }}"
   DB_NAME: "{{ .Env.DB_NAME }}"
   FINAN_TRANSACTION: "http://finan-transaction"
+  MS_PRODUCT_MANAGEMENT: "http://ms-product-management"
+  MS_BUSINESS_MANAGEMENT: "http://ms-business-management"
+  MS_USER_MANAGEMENT: "http://ms-user-management"
+  MS_PROMOTION_MANAGEMENT: "http://ms-promotion-management"
+  MS_CONSUMER: "http://ms-consumer"
+  MS_NOTIFICATION_MANAGEMENT: "http://ms-notification-management"
+  MS_MEDIA_MANAGEMENT: "http://ms-media-management"
+

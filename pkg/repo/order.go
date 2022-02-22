@@ -461,6 +461,98 @@ func (r *RepoPG) GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm
 	return rs, nil
 }
 
+func (r *RepoPG) GetlistOrderV2(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	page := r.GetPage(req.Page)
+	pageSize := r.GetPageSize(req.Size)
+
+	if req.PageSize > 0 {
+		pageSize = r.GetPageSize(req.PageSize)
+	}
+
+	tx = tx.Model(&model.Order{})
+
+	if req.BusinessID != "" && req.SellerID == "" {
+		tx = tx.Where("business_id = ? ", req.BusinessID)
+	}
+
+	if req.ContactID != "" {
+		tx = tx.Where("contact_id = ? ", req.ContactID)
+	}
+
+	if req.OrderNumber != "" {
+		tx = tx.Where("order_number = ?", req.OrderNumber)
+	}
+
+	if req.BuyerID != "" {
+		tx = tx.Where("buyer_id = ? ", req.BuyerID)
+	}
+
+	if req.DeliveryMethod != nil {
+		tx = tx.Where("delivery_method = ?", req.DeliveryMethod)
+	}
+
+	if req.SellerID != "" {
+		// Get ra business_id tương ứng của thằng 1 rồi cho thằng 2 làm buyer_id và ngược lại
+		if uhb1, err := utils.GetUserHasBusiness(req.SellerID, ""); err != nil {
+			return rs, err
+		} else if len(uhb1) == 0 {
+			return rs, fmt.Errorf("Data business empty with user_id: %v", req.SellerID)
+		} else {
+			tx = tx.Where("business_id = ?", uhb1[0].BusinessID)
+		}
+	}
+
+	if req.State != "" {
+		req.State = strings.ReplaceAll(req.State, " ", "")
+		stateArr := strings.Split(req.State, ",")
+		tx = tx.Where("state IN (?) ", stateArr)
+	} else {
+		tx = tx.Where("state IN (?) ", []string{utils.ORDER_STATE_DELIVERING, utils.ORDER_STATE_COMPLETE, utils.ORDER_STATE_WAITING_CONFIRM, utils.ORDER_STATE_CANCEL})
+	}
+
+	if req.Search != "" {
+		tx = tx.Where("order_number ilike ? OR unaccent(buyer_info->>'name') ilike ? OR buyer_info->>'phone_number' ilike ? OR (CONCAT('0', substring(buyer_info->>'phone_number' from 4))  ilike ?)", "%"+req.Search+"%", "%"+utils.TransformString(req.Search, false)+"%", "%"+req.Search+"%", "%"+req.Search+"%")
+	}
+
+	if req.DateFrom != nil && req.DateTo != nil {
+		tx = tx.Where(" created_at BETWEEN ? AND ? ", req.DateFrom, req.DateTo)
+	} else if req.DateFrom != nil && req.DateTo == nil {
+		_, dateToStr := utils.ConvertTimestampVN(req.DateFrom, req.DateFrom)
+		tx = tx.Where(" created_at BETWEEN ? AND ? ", req.DateFrom, dateToStr)
+	}
+
+	if req.IsPrinted != nil {
+		tx = tx.Where("is_printed = ?", req.IsPrinted)
+	}
+
+	var total int64 = 0
+	tx = tx.Count(&total)
+
+	tx = tx.Order(req.Sort).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at asc")
+	}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+		return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
+	}).Limit(pageSize).Offset(r.GetOffset(page, pageSize)).Find(&rs.Data)
+
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
+		return rs, err
+	}
+
+	if rs.Meta["total_pages"].(int) > page {
+		rs.Meta["next_page"] = page + 1
+	} else {
+		rs.Meta["next_page"] = 0
+	}
+
+	return rs, nil
+}
+
 func (r *RepoPG) GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error) {
 	var cancel context.CancelFunc
 	if tx == nil {

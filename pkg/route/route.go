@@ -92,6 +92,7 @@ func NewService() *Service {
 	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
 	v2Api.POST("/seller/create-order", ginext.WrapHandler(orderHandle.CreateOrderSeller))
 	v2Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrderV2))
+	v2Api.GET("/get-list-order", ginext.WrapHandler(orderHandle.GetlistOrderV2))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
