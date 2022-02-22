@@ -53,6 +53,7 @@ type PGInterface interface {
 
 	//
 	CreateOrderV2(ctx context.Context, order *model.Order, tx *gorm.DB) error
+	GetlistOrderV2(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
 
 	OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error)
 	OverviewCost(ctx context.Context, req model.OrverviewPandLRequest, overviewPandL model.OverviewPandLResponse, tx *gorm.DB) (model.OverviewPandLResponse, error)

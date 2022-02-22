@@ -63,6 +63,7 @@ type OrderServiceInterface interface {
 	UpdateDetailOrderSeller(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error)
 	GetOneOrderBuyer(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 	UpdateOrderV2(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error)
+	GetlistOrderV2(ctx context.Context, req model.OrderParam) (res model.ListOrderResponse, err error)
 
 	CountDeliveringQuantity(ctx context.Context, req model.CountQuantityInOrderRequest) (rs interface{}, err error)
 	GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (rs model.TotalContactDelivery, err error)
@@ -712,9 +713,9 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 			}
 
 			// set description
-			desc := "Thanh toán trước một phần cho đơn" + order.OrderNumber
+			desc := "Thanh toán trước một phần cho đơn " + order.OrderNumber
 			if order.GrandTotal <= paymentOrderHistory.Amount {
-				desc = "Thanh toán trước cho đơn" + order.OrderNumber
+				desc = "Thanh toán trước cho đơn " + order.OrderNumber
 			}
 
 			// Create Business transaction
@@ -745,7 +746,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 				return err
 			}
 
-			desc := "Thanh toán đơn hàng" + order.OrderNumber
+			desc := "Thanh toán đơn hàng " + order.OrderNumber
 
 			// Create Business transaction
 			if err = s.CreateBusinessTransactionV2(ctx, order, paymentOrderHistory, desc, uhb[0].UserID); err != nil {
@@ -756,7 +757,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 				return err
 			}
 		} else {
-
+			debit.Note = "Ghi nợ cho đơn " + order.OrderNumber
 			if err = s.CreateContactTransactionV2(ctx, order, debit, uhb[0].UserID); err != nil {
 				return err
 			}
@@ -783,6 +784,57 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	payment.CreatorID = userID
 
 	// get amount-total of payment_order_history
+	//totalPayment, err := s.repo.GetAmountTotalPaymentOrderHistory(ctx, order.ID.String(), nil)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//// check totalPayment vs order_grand_total
+	//if totalPayment >= order.GrandTotal {
+	//	log.Error("error_400: Khách đã thanh toán đủ tiền")
+	//	return ginext.NewError(http.StatusBadRequest, "Khách đã thanh toán đủ tiền")
+	//}
+	//
+	//// check debt_amount vs request amount
+	//debtAmount := order.GrandTotal - totalPayment
+	//if debtAmount <= payment.Amount {
+	//	payment.Amount = debtAmount
+	//}
+
+	// get shop info
+	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, nil); err != nil {
+		log.Errorf("Fail to CreatePaymentOrderHistory due to %v", err)
+		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	// log history payment_order_history
+	go func() {
+		desc := utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY + " in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
+		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_PAYMENT_ORDER_HISTORY, utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY, desc, payment, nil)
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
+
+	// count
+	//order.AmountPaid = totalPayment + payment.Amount
+	//order.UpdaterID = userID
+	//if _, err := s.repo.UpdateOrderV2(ctx, order, nil); err != nil {
+	//	return err
+	//}
+	//
+	//// log history payment_order_history
+	//go func() {
+	//	desc := utils.ACTION_UPDATE_ORDER + " amount_paid in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
+	//	history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, payment, nil)
+	//	s.historyService.LogHistory(context.Background(), history, nil)
+	//}()
+
+	return nil
+}
+
+func (s *OrderService) PreCountAmountTotal(ctx context.Context, order *model.Order, debit *model.Debit) error {
+	log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
+
+	// get amount-total of payment_order_history
 	totalPayment, err := s.repo.GetAmountTotalPaymentOrderHistory(ctx, order.ID.String(), nil)
 	if err != nil {
 		return err
@@ -796,37 +848,11 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 
 	// check debt_amount vs request amount
 	debtAmount := order.GrandTotal - totalPayment
-	if debtAmount <= payment.Amount {
-		payment.Amount = debtAmount
+	if debtAmount <= valid.Float64(debit.BuyerPay) {
+		debit.BuyerPay = valid.Float64Pointer(debtAmount)
 	}
 
-	// get shop info
-	if err = s.repo.CreatePaymentOrderHistory(ctx, payment, nil); err != nil {
-		log.Errorf("Fail to CreatePaymentOrderHistory due to %v", err)
-		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
-	}
-
-	// log history payment_order_history
-	go func() {
-		desc := utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY + " in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
-		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_PAYMENT_ORDER_HISTORY, utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY, desc, payment, nil)
-		s.historyService.LogHistory(context.Background(), history, nil)
-	}()
-
-	// count
-	order.AmountPaid = totalPayment + payment.Amount
-	order.UpdaterID = userID
-	if _, err = s.repo.UpdateOrderV2(ctx, order, nil); err != nil {
-		return err
-	}
-
-	// log history payment_order_history
-	go func() {
-		desc := utils.ACTION_UPDATE_ORDER + " amount_paid in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
-		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, payment, nil)
-		s.historyService.LogHistory(context.Background(), history, nil)
-	}()
-
+	order.AmountPaid = totalPayment + valid.Float64(debit.BuyerPay)
 	return nil
 }
 
@@ -1049,7 +1075,7 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 			ID:              uuid.New(),
 			CreatorID:       userID,
 			BusinessID:      order.BusinessID,
-			Amount:          order.GrandTotal - (order.AmountPaid + valid.Float64(debit.BuyerPay)),
+			Amount:          order.GrandTotal - order.AmountPaid,
 			ContactID:       order.ContactID,
 			Currency:        "VND",
 			TransactionType: "in",
@@ -1658,6 +1684,31 @@ func (s *OrderService) GetAllOrder(ctx context.Context, req model.OrderParam) (r
 	log := logger.WithCtx(ctx, "OrderService.GetAllOrder")
 
 	rs, err := s.repo.GetAllOrder(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetListOrderEcom")
+		return res, err
+	}
+
+	if req.ContactID != "" {
+		// Get số đơn giao thành công và tính tổng tiền
+		resCompleteOrders, err := s.repo.GetCompleteOrders(ctx, uuid.MustParse(req.ContactID), nil)
+		if err != nil {
+			return res, err
+		}
+		rs.Meta["count_complete"] = resCompleteOrders.Count
+		val := strconv.FormatFloat(resCompleteOrders.SumAmount, 'f', 0, 64)
+		rs.Meta["sum_grand_total_complete"] = val
+	} else {
+		rs.Meta["count_complete"] = 0
+		rs.Meta["sum_grand_total_complete"] = 0
+	}
+	return rs, nil
+}
+
+func (s *OrderService) GetlistOrderV2(ctx context.Context, req model.OrderParam) (res model.ListOrderResponse, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetlistOrderV2")
+
+	rs, err := s.repo.GetlistOrderV2(ctx, req, nil)
 	if err != nil {
 		log.WithError(err).Error("Error when call func GetListOrderEcom")
 		return res, err
@@ -3086,6 +3137,12 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		cancel()
 	}()
 
+	if req.State == utils.ORDER_STATE_DELIVERING || req.State == utils.ORDER_STATE_COMPLETE {
+		if err = s.PreCountAmountTotal(ctx, &order, &debit); err != nil {
+			return nil, err
+		}
+	}
+
 	// create order
 	if err = s.ImplementCreateOrder(ctx, &order, req, tx); err != nil {
 		return nil, err
@@ -3532,6 +3589,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 	}
 
 	preOrderState := order.State
+	debit := model.Debit{}
 
 	if valid.String(req.State) == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
 		if rCheck, err := utils.CheckCanPickQuantityV4(order.CreatorID.String(), order.OrderItem, order.BusinessID.String(), nil, order.CreateMethod); err != nil {
@@ -3550,6 +3608,15 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 	}
 
 	common.Sync(req, &order)
+	if req.Debit != nil && *req.Debit.BuyerPay > 0 {
+		debit = *req.Debit
+	}
+
+	if valid.String(req.State) == utils.ORDER_STATE_DELIVERING || valid.String(req.State) == utils.ORDER_STATE_COMPLETE {
+		if err = s.PreCountAmountTotal(ctx, &order, &debit); err != nil {
+			return nil, err
+		}
+	}
 
 	// Create transaction
 	var cancel context.CancelFunc
@@ -3575,7 +3642,6 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 	if valid.String(req.State) == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
 		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
-		debit := model.Debit{}
 		paymentOrderHistory := model.PaymentOrderHistory{}
 		if req.Debit != nil && *req.Debit.BuyerPay > 0 {
 			if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
@@ -3583,9 +3649,8 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 				return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
 			}
 
-			debit = *req.Debit
 			paymentOrderHistory = model.PaymentOrderHistory{
-				Amount:          valid.Float64(req.Debit.BuyerPay),
+				Amount:          valid.Float64(debit.BuyerPay),
 				Name:            valid.String(req.PaymentSourceName),
 				Day:             time.Now().UTC(),
 				PaymentSourceID: valid.UUID(req.PaymentSourceID),
@@ -3617,5 +3682,5 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		s.historyService.LogHistory(context.Background(), history, nil)
 	}()
 
-	return res, err
+	return order, err
 }

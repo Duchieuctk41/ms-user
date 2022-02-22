@@ -164,6 +164,53 @@ func (h *OrderHandlers) GetAllOrder(r *ginext.Request) (*ginext.Response, error)
 	}, nil
 }
 
+// GetlistOrderV2 - version app 1.1.3.1.0
+// hieucn - 22/02/2022 - preload payment_order_history, remove response header
+func (h *OrderHandlers) GetlistOrderV2(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetAllOrder")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, "Unauthorized"+err.Error())
+	}
+
+	// Check valid request
+	req := model.OrderParam{}
+	r.MustBind(&req)
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in GetAllOrder")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+	log.WithField("req", string(field)).Info("OrderHandlers.GetAllOrder")
+
+	// check permission
+	if err = utils.CheckPermissionV3(r.Context(), userID, req.BusinessID, req.BuyerID); err != nil {
+		return nil, ginext.NewError(http.StatusUnauthorized, err.Error())
+	}
+
+	if err = common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input"+err.Error())
+	}
+
+	rs, err := h.service.GetlistOrderV2(r.Context(), req)
+	if err != nil {
+		logrus.Errorf("Fail to get all order: %v", err)
+		return nil, ginext.NewError(http.StatusBadRequest, "Fail to get all order: "+err.Error())
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs.Data,
+			Meta: rs.Meta,
+		},
+	}, nil
+}
+
 // CountOrderState - convert from /api/count-order-state - version app 1.0.35.1.4
 func (h *OrderHandlers) CountOrderState(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CountOrderState")

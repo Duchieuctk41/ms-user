@@ -47,6 +47,12 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 		}
 	}
 
+	// check state
+	if order.State != utils.ORDER_STATE_DELIVERING {
+		log.WithError(err).Error("error_400: Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+		return res, ginext.NewError(http.StatusInternalServerError, "Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+	}
+
 	// get amount-total of payment_order_history
 	totalPayment, err := s.repo.GetAmountTotalPaymentOrderHistory(ctx, req.OrderID.String(), nil)
 	if err != nil {
@@ -102,9 +108,9 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 	}()
 
 	// set description
-	desc := "Thanh toán trước một phần cho đơn" + order.OrderNumber
+	desc := "Thanh toán trước một phần cho đơn " + order.OrderNumber
 	if order.GrandTotal <= payment.Amount {
-		desc = "Thanh toán trước cho đơn" + order.OrderNumber
+		desc = "Thanh toán trước cho đơn " + order.OrderNumber
 	}
 	// Create Business transaction
 	if err = s.CreateBusinessTransactionV2(ctx, order, payment, desc, userID); err != nil {
