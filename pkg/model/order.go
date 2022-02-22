@@ -168,6 +168,15 @@ type OrverviewPandLRequest struct {
 	EndTime     *time.Time `json:"end_time,omitempty" form:"end_time"`
 	BusinessID  *string    `json:"business_id,omitempty" form:"business_id" valid:"Required"`
 }
+
+type OrverviewOrderRequest struct {
+	UserRole    string     `json:"user_role"`
+	UserCallAPI uuid.UUID  `json:"user_call_api"`
+	StartTime   *time.Time `json:"start_time,omitempty" form:"start_time"`
+	EndTime     *time.Time `json:"end_time,omitempty" form:"end_time"`
+	BusinessID  *string    `json:"business_id,omitempty" form:"business_id" valid:"Required"`
+}
+
 type UpdateDetailOrderRequest struct {
 	BusinessID        *uuid.UUID  `json:"business_id"`
 	ID                *uuid.UUID  `json:"id"`
@@ -301,4 +310,55 @@ type OrderBuyerResponse struct {
 	DebtAmount          float64                       `json:"debt_amount"`
 	AmountPaid          float64                       `json:"amount_paid"`
 	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history" gorm:"foreignkey:order_id;association_foreignkey:id;"`
+}
+
+type OrderTotal struct {
+	RevenueTotal             float64 `json:"revenue_total"`
+	OrderCompleteTotal       float64 `json:"order_complete_total"`
+	OrderCancelTotal         float64 `json:"order_cancel_total"`
+	OrderDeliveringTotal     float64 `json:"order_delivering_total"`
+	OrderWaitingConfirmTotal float64 `json:"order_waiting_confirm_total"`
+}
+
+type CostTotal struct {
+	CostTotal float64 `json:"cost_total"`
+}
+
+type OverviewOrderResponse struct {
+	RevenueTotal             float64 `json:"revenue_total"`
+	ProfitTotal              float64 `json:"profit_total"`
+	OrderCompleteTotal       float64 `json:"order_complete_total"`
+	OrderCancelTotal         float64 `json:"order_cancel_total"`
+	OrderDeliveringTotal     float64 `json:"order_delivering_total"`
+	OrderWaitingConfirmTotal float64 `json:"order_waiting_confirm_total"`
+}
+
+type OrverviewRequest struct {
+	UserRole    string     `json:"user_role"`
+	UserCallAPI uuid.UUID  `json:"user_call_api"`
+	StartTime   *time.Time `json:"start_time,omitempty" form:"start_time"`
+	EndTime     *time.Time `json:"end_time,omitempty" form:"end_time"`
+	BusinessID  *string    `json:"business_id,omitempty" form:"business_id" valid:"Required"`
+}
+
+type OrderItemAnalytic struct {
+	SkuID         uuid.UUID `json:"sku_id"`
+	ProductName   string    `json:"product_name"`
+	SkuName       string    `json:"sku_name"`
+	TotalAmount   float64   `json:"total_amount"`
+	TotalQuantity float64   `json:"total_quantity"`
+}
+
+type GetOrderRevenueAnalyticsParam struct {
+	BusinessID string     `json:"business_id" form:"business_id"`
+	StartTime  *time.Time `json:"start_time,omitempty" form:"start_time"`
+	EndTime    *time.Time `json:"end_time,omitempty" form:"end_time"`
+	PageSize   int        `json:"page_size" form:"page_size"`
+	Page       int        `json:"page" form:"page"`
+	Sort       string     `json:"sort" form:"sort"`
+}
+
+type ListOrderRevenueAnalyticsResponse struct {
+	Data []OrderItemAnalytic    `json:"data"`
+	Meta map[string]interface{} `json:"meta"`
 }

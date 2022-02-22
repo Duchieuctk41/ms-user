@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -68,6 +69,9 @@ type OrderServiceInterface interface {
 	GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (rs model.TotalContactDelivery, err error)
 
 	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest) (rs interface{}, err error)
+
+	OverviewOrder(ctx context.Context, req model.OrverviewRequest) (res model.OverviewOrderResponse, err error)
+	GetOrderItemRevenueAnalytics(ctx context.Context, req model.GetOrderRevenueAnalyticsParam) (res model.ListOrderRevenueAnalyticsResponse, err error)
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
@@ -3618,4 +3622,54 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 	}()
 
 	return res, err
+}
+
+func timeTrack(start time.Time, name string) {
+	elapsed := time.Since(start)
+	logrus.Printf("%s took %s", name, elapsed)
+}
+
+func (s *OrderService) OverviewOrder(ctx context.Context, req model.OrverviewRequest) (res model.OverviewOrderResponse, err error) {
+	defer timeTrack(time.Now(), "Fetching OverviewOrder")
+	var waitgroup sync.WaitGroup
+	waitgroup.Add(2)
+	log := logger.WithCtx(ctx, "OrderService.OverviewOrder").WithField("req", req)
+	//
+	var orderTotal model.OrderTotal
+	var costTotal model.CostTotal
+	go func() {
+		orderTotal, err = s.repo.CountOrder(ctx, req, nil)
+		if err != nil {
+			log.WithError(err).Error("Get overview P&L sales error")
+		}
+
+		waitgroup.Done()
+	}()
+
+	go func() {
+		costTotal, err = s.repo.OverviewCostPandL(ctx, req, nil)
+		if err != nil {
+			log.WithError(err).Error("Get overview P&L cost error")
+		}
+
+		waitgroup.Done()
+	}()
+	waitgroup.Wait()
+	res.RevenueTotal = orderTotal.RevenueTotal
+	res.ProfitTotal = orderTotal.RevenueTotal - costTotal.CostTotal
+	res.OrderCompleteTotal = orderTotal.OrderCompleteTotal
+	res.OrderCancelTotal = orderTotal.OrderCancelTotal
+	res.OrderDeliveringTotal = orderTotal.OrderDeliveringTotal
+	res.OrderWaitingConfirmTotal = orderTotal.OrderWaitingConfirmTotal
+	return res, nil
+}
+
+func (s *OrderService) GetOrderItemRevenueAnalytics(ctx context.Context, req model.GetOrderRevenueAnalyticsParam) (res model.ListOrderRevenueAnalyticsResponse, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOrderItemRevenueAnalytics").WithField("req", req)
+	orderItemAnalytic, err := s.repo.GetOrderItemRevenueAnalytics(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Error("Get top sales order item error")
+	}
+
+	return orderItemAnalytic, nil
 }

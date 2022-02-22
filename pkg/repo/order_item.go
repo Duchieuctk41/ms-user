@@ -156,3 +156,35 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 
 	return rs, nil
 }
+
+func (r *RepoPG) OverviewCostPandL(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.CostTotal, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	query := ""
+	query += utils.RemoveSpace(`select
+									sum(oi.historical_cost * oi.quantity) as cost_total
+								from
+									order_item oi
+								inner join orders o on
+									oi.order_id = o.id
+									and o.state = 'complete'
+									and oi.deleted_at is null
+									and o.business_id = ? `)
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
+		query += " AND o.updated_at BETWEEN ? AND ? "
+	}
+	rs := model.CostTotal{}
+	if !valid.DayTime(req.StartTime).IsZero() && !valid.DayTime(req.EndTime).IsZero() {
+		if err := tx.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return model.CostTotal{}, err
+		}
+	} else {
+		if err := tx.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CostTotal{}, err
+		}
+	}
+	return rs, nil
+}

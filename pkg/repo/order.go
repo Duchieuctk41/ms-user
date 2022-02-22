@@ -1050,3 +1050,94 @@ func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom,
 	elapsed := time.Since(start)
 	log.Printf("%s took %s for %s orders", "Storage order ecom", elapsed, strconv.Itoa(len(rs)))
 }
+
+func (r *RepoPG) CountOrder(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.OrderTotal, error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	rs := model.OrderTotal{}
+	query := ""
+	query += `SELECT COALESCE ( MAX ( TEMP.revenue_total ), 0 ) AS revenue_total,
+						COALESCE ( MAX ( TEMP.order_complete_total ), 0 ) AS order_complete_total,
+						COALESCE ( MAX ( TEMP.order_cancel_total ), 0 ) AS order_cancel_total,
+						COALESCE ( MAX ( TEMP.order_delivering_total ), 0 ) AS order_delivering_total,
+						COALESCE ( MAX ( TEMP.order_waiting_confirm_total ), 0 ) AS order_waiting_confirm_total 
+					FROM
+						(
+						SELECT
+						CASE WHEN STATE= 'complete' THEN
+									SUM ( grand_total ) 
+									END AS revenue_total,
+							CASE WHEN STATE = 'complete' THEN
+									COUNT ( * ) 
+								END AS order_complete_total,
+							CASE WHEN STATE = 'cancel' THEN
+									COUNT ( * ) 
+								END AS order_cancel_total,
+							CASE WHEN STATE = 'delivering' THEN
+									COUNT ( * ) 
+								END AS order_delivering_total,
+							CASE WHEN STATE = 'waiting_confirm' THEN
+									COUNT ( * ) 
+								END AS order_waiting_confirm_total 
+							FROM
+								orders o 
+						WHERE
+						business_id = ?`
+
+	if req.StartTime != nil && req.EndTime != nil {
+		query += ` AND updated_at BETWEEN ? AND ? `
+	}
+	query += `group by state ) as TEMP`
+
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := tx.Raw(utils.RemoveSpace(query), req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return model.OrderTotal{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.OrderTotal{}, err
+		}
+	}
+
+	return rs, nil
+}
+
+func (r *RepoPG) GetOrderItemRevenueAnalytics(ctx context.Context, input model.GetOrderRevenueAnalyticsParam, tx *gorm.DB) (rs model.ListOrderRevenueAnalyticsResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	page := r.GetPage(input.Page)
+	pageSize := r.GetPageSize(input.PageSize)
+
+	if input.StartTime != nil && input.EndTime != nil {
+		tx = tx.Where("orders.business_id = ? and order_item.deleted_at is null and order_item.updated_at >= ? and order_item.updated_at <= ? and orders.state ='complete'", input.BusinessID, input.StartTime, input.EndTime)
+	}
+	switch input.Sort {
+	case "revenue":
+		tx = tx.Model(model.OrderItem{}).Select("sku_id , product_name, sku_name, sum(total_amount) as total_amount, sum(quantity) as total_quantity").Joins("INNER JOIN orders ON orders.id = order_item.order_id").
+			Group("sku_id, product_name, sku_name").Having("sum(total_amount) > 0").
+			Order("sum(total_amount) desc")
+	case "quantity":
+		tx = tx.Model(model.OrderItem{}).Select("sku_id , product_name, sku_name, sum(total_amount) as total_amount,sum(quantity) as total_quantity").Joins("INNER JOIN orders ON orders.id = order_item.order_id").
+			Group("sku_id, product_name, sku_name").Having("sum(quantity) > 0").
+			Order("sum(quantity) desc")
+	default:
+		return rs, err
+	}
+	var total int64 = 0
+	tx = tx.Count(&total).Limit(pageSize).Offset(r.GetOffset(page, pageSize))
+
+	if err = tx.Find(&rs.Data).Error; err != nil {
+		return rs, err
+	}
+
+	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
+		return rs, err
+	}
+	return rs, nil
+}
