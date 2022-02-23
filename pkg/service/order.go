@@ -3706,7 +3706,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		//	log.WithError(err).Error("Fail to create transaction")
 		//	return nil, err
 		//}
-		go s.OrderProcessingV2(ctx, order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory)
+		go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory)
 	}
 
 	if preOrderState == utils.ORDER_STATE_DELIVERING && valid.String(req.State) == utils.ORDER_STATE_CANCEL {
