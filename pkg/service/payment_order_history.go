@@ -27,11 +27,11 @@ func NewPaymentOrderHistoryService(repo repo.PGInterface, historyService History
 }
 
 type PaymentOrderHistoryInterface interface {
-	CreatePaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryRequest, userID uuid.UUID) (res interface{}, err error)
+	CreatePaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryRequest, userID uuid.UUID) (res model.CreatePaymentOrderHistoryResponse, err error)
 	GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam) (res interface{}, err error)
 }
 
-func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryRequest, userID uuid.UUID) (res interface{}, err error) {
+func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryRequest, userID uuid.UUID) (res model.CreatePaymentOrderHistoryResponse, err error) {
 	log := logger.WithCtx(ctx, "PaymentOrderHistoryService.CreatePaymentOrderHistory")
 
 	// get grand-total-order
@@ -133,7 +133,10 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 
 	tx.Commit()
 
-	return payment, nil
+	res.Meta["amount_paid"] = order.AmountPaid
+	res.Data = payment
+
+	return res, nil
 }
 
 func (s *PaymentOrderHistoryService) GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam) (res interface{}, err error) {

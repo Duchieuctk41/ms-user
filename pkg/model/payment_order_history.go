@@ -49,3 +49,8 @@ type PaymentOrderHistoryResponse struct {
 	Amount          float64   `json:"amount"`
 	PaymentMethod   string    `json:"payment_method"`
 }
+
+type CreatePaymentOrderHistoryResponse struct {
+	Data PaymentOrderHistory    `json:"data"`
+	Meta map[string]interface{} `json:"meta"`
+}

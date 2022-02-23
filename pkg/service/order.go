@@ -712,9 +712,9 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 
 		// Create Payment order history
 		if valid.Float64(debit.BuyerPay) > 0 {
-			if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
-				return err
-			}
+			//if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
+			//	return err
+			//}
 
 			// set description
 			desc := "Thanh toán trước một phần cho đơn " + order.OrderNumber
@@ -746,9 +746,9 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 
 		// Create Payment order history
 		if valid.Float64(debit.BuyerPay) > 0 {
-			if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
-				return err
-			}
+			//if err := s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, uhb[0].UserID); err != nil {
+			//	return err
+			//}
 
 			desc := "Thanh toán đơn hàng " + order.OrderNumber
 
@@ -836,7 +836,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 }
 
 func (s *OrderService) PreCountAmountTotal(ctx context.Context, order *model.Order, debit *model.Debit) error {
-	log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
+	//log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
 
 	// get amount-total of payment_order_history
 	totalPayment, err := s.repo.GetAmountTotalPaymentOrderHistory(ctx, order.ID.String(), nil)
@@ -845,10 +845,10 @@ func (s *OrderService) PreCountAmountTotal(ctx context.Context, order *model.Ord
 	}
 
 	// check totalPayment vs order_grand_total
-	if totalPayment >= order.GrandTotal {
-		log.Error("error_400: Khách đã thanh toán đủ tiền")
-		return ginext.NewError(http.StatusBadRequest, "Khách đã thanh toán đủ tiền")
-	}
+	//if totalPayment >= order.GrandTotal {
+	//	log.Error("error_400: Khách đã thanh toán đủ tiền")
+	//	return ginext.NewError(http.StatusBadRequest, "Khách đã thanh toán đủ tiền")
+	//}
 
 	// check debt_amount vs request amount
 	debtAmount := order.GrandTotal - totalPayment
@@ -1515,7 +1515,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 
 	if req.State != nil && order.State == *req.State {
 		log.WithError(err).Errorf("Error when State not change")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when State not change")
+		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng không cho phép chỉnh sửa")
 	}
 
 	preOrderState := order.State
@@ -3166,6 +3166,23 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 
 	paymentOrderHistory.OrderID = order.ID
 
+	// create payment_order_history, then append to response
+	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+			return nil, err
+		}
+		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
+			ID:              paymentOrderHistory.ID,
+			OrderID:         order.ID,
+			PaymentMethod:   paymentOrderHistory.PaymentMethod,
+			PaymentSourceID: paymentOrderHistory.PaymentSourceID,
+			Name:            paymentOrderHistory.Name,
+			Day:             paymentOrderHistory.Day,
+			Amount:          paymentOrderHistory.Amount,
+		}
+		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
+	}
+
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
 	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
@@ -3589,7 +3606,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 
 	if order.State == valid.String(req.State) {
 		log.WithError(err).Errorf("Error when State not change")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when State not change")
+		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng không cho phép chỉnh sửa")
 	}
 
 	preOrderState := order.State
@@ -3661,6 +3678,21 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 				PaymentMethod:   valid.String(req.PaymentMethod),
 				OrderID:         order.ID,
 			}
+
+			// create payment_order_history, then append to response
+			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID)); err != nil {
+				return nil, err
+			}
+			paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
+				ID:              paymentOrderHistory.ID,
+				OrderID:         order.ID,
+				PaymentMethod:   paymentOrderHistory.PaymentMethod,
+				PaymentSourceID: paymentOrderHistory.PaymentSourceID,
+				Name:            paymentOrderHistory.Name,
+				Day:             paymentOrderHistory.Day,
+				Amount:          paymentOrderHistory.Amount,
+			}
+			order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 		}
 
 		buyerInfo := model.BuyerInfo{}
@@ -3669,10 +3701,12 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 			return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		}
 
-		if err = s.OrderProcessingV2(ctx, order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory); err != nil {
-			log.WithError(err).Error("Fail to create transaction")
-			return nil, err
-		}
+		// 23/02/2022 - hieucn - put OrderProcessingV2 into goroutine
+		//if err = s.OrderProcessingV2(ctx, order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory); err != nil {
+		//	log.WithError(err).Error("Fail to create transaction")
+		//	return nil, err
+		//}
+		go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory)
 	}
 
 	if preOrderState == utils.ORDER_STATE_DELIVERING && valid.String(req.State) == utils.ORDER_STATE_CANCEL {
