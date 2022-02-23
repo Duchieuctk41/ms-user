@@ -126,14 +126,14 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 
 	// log history payment_order_history
 	go func() {
-		desc := utils.ACTION_UPDATE_ORDER + " amount_paid in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
+		desc = utils.ACTION_UPDATE_ORDER + " amount_paid in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
 		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, payment, req)
 		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
 	tx.Commit()
 
-	res.Meta["amount_paid"] = order.AmountPaid
+	res.Meta = map[string]interface{}{"amount_paid": order.AmountPaid}
 	res.Data = payment
 
 	return res, nil

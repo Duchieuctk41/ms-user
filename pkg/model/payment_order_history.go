@@ -35,11 +35,6 @@ type PaymentOrderHistoryParam struct {
 	PageSize   int    `json:"page_size" form:"page_size"`
 }
 
-type GetListPaymentOrderHistoryResponse struct {
-	Data []PaymentOrderHistoryResponse `json:"data"`
-	Meta map[string]interface{}        `json:"meta"`
-}
-
 type PaymentOrderHistoryResponse struct {
 	ID              uuid.UUID `json:"id"`
 	Name            string    `json:"name"`
