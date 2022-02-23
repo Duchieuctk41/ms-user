@@ -67,7 +67,8 @@ func (h *PaymentOrderHistoryHandlers) CreatePaymentOrderHistory(r *ginext.Reques
 	return &ginext.Response{
 		Code: http.StatusOK,
 		GeneralBody: &ginext.GeneralBody{
-			Data: rs,
+			Data: rs.Data,
+			Meta: rs.Meta,
 		},
 	}, nil
 }

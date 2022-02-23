@@ -3664,7 +3664,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
 		paymentOrderHistory := model.PaymentOrderHistory{}
-		if req.Debit != nil && *req.Debit.BuyerPay > 0 {
+		if req.Debit != nil && *req.Debit.BuyerPay > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
 			if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
 				log.WithError(err).Error("error_400: Invalid input:[PaymentSourceID or PaymentSourceName Can not be empty]")
 				return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
