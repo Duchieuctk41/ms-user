@@ -1074,7 +1074,7 @@ func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.C
 
 func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order model.Order, debit model.Debit, userID uuid.UUID) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateContactTransactionV2")
-	if valid.Float64(debit.BuyerPay) >= 0 && valid.Float64(debit.BuyerPay) < order.GrandTotal-order.AmountPaid {
+	if order.GrandTotal-order.AmountPaid > 0 {
 		contactTransaction := model.ContactTransaction{
 			ID:              uuid.New(),
 			CreatorID:       userID,
@@ -3178,7 +3178,7 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 			PaymentSourceID: paymentOrderHistory.PaymentSourceID,
 			Name:            paymentOrderHistory.Name,
 			Day:             paymentOrderHistory.Day,
-			Amount:          paymentOrderHistory.Amount,
+			Amount:          valid.Float64(debit.BuyerPay),
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 	}

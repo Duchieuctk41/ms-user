@@ -196,6 +196,10 @@ func CheckCanPickQuantityV5(ctx context.Context, userID string, req []model.Orde
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return res, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
 	}
+	if tm.Data.Status == SOLD_OUT {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return res, ginext.NewError(http.StatusBadRequest, "Sản phẩm tạm hết hàng")
+	}
 	if tm.Data.Status != STATUS_SUCCESS {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return tm.Data, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product")

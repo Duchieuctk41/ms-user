@@ -10,6 +10,7 @@ const (
 const (
 	STATUS_SUCCESS       = "success"
 	STATUS_SKU_NOT_FOUND = "sku_not_found"
+	SOLD_OUT             = "sold_out"
 )
 
 const (
