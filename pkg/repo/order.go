@@ -689,7 +689,7 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 	}
 
 	tx.Commit()
-	return order, stocks, nil
+	return rs, stocks, nil
 }
 
 // version 1 - UpdateDetailOrder
