@@ -626,7 +626,7 @@ func (h *OrderHandlers) GetListOrderEcom(r *ginext.Request) (*ginext.Response, e
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
-	if err = utils.CheckPermission(r.GinCtx, userID.String(), *req.BusinessID, role); err != nil {
+	if err = utils.CheckPermission(r.GinCtx, userID.String(), valid.String(req.BusinessID), role); err != nil {
 		log.WithError(err).Error("Unauthorized")
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
@@ -877,7 +877,7 @@ func (h *OrderHandlers) OverviewOrder(r *ginext.Request) (*ginext.Response, erro
 	}
 	//Check Permission
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
-	if err := utils.CheckPermission(r.GinCtx, owner.String(), *req.BusinessID, role); err != nil {
+	if err := utils.CheckPermission(r.GinCtx, owner.String(), valid.String(req.BusinessID), role); err != nil {
 		return nil, err
 	}
 

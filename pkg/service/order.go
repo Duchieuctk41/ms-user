@@ -205,7 +205,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	grandTotal := 0.0
 
 	getContactRequest := model.GetContactRequest{
-		BusinessID:  *req.BusinessID,
+		BusinessID:  valid.UUID(req.BusinessID),
 		Name:        req.BuyerInfo.Name,
 		PhoneNumber: req.BuyerInfo.PhoneNumber,
 		Address:     req.BuyerInfo.Address,
@@ -340,7 +340,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 	}
 
-	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+	if req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_BUYER_PICK_UP {
 		deliveryFee = 0
 	} else {
 		if deliveryFee != req.DeliveryFee {
@@ -357,7 +357,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 
 	// Check Promotion Code
 	if req.PromotionCode != "" {
-		promotion, err := s.ProcessPromotion(ctx, *req.BusinessID, req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
+		promotion, err := s.ProcessPromotion(ctx, valid.UUID(req.BusinessID), req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
 		if err != nil {
 			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
 			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
@@ -390,7 +390,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	// }
 
 	order := model.Order{
-		BusinessID:        *req.BusinessID,
+		BusinessID:        valid.UUID(req.BusinessID),
 		ContactID:         info.Data.Contact.ID,
 		PromotionCode:     req.PromotionCode,
 		PromotionDiscount: promotionDiscount,
@@ -399,7 +399,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		GrandTotal:        grandTotal,
 		State:             req.State,
 		PaymentMethod:     strings.ToLower(req.PaymentMethod),
-		DeliveryMethod:    *req.DeliveryMethod,
+		DeliveryMethod:    valid.String(req.DeliveryMethod),
 		Note:              req.Note,
 		CreateMethod:      req.CreateMethod,
 		BuyerId:           &buyerID,
@@ -1518,14 +1518,14 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
 	}
 
-	if req.State != nil && order.State == *req.State {
+	if req.State != nil && order.State == valid.String(req.State) {
 		log.WithError(err).Errorf("Error when State not change")
 		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng không cho phép chỉnh sửa")
 	}
 
 	preOrderState := order.State
 
-	if req.State != nil && *req.State == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
+	if req.State != nil && valid.String(req.State) == utils.ORDER_STATE_DELIVERING && preOrderState == utils.ORDER_STATE_WAITING_CONFIRM {
 		if rCheck, err := utils.CheckCanPickQuantityV4(order.CreatorID.String(), order.OrderItem, order.BusinessID.String(), nil, order.CreateMethod); err != nil {
 			log.WithError(err).Errorf("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
@@ -1564,7 +1564,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 
 	tx.Commit()
 
-	if req.State != nil && *req.State == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
+	if req.State != nil && valid.String(req.State) == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
 		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
 		debit := model.Debit{}
@@ -1583,7 +1583,7 @@ func (s *OrderService) UpdateOrder(ctx context.Context, req model.OrderUpdateBod
 		}
 	}
 
-	if preOrderState == utils.ORDER_STATE_DELIVERING && req.State != nil && *req.State == utils.ORDER_STATE_CANCEL {
+	if preOrderState == utils.ORDER_STATE_DELIVERING && req.State != nil && valid.String(req.State) == utils.ORDER_STATE_CANCEL {
 		go s.UpdateStock(context.Background(), order, "order_cancelled_when_delivering")
 	}
 
@@ -1759,7 +1759,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 	}
 
 	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
-		if *req.OtherDiscount > (*req.OrderedGrandTotal + *req.DeliveryFee - *req.PromotionDiscount) {
+		if valid.Float64(req.OtherDiscount) > (valid.Float64(req.OrderedGrandTotal) + valid.Float64(req.DeliveryFee) - valid.Float64(req.PromotionDiscount)) {
 			log.WithError(err).Error("Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
 		}
@@ -1825,49 +1825,49 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 		}
 
 		// Check promotion discount
-		if req.PromotionDiscount != nil && math.Round(*req.PromotionDiscount) != math.Round(order.PromotionDiscount) {
+		if req.PromotionDiscount != nil && math.Round(valid.Float64(req.PromotionDiscount)) != math.Round(order.PromotionDiscount) {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
 		}
 
 		// Check order grand total
-		if math.Round(orderGrandTotal) != math.Round(*req.OrderedGrandTotal) {
+		if math.Round(orderGrandTotal) != math.Round(valid.Float64(req.OrderedGrandTotal)) {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
 		}
 
 		// Check valid delivery fee
 		if req.DeliveryMethod != nil {
-			switch *req.DeliveryMethod {
+			switch valid.String(req.DeliveryMethod) {
 			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
-				if req.DeliveryFee != nil && *req.DeliveryFee > 0 {
+				if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) > 0 {
 					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
 				}
 				deliveryFee = 0
 				break
 			case utils.DELIVERY_METHOD_SELLER_DELIVERY:
-				if req.DeliveryFee != nil && *req.DeliveryFee >= 0 {
-					deliveryFee = *req.DeliveryFee
+				if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) >= 0 {
+					deliveryFee = valid.Float64(req.DeliveryFee)
 				}
 				break
 			}
 		}
 
 		// Check other discount
-		if *req.OtherDiscount < 0 || orderGrandTotal-order.PromotionDiscount-*req.OtherDiscount < 0 {
+		if valid.Float64(req.OtherDiscount) < 0 || orderGrandTotal-order.PromotionDiscount-valid.Float64(req.OtherDiscount) < 0 {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không hợp lệ")
 		}
 
 		// Check grand total
-		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - *req.OtherDiscount
+		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - valid.Float64(req.OtherDiscount)
 		if grandTotal < 0 {
 			grandTotal = 0
 		}
-		if math.Round(grandTotal) != math.Round(*req.GrandTotal) {
+		if math.Round(grandTotal) != math.Round(valid.Float64(req.GrandTotal)) {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
 		}
 	}
 
 	// Check and update buyer info
-	if req.BuyerInfo != nil && req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+	if req.BuyerInfo != nil && req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
 		// Update to order record
 		req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
 		buyerInfo, err := json.Marshal(req.BuyerInfo)
@@ -1958,7 +1958,7 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 	}
 
 	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
-		if *req.OtherDiscount > (*req.OrderedGrandTotal + *req.DeliveryFee - *req.PromotionDiscount) {
+		if valid.Float64(req.OtherDiscount) > (valid.Float64(req.OrderedGrandTotal) + valid.Float64(req.DeliveryFee) - valid.Float64(req.PromotionDiscount)) {
 			log.WithError(err).Error("Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
 		}
@@ -2035,49 +2035,49 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 		}
 
 		// Check promotion discount
-		if req.PromotionDiscount != nil && math.Round(*req.PromotionDiscount) != math.Round(order.PromotionDiscount) {
+		if req.PromotionDiscount != nil && math.Round(valid.Float64(req.PromotionDiscount)) != math.Round(order.PromotionDiscount) {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
 		}
 
 		// Check order grand total
-		if math.Round(orderGrandTotal) != math.Round(*req.OrderedGrandTotal) {
+		if math.Round(orderGrandTotal) != math.Round(valid.Float64(req.OrderedGrandTotal)) {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
 		}
 
 		// Check valid delivery fee
 		if req.DeliveryMethod != nil {
-			switch *req.DeliveryMethod {
+			switch valid.String(req.DeliveryMethod) {
 			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
-				if req.DeliveryFee != nil && *req.DeliveryFee > 0 {
+				if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) > 0 {
 					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
 				}
 				deliveryFee = 0
 				break
 			case utils.DELIVERY_METHOD_SELLER_DELIVERY:
-				if req.DeliveryFee != nil && *req.DeliveryFee >= 0 {
-					deliveryFee = *req.DeliveryFee
+				if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) >= 0 {
+					deliveryFee = valid.Float64(req.DeliveryFee)
 				}
 				break
 			}
 		}
 
 		// Check other discount
-		if *req.OtherDiscount < 0 || orderGrandTotal-order.PromotionDiscount-*req.OtherDiscount < 0 {
+		if valid.Float64(req.OtherDiscount) < 0 || orderGrandTotal-order.PromotionDiscount-valid.Float64(req.OtherDiscount) < 0 {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không hợp lệ")
 		}
 
 		// Check grand total
-		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - *req.OtherDiscount
+		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - valid.Float64(req.OtherDiscount)
 		if grandTotal < 0 {
 			grandTotal = 0
 		}
-		if math.Round(grandTotal) != math.Round(*req.GrandTotal) {
+		if math.Round(grandTotal) != math.Round(valid.Float64(req.GrandTotal)) {
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
 		}
 	}
 
 	// Check and update buyer info
-	if req.BuyerInfo != nil && req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+	if req.BuyerInfo != nil && req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
 		// Update to order record
 		req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
 		buyerInfo, err := json.Marshal(req.BuyerInfo)
@@ -2641,7 +2641,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	grandTotal := 0.0
 
 	getContactRequest := model.GetContactRequest{
-		BusinessID:  *req.BusinessID,
+		BusinessID:  valid.UUID(req.BusinessID),
 		Name:        req.BuyerInfo.Name,
 		PhoneNumber: req.BuyerInfo.PhoneNumber,
 		Address:     req.BuyerInfo.Address,
@@ -2806,7 +2806,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		}
 	}
 
-	if req.DeliveryMethod != nil && *req.DeliveryMethod == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+	if req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_BUYER_PICK_UP {
 		deliveryFee = 0
 	} else {
 		if deliveryFee != req.DeliveryFee {
@@ -2823,7 +2823,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 
 	// Check Promotion Code
 	if req.PromotionCode != "" {
-		promotion, err := s.ProcessPromotion(ctx, *req.BusinessID, req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
+		promotion, err := s.ProcessPromotion(ctx, valid.UUID(req.BusinessID), req.PromotionCode, orderGrandTotal, info.Data.Contact.ID, req.UserID, true)
 		if err != nil {
 			log.WithField("req process promotion", req).Errorf("Get promotion error: %v", err.Error())
 			return nil, ginext.NewError(http.StatusBadRequest, "Không đủ điều kiện để sử dụng mã khuyến mãi")
@@ -2849,7 +2849,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	}
 
 	order := model.Order{
-		BusinessID:        *req.BusinessID,
+		BusinessID:        valid.UUID(req.BusinessID),
 		ContactID:         info.Data.Contact.ID,
 		PromotionCode:     req.PromotionCode,
 		PromotionDiscount: promotionDiscount,
@@ -2858,7 +2858,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		GrandTotal:        grandTotal,
 		State:             req.State,
 		PaymentMethod:     strings.ToLower(req.PaymentMethod),
-		DeliveryMethod:    *req.DeliveryMethod,
+		DeliveryMethod:    valid.String(req.DeliveryMethod),
 		Note:              req.Note,
 		CreateMethod:      req.CreateMethod,
 		BuyerId:           &buyerID,
@@ -3636,7 +3636,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 	}
 
 	common.Sync(req, &order)
-	if req.Debit != nil && *req.Debit.BuyerPay > 0 {
+	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 {
 		debit = *req.Debit
 	}
 
@@ -3671,7 +3671,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
 		paymentOrderHistory := model.PaymentOrderHistory{}
-		if req.Debit != nil && *req.Debit.BuyerPay > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
+		if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
 			if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
 				log.WithError(err).Error("error_400: Invalid input:[PaymentSourceID or PaymentSourceName Can not be empty]")
 				return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
