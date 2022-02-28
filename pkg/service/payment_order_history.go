@@ -69,12 +69,13 @@ func (s *PaymentOrderHistoryService) CreatePaymentOrderHistory(ctx context.Conte
 	payment := model.PaymentOrderHistory{
 		BaseModel: model.BaseModel{
 			CreatorID: userID,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
 		},
 		OrderID:         valid.UUID(req.OrderID),
 		Name:            valid.String(req.Name),
 		PaymentMethod:   valid.String(req.PaymentMethod),
 		PaymentSourceID: valid.UUID(req.PaymentSourceID),
-		Day:             time.Now().UTC(),
 	}
 
 	// check debt_amount vs request amount

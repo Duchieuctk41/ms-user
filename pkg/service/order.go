@@ -626,7 +626,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				TransactionType: "in",
 				Status:          "create",
 				Action:          "create",
-				Description:     debit.Note,
+				Description:     valid.String(debit.Note),
 				StartTime:       time.Now().UTC(),
 				Images:          debit.Images,
 				LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -761,7 +761,6 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 				return err
 			}
 		} else {
-			debit.Note = "Ghi nợ cho đơn " + order.OrderNumber
 			if err = s.CreateContactTransactionV2(ctx, order, debit, uhb[0].UserID); err != nil {
 				return err
 			}
@@ -1085,7 +1084,6 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 			TransactionType: "in",
 			Status:          "create",
 			Action:          "create",
-			Description:     debit.Note,
 			StartTime:       time.Now().UTC(),
 			Images:          debit.Images,
 			LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -1094,6 +1092,13 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 			Table:           "lent",
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
+		}
+
+		// 28/02/2022 - hieucn - add default note
+		if debit.Note == nil {
+			contactTransaction.Description = "Ghi nợ cho đơn " + order.OrderNumber
+		} else {
+			contactTransaction.Description = valid.String(debit.Note)
 		}
 
 		header := make(map[string]string)
@@ -3012,7 +3017,8 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		debit = *req.Debit
 		paymentOrderHistory.Amount = valid.Float64(req.Debit.BuyerPay)
 		paymentOrderHistory.Name = valid.String(req.PaymentSourceName)
-		paymentOrderHistory.Day = time.Now().UTC()
+		paymentOrderHistory.CreatedAt = time.Now().UTC()
+		paymentOrderHistory.UpdatedAt = time.Now().UTC()
 		paymentOrderHistory.PaymentSourceID = valid.UUID(req.PaymentSourceID)
 		paymentOrderHistory.PaymentMethod = req.PaymentMethod
 	}
@@ -3177,7 +3183,8 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 			PaymentMethod:   paymentOrderHistory.PaymentMethod,
 			PaymentSourceID: paymentOrderHistory.PaymentSourceID,
 			Name:            paymentOrderHistory.Name,
-			Day:             paymentOrderHistory.Day,
+			CreatedAt:       paymentOrderHistory.CreatedAt,
+			UpdatedAt:       paymentOrderHistory.UpdatedAt,
 			Amount:          valid.Float64(debit.BuyerPay),
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
@@ -3671,9 +3678,12 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 			}
 
 			paymentOrderHistory = model.PaymentOrderHistory{
+				BaseModel: model.BaseModel{
+					CreatedAt: time.Now().UTC(),
+					UpdatedAt: time.Now().UTC(),
+				},
 				Amount:          valid.Float64(debit.BuyerPay),
 				Name:            valid.String(req.PaymentSourceName),
-				Day:             time.Now().UTC(),
 				PaymentSourceID: valid.UUID(req.PaymentSourceID),
 				PaymentMethod:   valid.String(req.PaymentMethod),
 				OrderID:         order.ID,
@@ -3689,7 +3699,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 				PaymentMethod:   paymentOrderHistory.PaymentMethod,
 				PaymentSourceID: paymentOrderHistory.PaymentSourceID,
 				Name:            paymentOrderHistory.Name,
-				Day:             paymentOrderHistory.Day,
+				CreatedAt:       paymentOrderHistory.CreatedAt,
 				Amount:          paymentOrderHistory.Amount,
 			}
 			order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)

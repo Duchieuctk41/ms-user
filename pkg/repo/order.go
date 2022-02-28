@@ -684,6 +684,8 @@ func (r *RepoPG) UpdateDetailOrder(ctx context.Context, order model.Order, mapIt
 
 	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
 		return db.Order("order_item.created_at ASC")
+	}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+		return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
 	}).First(&rs).Error; err != nil {
 		return model.Order{}, nil, err
 	}

@@ -8,7 +8,6 @@ import (
 type PaymentOrderHistory struct {
 	BaseModel
 	Name            string    `json:"name" gorm:"column:name;null"`
-	Day             time.Time `json:"day" gorm:"column:day;not null"`
 	PaymentSourceID uuid.UUID `json:"payment_source_id" gorm:"column:payment_source_id; not null;" sql:"index"`
 	OrderID         uuid.UUID `json:"order_id" gorm:"column:order_id; not null;" sql:"index"`
 	Amount          float64   `json:"amount" gorm:"column:amount;not null;" sql:"index"`
@@ -37,8 +36,9 @@ type PaymentOrderHistoryParam struct {
 
 type PaymentOrderHistoryResponse struct {
 	ID              uuid.UUID `json:"id"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 	Name            string    `json:"name"`
-	Day             time.Time `json:"day"`
 	PaymentSourceID uuid.UUID `json:"payment_source_id"`
 	OrderID         uuid.UUID `json:"order_id"`
 	Amount          float64   `json:"amount"`

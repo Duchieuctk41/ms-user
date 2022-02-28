@@ -107,7 +107,7 @@ type BuyerInfo struct {
 
 type Debit struct {
 	BuyerPay *float64       `json:"buyer_pay"`
-	Note     string         `json:"note"`
+	Note     *string        `json:"note"`
 	Images   pq.StringArray `json:"images" type:"type:varchar(500)[]"`
 }
 
