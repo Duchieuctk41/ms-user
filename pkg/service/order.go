@@ -1982,7 +1982,7 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.SELLER_CREATE_METHOD)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
