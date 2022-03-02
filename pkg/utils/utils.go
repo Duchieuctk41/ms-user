@@ -208,6 +208,139 @@ func CheckCanPickQuantityV5(ctx context.Context, userID string, req []model.Orde
 	return tm.Data, nil
 }
 
+func CheckValidStock(businessID uuid.UUID, orderItems []model.OrderItem) (res model.CheckValidOrderItemResponse, err error) {
+	//Update req quantity
+	header := make(map[string]string)
+	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+	header["x-user-id"] = uuid.NewString()
+	mapOrderItem := make(map[string]model.OrderItem)
+	var strIDs []uuid.UUID
+	for _, v := range orderItems {
+		strIDs = append(strIDs, v.SkuID)
+		mapOrderItem[v.SkuID.String()] = v
+	}
+	req := model.GetListStockRequest{
+		ListSku:    strIDs,
+		BusinessID: businessID,
+		Page:       1,
+		PageSize:   999,
+	}
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSWarehouseManagement+"/api/v1/stock/get-list", rest.Post, header, nil, req)
+	if err != nil {
+		return res, err
+	}
+	tm := struct {
+		Data []model.Stock `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		return res, err
+	}
+
+	var skuIDs []string
+	for _, v := range tm.Data {
+		if orderItem, ok := mapOrderItem[v.SkuID.String()]; ok {
+			if orderItem.Quantity > v.TotalQuantity {
+				skuIDs = append(skuIDs, v.SkuID.String())
+			}
+		}
+	}
+	if len(skuIDs) > 0 {
+		listSKU, err := GetListSKU(skuIDs)
+		if err != nil {
+			return res, err
+		}
+		mapSKU := make(map[string]model.SkuDetail)
+		for _, v := range listSKU {
+			mapSKU[v.SkuID] = v
+		}
+		var itemInfo []model.CheckValidStockResponse
+		for _, v := range tm.Data {
+			if sku, ok := mapSKU[v.SkuID.String()]; ok {
+				itemInfo = append(itemInfo, model.CheckValidStockResponse{
+					Sku: model.Sku{
+						ID:              uuid.MustParse(sku.SkuID),
+						SkuName:         sku.SkuName,
+						Media:           sku.Media,
+						SellingPrice:    sku.SellingPrice,
+						NormalPrice:     sku.NormalPrice,
+						ProductName:     mapOrderItem[v.SkuID.String()].ProductName,
+						Uom:             mapOrderItem[v.SkuID.String()].UOM,
+						SkuCode:         sku.SkuCode,
+						Barcode:         sku.Barcode,
+						CanPickQuantity: sku.CanPickQuantity,
+						Type:            sku.Type,
+						Quantity:        mapOrderItem[v.SkuID.String()].Quantity,
+					},
+					Stock: &model.StockForCheckValid{
+						TotalQuantity:      v.TotalQuantity,
+						DeliveringQuantity: v.DeliveringQuantity,
+						BlockedQuantity:    v.BlockedQuantity,
+						HistoricalCost:     v.HistoricalCost,
+					},
+				})
+			}
+		}
+		res = model.CheckValidOrderItemResponse{
+			Status:    STATUS_OUT_OF_STOCK,
+			ItemsInfo: itemInfo,
+		}
+	} else {
+		res.Status = STATUS_SUCCESS
+	}
+	return res, nil
+}
+
+// 02/03/2022 -hieucn - call to finan-product, update from CheckCanPickQuantityV4
+func CheckCanPickQuantityV6(userID string, req []model.OrderItem, businessID string, mapItem map[string]model.OrderItem, createMethod string) (res model.CheckValidOrderItemResponse, err error) {
+	// Update req quantity
+	var tReq []model.OrderItem
+	for _, v := range req {
+		// check empty quantity
+		if err := CheckEmptyQuantity(v.Quantity); err != nil {
+			return res, err
+		}
+
+		if mapItem != nil {
+			if item, ok := mapItem[v.SkuID.String()]; ok {
+				v.Quantity = v.Quantity - item.Quantity
+			}
+		}
+		tReq = append(tReq, v)
+	}
+	header := make(map[string]string)
+	header["x-user-id"] = userID
+	header["x-business-id"] = businessID
+	header["x-create-method"] = createMethod
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/v1/sku/check-valid-order-items", rest.Post, header, nil, tReq)
+	if err != nil {
+		// parsing error
+		tm := struct {
+			Message string `json:"message"`
+		}{}
+		if err = json.Unmarshal([]byte(body), &tm); err != nil {
+			return res, err
+		}
+		return res, fmt.Errorf(tm.Message)
+	}
+	tm := struct {
+		Data model.CheckValidOrderItemResponse `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		return res, err
+	}
+
+	// set quantity
+	for i, v := range tm.Data.ItemsInfo {
+		if mapItem != nil {
+			if _, ok := mapItem[v.Sku.ID.String()]; ok {
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+			}
+		}
+	}
+
+	return tm.Data, nil
+}
+
 func GetSkuDetail(skuIDs []string, businessID string) (res []model.SkuDetail, err error) {
 	tBD := struct {
 		ListSku    []string `json:"list_sku"`
@@ -374,4 +507,20 @@ func RemoveSpace(str string) string {
 	out := re.ReplaceAllString(str, " ")
 	out = strings.TrimSpace(out)
 	return out
+}
+
+func GetListSKU(skuIDs []string) (res []model.SkuDetail, err error) {
+	header := make(map[string]string)
+	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSProductManagement+"/api/get-list-sku", rest.Post, header, nil, skuIDs)
+	if err != nil {
+		return nil, err
+	}
+	tmp := new(struct {
+		Data []model.SkuDetail `json:"data"`
+	})
+	if err = json.Unmarshal([]byte(body), &tmp); err != nil {
+		return res, err
+	}
+	return tmp.Data, nil
 }

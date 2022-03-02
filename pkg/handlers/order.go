@@ -560,6 +560,54 @@ func (h *OrderHandlers) UpdateDetailOrderSeller(r *ginext.Request) (*ginext.Resp
 	}, nil
 }
 
+//
+//// UpdateDetailOrderSellerV2 from UpdateDetailOrderSeller - 01/03/2022 - hieucn
+//// multi product line
+//func (h *OrderHandlers) UpdateDetailOrderSellerV2(r *ginext.Request) (*ginext.Response, error) {
+//	log := logger.WithCtx(r.GinCtx, "OrderHandlers.UpdateDetailOrderSellerV2")
+//
+//	// check x-user-id
+//	userID, err := utils.CurrentUser(r.GinCtx.Request)
+//	if err != nil {
+//		log.WithError(err).Error("Error when get current user")
+//		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+//	}
+//
+//	// Check valid request
+//	req := model.UpdateDetailOrderRequest{}
+//	r.MustBind(&req)
+//	req.UpdaterID = &userID
+//	// Check Permission
+//	role := r.GinCtx.Request.Header.Get("x-user-roles")
+//
+//	// parse ID from URI
+//	if req.ID = utils.ParseIDFromUri(r.GinCtx); req.ID == nil {
+//		log.WithError(err).Error("Lỗi: ID đơn hàng không đúng định dạng")
+//		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: ID đơn hàng không đúng định dạng")
+//	}
+//
+//	// log request information
+//	field, err := json.Marshal(req)
+//	if err != nil {
+//		log.WithError(err).Error("error_400: Cannot marshal request in UpdateDetailOrderSellerV2")
+//		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+//	}
+//	log.WithField("req", string(field)).Info("OrderHandlers.UpdateDetailOrderSellerV2")
+//
+//	// implement the business logic of UpdateDetailOrder
+//	rs, err := h.service.UpdateDetailOrderSellerV2(r.Context(), req, role)
+//	if err != nil {
+//		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
+//		return nil, err
+//	}
+//	return &ginext.Response{
+//		Code: http.StatusOK,
+//		GeneralBody: &ginext.GeneralBody{
+//			Data: rs,
+//		},
+//	}, nil
+//}
+
 // ExportOrderReport - convert from /api/export-order-report - version app 1.0.35.1.4
 func (h *OrderHandlers) ExportOrderReport(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ExportOrderReport")

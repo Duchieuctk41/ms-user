@@ -3636,6 +3636,17 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		}
 	}
 
+	if req.State != nil && valid.String(req.State) == utils.ORDER_STATE_COMPLETE && preOrderState == utils.ORDER_STATE_DELIVERING {
+		if rCheck, err := utils.CheckValidStock(order.BusinessID, order.OrderItem); err != nil {
+			logrus.WithError(err).Errorf("Error when CheckValidStock from MS Warehouse")
+			return nil, ginext.NewError(http.StatusBadRequest, "Check valid stock for this order")
+		} else {
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				return rCheck, nil
+			}
+		}
+	}
+
 	common.Sync(req, &order)
 	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 {
 		debit = *req.Debit

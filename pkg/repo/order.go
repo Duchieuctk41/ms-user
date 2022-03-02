@@ -1237,3 +1237,77 @@ func (r *RepoPG) GetOrderItemRevenueAnalytics(ctx context.Context, input model.G
 	}
 	return rs, nil
 }
+
+// 01/03/2022 - hieucn - multi product line
+func (r *RepoPG) UpdateDetailOrderV1(ctx context.Context, order model.Order, lstItem []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrder")
+
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		tx = tx.Begin()
+		defer func() {
+			tx.Rollback()
+			cancel()
+		}()
+	}
+
+	for _, item := range lstItem {
+		item.OrderID = order.ID
+		order.OrderItem = append(order.OrderItem, item)
+		// Thêm số lượng khách đang đặt bên stock (+ quantity)
+		stocks = append(stocks, model.StockRequest{
+			SkuID:          item.SkuID,
+			QuantityChange: item.Quantity,
+		})
+	}
+
+	for _, orderItem := range order.OrderItem {
+		if orderItem.ID == uuid.Nil {
+			orderItem.CreatorID = order.UpdaterID
+			//time.Sleep(3 * time.Second) - test multi request call in one time
+			// 01/03/2022 - hieucn - change FirstAndCreate to Create
+			if err = tx.Create(&orderItem).Error; err != nil {
+				log.WithError(err).Error("error_500: create if exists order_item in UpdateDetailOrder - RepoPG")
+				return model.Order{}, nil, err
+			}
+
+			// log history order item
+			go func() {
+				desc := utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM + " in UpdateDetailOrder func - OrderService"
+				history, _ := utils.PackHistoryModel(context.Background(), orderItem.UpdaterID, order.UpdaterID.String(), orderItem.ID, utils.TABLE_ORDER_ITEM, utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM, desc, orderItem, nil)
+				r.LogHistory(context.Background(), history, nil)
+			}()
+		} else {
+			// 01/03/2022 - hieucn - delete old item, create new item
+			orderItem.UpdaterID = order.UpdaterID
+			if err = tx.Where("id = ?", orderItem.ID).Delete(&orderItem).Error; err != nil {
+				log.WithError(err).Error("error_500: delete order_item in UpdateDetailOrder - RepoPG")
+				return model.Order{}, nil, err
+			}
+
+			// log history order item
+			go func() {
+				desc := utils.ACTION_DELETE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService"
+				history, _ := utils.PackHistoryModel(context.Background(), orderItem.UpdaterID, order.UpdaterID.String(), orderItem.ID, utils.TABLE_ORDER_ITEM, utils.ACTION_DELETE_ORDER_ITEM, desc, orderItem, nil)
+				r.LogHistory(context.Background(), history, nil)
+			}()
+		}
+	}
+
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
+		log.WithError(err).Error("error_500: update order in UpdateDetailOrder - RepoPG")
+		return model.Order{}, nil, err
+	}
+
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+		return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
+	}).First(&rs).Error; err != nil {
+		return model.Order{}, nil, err
+	}
+
+	tx.Commit()
+	return rs, stocks, nil
+}
