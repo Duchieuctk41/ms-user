@@ -4,14 +4,13 @@ import (
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/service"
 	"finan/ms-order-management/pkg/utils"
+	"finan/ms-order-management/pkg/valid"
 
-	//"finan/ms-order-management/pkg/utils"
 	"net/http"
 
 	"github.com/google/uuid"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
-	//"gitlab.com/goxp/cloud0/logger"
 )
 
 type ProfitAndLossHandlers struct {
@@ -35,7 +34,7 @@ func (h *ProfitAndLossHandlers) GetOverviewPandL(r *ginext.Request) (*ginext.Res
 
 	//Check Permission
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
-	if err := utils.CheckPermission(r.GinCtx, owner.String(), *req.BusinessID, role); err != nil {
+	if err := utils.CheckPermission(r.GinCtx, owner.String(), valid.String(req.BusinessID), role); err != nil {
 		return nil, err
 	}
 
@@ -60,7 +59,7 @@ func (h *ProfitAndLossHandlers) GetListProfitAndLoss(r *ginext.Request) (*ginext
 
 	// Check Permission
 	role := r.GinCtx.Request.Header.Get("x-user-roles")
-	if err := utils.CheckPermission(r.GinCtx, owner.String(), *req.BusinessID, role); err != nil {
+	if err := utils.CheckPermission(r.GinCtx, owner.String(), valid.String(req.BusinessID), role); err != nil {
 		return nil, err
 	}
 

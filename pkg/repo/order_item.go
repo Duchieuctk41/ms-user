@@ -119,7 +119,7 @@ func (r *RepoPG) GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLo
 	}
 	countQuery += `GROUP BY business_id, sku_id, product_name, sku_name) as b `
 
-	countQuery = strings.ReplaceAll(countQuery, "BusinessID", *req.BusinessID)
+	countQuery = strings.ReplaceAll(countQuery, "BusinessID", valid.String(req.BusinessID))
 	countQuery = strings.ReplaceAll(countQuery, "SkuID", uuid.Nil.String())
 	if rs.Meta, err = r.GetPaginationInfo(utils.RemoveSpace(countQuery), tx, int(total), page, pageSize); err != nil {
 		return rs, err

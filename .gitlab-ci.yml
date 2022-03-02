@@ -1,6 +1,6 @@
 include:
   - project: 'jamalex-ltd/finan/finan-be/ci-image'
-    ref    : 'master'
+    ref    : 'add-stg-env'
     file   : 'ci-templates/base.yml'
 
 variables:
@@ -14,22 +14,17 @@ docker_build:
 tag_release:
   extends: .tag_release
 
-.deploy_base:
-  extends: .deploy
-
 deploy:dev:
-  extends: .deploy_base
-  environment:
-    name: dev
   variables:
     APP_ENV: dev
     DB_NAME: "finan_dev_ms_order_management"
 
+deploy:stg:
+  variables:
+    APP_ENV: stg
+    DB_NAME: "finan_stg_ms_order_management"
+
 deploy:prd:
-  extends: .deploy_base
-  when: manual
-  environment:
-    name: prd
   variables:
     APP_ENV: prd
     DB_NAME: "finan_prd_ms_order_management"
