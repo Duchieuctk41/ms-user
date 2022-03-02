@@ -2045,6 +2045,7 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 		}
 
 		// hieucn -02/03/2022 - fix seller self setup delevery_fee
+		deliveryFee = valid.Float64(req.DeliveryFee)
 		//if req.DeliveryMethod != nil {
 		//	switch valid.String(req.DeliveryMethod) {
 		//	case utils.DELIVERY_METHOD_BUYER_PICK_UP:
