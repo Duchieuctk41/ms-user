@@ -11,6 +11,7 @@ const (
 	STATUS_SUCCESS       = "success"
 	STATUS_SKU_NOT_FOUND = "sku_not_found"
 	SOLD_OUT             = "sold_out"
+	STATUS_OUT_OF_STOCK  = "out_of_stock"
 )
 
 const (
@@ -100,8 +101,10 @@ const (
 	FAST_ORDER_COMPLETED = "fast_order_completed"
 )
 
-const PO_IN = "in"
-const PO_OUT = "out"
+const (
+	PO_IN  = "in"
+	PO_OUT = "out"
+)
 
 // type ms-chat
 const (
