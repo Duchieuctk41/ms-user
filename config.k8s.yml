@@ -15,4 +15,5 @@ data:
   MS_CONSUMER: "http://ms-consumer"
   MS_NOTIFICATION_MANAGEMENT: "http://ms-notification-management"
   MS_MEDIA_MANAGEMENT: "http://ms-media-management"
+  FINAN_PRODUCT: "http://finan-product"
 
