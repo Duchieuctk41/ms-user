@@ -62,6 +62,7 @@ type OrderServiceInterface interface {
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	UpdateDetailOrderSeller(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error)
+	UpdateDetailOrderSellerV2(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error)
 	GetOneOrderBuyer(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 	UpdateOrderV2(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error)
 	GetlistOrderV2(ctx context.Context, req model.OrderParam) (res model.ListOrderResponse, err error)
@@ -1783,7 +1784,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.BUYER_CREATE_METHOD)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
@@ -2671,6 +2672,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		req.State = utils.ORDER_STATE_WAITING_CONFIRM
 		buyerID = req.UserID
 
+		// 02/03/2022 - hieucn - check valid address with buyer
+		if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+			log.Error("error_400: Địa chỉ không được để trống")
+			return nil, ginext.NewError(http.StatusBadRequest, "Địa chỉ không được để trống")
+		}
+
 		break
 	case utils.SELLER_CREATE_METHOD:
 		// check buyer received or not
@@ -2681,6 +2688,11 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		// if req.State == utils.ORDER_STATE_COMPLETE {
 		// 	checkCompleted = utils.FAST_ORDER_COMPLETED
 		// }
+
+		// 02/03/2022 - hieucn - set adress default with null address
+		if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+			req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+		}
 
 		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
@@ -3007,6 +3019,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
 
+	// 02/03/2022 - hieucn - check valid address with buyer
+	if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		log.Error("error_400: Địa chỉ không được để trống")
+		req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+	}
+
 	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
 	debit := model.Debit{}
 	paymentOrderHistory := model.PaymentOrderHistory{}
@@ -3075,7 +3093,7 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	}
 
 	// check can pick quantity
-	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, utils.SELLER_CREATE_METHOD)
 	if err != nil {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
@@ -3807,4 +3825,185 @@ func (s *OrderService) GetOrderItemRevenueAnalytics(ctx context.Context, req mod
 	}
 
 	return orderItemAnalytic, nil
+}
+
+func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrderSellerV2")
+
+	if len(req.ListOrderItem) == 0 {
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
+	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetOneOrder")
+		return nil, err
+	}
+
+	// check permission
+	if err = utils.CheckPermissionV4(ctx, req.UpdaterID.String(), order.BusinessID.String()); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
+		if valid.Float64(req.OtherDiscount) > (valid.Float64(req.OrderedGrandTotal) + valid.Float64(req.DeliveryFee) - valid.Float64(req.PromotionDiscount)) {
+			log.WithError(err).Error("Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+		}
+	}
+
+	if order.State != utils.ORDER_STATE_WAITING_CONFIRM && order.State != utils.ORDER_STATE_DELIVERING {
+		log.WithError(err).Error("Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+	}
+
+	// Check valid order
+	//mapItem := make(map[string]model.OrderItem)
+	if len(req.ListOrderItem) > 0 && req.OrderedGrandTotal != nil && req.GrandTotal != nil && req.PromotionDiscount != nil && req.OtherDiscount != nil {
+		orderGrandTotal := 0.0
+		grandTotal := 0.0
+		deliveryFee := 0.0
+
+		//  Check valid order item
+		mapItemOld := make(map[string]model.OrderItem)
+		for _, v := range order.OrderItem {
+			mapItemOld[v.SkuID.String()] = v
+		}
+
+		rCheck, err := utils.CheckCanPickQuantityV5(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.SELLER_CREATE_METHOD)
+		if err != nil {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+		} else {
+			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+			}
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return rCheck, nil
+			}
+		}
+
+		mapSku := make(map[string]model.CheckValidStockResponse)
+		mapQuantity := map[string]float64{}
+		for _, v := range rCheck.ItemsInfo {
+			mapSku[v.ID.String()] = v
+			if _, ok := mapSku[v.ID.String()]; ok {
+				mapQuantity[v.ID.String()] += v.Quantity
+			} else {
+				mapQuantity[v.ID.String()] = v.Quantity
+			}
+			// 01/03/2022 - hieucn - check can pick quantity
+			if v.Quantity > mapSku[v.ID.String()].CanPickQuantity {
+				log.WithError(err).Error("error_400: Số lượng sản phẩm đặt hàng không đủ")
+				return rCheck, ginext.NewError(http.StatusBadRequest, "Lỗi: Số lượng sản phẩm đặt hàng không đủ")
+			}
+		}
+
+		for i, v := range req.ListOrderItem {
+
+			itemTotalAmount := 0.0
+			if v.Price != 0 {
+				itemTotalAmount = v.Price * v.Quantity
+			} else {
+				if v.ProductSellingPrice > 0 {
+					itemTotalAmount = v.ProductSellingPrice * v.Quantity
+				} else {
+					itemTotalAmount = v.ProductNormalPrice * v.Quantity
+				}
+			}
+
+			req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
+			orderGrandTotal += req.ListOrderItem[i].TotalAmount
+			if _, ok := mapSku[v.SkuID.String()]; ok {
+				req.ListOrderItem[i].UOM = mapSku[v.SkuID.String()].Uom
+				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
+				req.ListOrderItem[i].WholesalePrice = mapSku[v.SkuID.String()].WholesalePrice
+			}
+
+			if req.ListOrderItem[i].Price == 0 {
+				if req.ListOrderItem[i].ProductSellingPrice != 0 {
+					req.ListOrderItem[i].Price = v.ProductSellingPrice
+				} else {
+					req.ListOrderItem[i].Price = v.ProductNormalPrice
+				}
+			}
+		}
+
+		// Check promotion discount
+		if req.PromotionDiscount != nil && math.Round(valid.Float64(req.PromotionDiscount)) != math.Round(order.PromotionDiscount) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
+		}
+
+		// Check order grand total
+		if math.Round(orderGrandTotal) != math.Round(valid.Float64(req.OrderedGrandTotal)) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
+		}
+
+		deliveryFee = valid.Float64(req.DeliveryFee)
+
+		// Check other discount
+		if valid.Float64(req.OtherDiscount) < 0 || orderGrandTotal-order.PromotionDiscount-valid.Float64(req.OtherDiscount) < 0 {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không hợp lệ")
+		}
+
+		// Check grand total
+		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - valid.Float64(req.OtherDiscount)
+		if grandTotal < 0 {
+			grandTotal = 0
+		}
+		if math.Round(grandTotal) != math.Round(valid.Float64(req.GrandTotal)) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
+		}
+	}
+
+	// Check and update buyer info
+	if req.BuyerInfo != nil && req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		// Update to order record
+		req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+		buyerInfo, err := json.Marshal(req.BuyerInfo)
+		if err != nil {
+			log.WithError(err).Errorf("Error when parse buyerInfo: %v", err.Error())
+		}
+		order.BuyerInfo.RawMessage = buyerInfo
+
+		// Update address of contact
+		getContactRequest := model.GetContactRequest{
+			BusinessID:  order.BusinessID,
+			Name:        req.BuyerInfo.Name,
+			PhoneNumber: req.BuyerInfo.PhoneNumber,
+			Address:     req.BuyerInfo.Address,
+		}
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/contact/get-contact-by-phone-number", rest.Post, nil, nil, getContactRequest)
+		if err != nil {
+			log.WithError(err).Errorf("Get contact error: %v", err.Error())
+		}
+	}
+
+	req.BuyerInfo = nil
+	common.Sync(req, &order)
+
+	res, stocks, err := s.repo.UpdateDetailOrderSellerV2(ctx, order, req.ListOrderItem, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when UpdateDetailOrderSelleV2")
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	if order.State == utils.ORDER_STATE_DELIVERING {
+		go s.UpdateStockWhenUpdateDetailOrder(context.Background(), order, stocks, "order_delivering")
+	}
+
+	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
+	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), utils.ORDER_STATE_UPDATE)
+
+	// log history UpdateOrder ver1
+	go func() {
+		desc := utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrderSellerV2 func - OrderService"
+		history, _ := utils.PackHistoryModel(context.Background(), order.UpdaterID, order.UpdaterID.String(), order.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, order, req)
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
+
+	return res, nil
 }

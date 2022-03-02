@@ -100,7 +100,7 @@ type OrderBody struct {
 type BuyerInfo struct {
 	PhoneNumber string  `json:"phone_number" valid:"Required"`
 	Name        string  `json:"name" valid:"Required"`
-	Address     string  `json:"address" valid:"Required"`
+	Address     string  `json:"address"`
 	Latitude    float64 `json:"latitude"`
 	Longitude   float64 `json:"longitude"`
 }

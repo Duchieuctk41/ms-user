@@ -44,7 +44,7 @@ type PGInterface interface {
 	GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
 	GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error)
 	UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
-	UpdateDetailOrderV1(ctx context.Context, order model.Order, req []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
+	UpdateDetailOrderSellerV2(ctx context.Context, order model.Order, req []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
 	GetOrderTracking(ctx context.Context, req model.OrderTrackingRequest, tx *gorm.DB) (rs model.OrderTrackingResponse, err error)
 	CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error)
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)

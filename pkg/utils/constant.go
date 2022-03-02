@@ -47,6 +47,8 @@ const (
 	ORDER_STATE_UPDATE          = "update"
 )
 
+const ADDRESS_DEFAUTL = "địa chỉ mặc định"
+
 const (
 	TOPIC_SEND_EMAIL_ORDER            = "finan-order:send-email-order"
 	TOPIC_UPDATE_EMAIL_ORDER_RECENT   = "finan-order:update_email_order_recent"
