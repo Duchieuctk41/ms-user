@@ -198,7 +198,7 @@ func CheckCanPickQuantityV5(ctx context.Context, userID string, req []model.Orde
 	}
 	if tm.Data.Status == SOLD_OUT {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
-		return res, ginext.NewError(http.StatusBadRequest, "Sản phẩm tạm hết hàng")
+		return res, ginext.NewError(http.StatusBadRequest, "Error when CheckValidOrderItems from MS Product")
 	}
 	if tm.Data.Status != STATUS_SUCCESS {
 		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
@@ -251,18 +251,19 @@ func CheckValidStock(businessID uuid.UUID, orderItems []model.OrderItem) (res mo
 		}
 		mapSKU := make(map[string]model.SkuDetail)
 		for _, v := range listSKU {
-			mapSKU[v.SkuID] = v
+			mapSKU[v.ID] = v
 		}
 		var itemInfo []model.CheckValidStockResponse
 		for _, v := range tm.Data {
 			if sku, ok := mapSKU[v.SkuID.String()]; ok {
 				itemInfo = append(itemInfo, model.CheckValidStockResponse{
 					Sku: model.Sku{
-						ID:              uuid.MustParse(sku.SkuID),
-						SkuName:         sku.SkuName,
+						ID:              uuid.MustParse(sku.ID),
+						SkuName:         sku.Name,
 						Media:           sku.Media,
 						SellingPrice:    sku.SellingPrice,
 						NormalPrice:     sku.NormalPrice,
+						ProductID:       uuid.MustParse(sku.ProductID),
 						ProductName:     mapOrderItem[v.SkuID.String()].ProductName,
 						Uom:             mapOrderItem[v.SkuID.String()].UOM,
 						SkuCode:         sku.SkuCode,
@@ -281,7 +282,7 @@ func CheckValidStock(businessID uuid.UUID, orderItems []model.OrderItem) (res mo
 			}
 		}
 		res = model.CheckValidOrderItemResponse{
-			Status:    STATUS_OUT_OF_STOCK,
+			Status:    SOLD_OUT,
 			ItemsInfo: itemInfo,
 		}
 	} else {

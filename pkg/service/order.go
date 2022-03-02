@@ -3075,9 +3075,23 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	}
 
 	// check can pick quantity
-	rCheck, err := utils.CheckCanPickQuantityV5(ctx, req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
 	if err != nil {
-		return rCheck, err
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	} else {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status == utils.SOLD_OUT {
+			log.WithError(err).Error("Error: Sản phẩm tạm hết hàng")
+			return rCheck, nil
+		}
+		if rCheck.Status != utils.STATUS_SUCCESS {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return rCheck, nil
+		}
 	}
 	mapSku := make(map[string]model.CheckValidStockResponse)
 	for _, v := range rCheck.ItemsInfo {
