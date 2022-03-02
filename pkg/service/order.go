@@ -1784,7 +1784,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.BUYER_CREATE_METHOD)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
@@ -2672,6 +2672,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		req.State = utils.ORDER_STATE_WAITING_CONFIRM
 		buyerID = req.UserID
 
+		// 02/03/2022 - hieucn - check valid address with buyer
+		if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+			log.Error("error_400: Địa chỉ không được để trống")
+			return nil, ginext.NewError(http.StatusBadRequest, "Địa chỉ không được để trống")
+		}
+
 		break
 	case utils.SELLER_CREATE_METHOD:
 		// check buyer received or not
@@ -2682,6 +2688,11 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		// if req.State == utils.ORDER_STATE_COMPLETE {
 		// 	checkCompleted = utils.FAST_ORDER_COMPLETED
 		// }
+
+		// 02/03/2022 - hieucn - set adress default with null address
+		if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+			req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+		}
 
 		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
@@ -3007,6 +3018,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 //============================== version 2 ===========================================//
 func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
+
+	// 02/03/2022 - hieucn - check valid address with buyer
+	if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		log.Error("error_400: Địa chỉ không được để trống")
+		req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+	}
 
 	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
 	debit := model.Debit{}
@@ -3854,7 +3871,7 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV5(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV5(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.SELLER_CREATE_METHOD)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
@@ -3913,9 +3930,6 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 					req.ListOrderItem[i].Price = v.ProductNormalPrice
 				}
 			}
-
-			// 03/01/2022 - hieucn -comment
-			//mapItem[v.SkuID.String()] = req.ListOrderItem[i]
 		}
 
 		// Check promotion discount
@@ -3928,22 +3942,7 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
 		}
 
-		// Check valid delivery fee
-		if req.DeliveryMethod != nil {
-			switch valid.String(req.DeliveryMethod) {
-			case utils.DELIVERY_METHOD_BUYER_PICK_UP:
-				if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) > 0 {
-					return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
-				}
-				deliveryFee = 0
-				break
-			case utils.DELIVERY_METHOD_SELLER_DELIVERY:
-				if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) >= 0 {
-					deliveryFee = valid.Float64(req.DeliveryFee)
-				}
-				break
-			}
-		}
+		deliveryFee = valid.Float64(req.DeliveryFee)
 
 		// Check other discount
 		if valid.Float64(req.OtherDiscount) < 0 || orderGrandTotal-order.PromotionDiscount-valid.Float64(req.OtherDiscount) < 0 {
@@ -3986,9 +3985,9 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 	req.BuyerInfo = nil
 	common.Sync(req, &order)
 
-	res, stocks, err := s.repo.UpdateDetailOrderV1(ctx, order, req.ListOrderItem, nil)
+	res, stocks, err := s.repo.UpdateDetailOrderSellerV2(ctx, order, req.ListOrderItem, nil)
 	if err != nil {
-		log.WithError(err).Error("Error when UpdateDetailOrderSeller")
+		log.WithError(err).Error("Error when UpdateDetailOrderSelleV2")
 		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
 
@@ -3999,33 +3998,10 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
 	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), utils.ORDER_STATE_UPDATE)
 
-	// log history order detail
+	// log history UpdateOrder ver1
 	go func() {
-		history := model.History{
-			BaseModel: model.BaseModel{
-				CreatorID: order.UpdaterID,
-			},
-			ObjectID:    order.ID,
-			ObjectTable: utils.TABLE_ORDER,
-			Action:      utils.ACTION_UPDATE_ORDER,
-			Description: utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrderSeller func - OrderService",
-			Worker:      order.UpdaterID.String(),
-		}
-
-		dataOrder, err := json.Marshal(order)
-		if err != nil {
-			log.WithError(err).Error("Error when parse order in UpdateDetailOrderSeller func - OrderService")
-			return
-		}
-		history.Data = dataOrder
-
-		requestData, err := json.Marshal(req)
-		if err != nil {
-			log.WithError(err).Error("Error when parse order request in UpdateDetailOrderSeller - OrderService")
-			return
-		}
-		history.DataRequest = requestData
-
+		desc := utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrderSellerV2 func - OrderService"
+		history, _ := utils.PackHistoryModel(context.Background(), order.UpdaterID, order.UpdaterID.String(), order.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, order, req)
 		s.historyService.LogHistory(context.Background(), history, nil)
 	}()
 

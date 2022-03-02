@@ -224,24 +224,29 @@ func CheckValidStock(businessID uuid.UUID, orderItems []model.OrderItem) (res mo
 // 02/03/2022 -hieucn - call to finan-product, update from CheckCanPickQuantityV4
 func CheckCanPickQuantityV5(userID string, req []model.OrderItem, businessID string, mapItem map[string]model.OrderItem, createMethod string) (res model.CheckValidOrderItemResponse, err error) {
 	// Update req quantity
-	var tReq []model.OrderItem
+
+	var tReq struct {
+		Body       []model.OrderItem `json:"order_item"`
+		BusinessID string            `json:"business_id"`
+		Method     string            `json:"method"`
+	}
 	for _, v := range req {
 		// check empty quantity
 		if err := CheckEmptyQuantity(v.Quantity); err != nil {
 			return res, err
 		}
 
-		if mapItem != nil {
-			if item, ok := mapItem[v.SkuID.String()]; ok {
-				v.Quantity = v.Quantity - item.Quantity
-			}
-		}
-		tReq = append(tReq, v)
+		//if mapItem != nil {
+		//	if item, ok := mapItem[v.SkuID.String()]; ok {
+		//		v.Quantity = v.Quantity - item.Quantity
+		//	}
+		//}
+		tReq.Body = append(tReq.Body, v)
 	}
 	header := make(map[string]string)
 	header["x-user-id"] = userID
-	header["x-business-id"] = businessID
-	header["x-create-method"] = createMethod
+	tReq.BusinessID = businessID
+	tReq.Method = createMethod
 	body, _, err := common.SendRestAPI(conf.LoadEnv().FinanProduct+"/api/v1/sku/check-valid-order-items", rest.Post, header, nil, tReq)
 	if err != nil {
 		// parsing error

@@ -1239,8 +1239,8 @@ func (r *RepoPG) GetOrderItemRevenueAnalytics(ctx context.Context, input model.G
 }
 
 // 01/03/2022 - hieucn - multi product line
-func (r *RepoPG) UpdateDetailOrderV1(ctx context.Context, order model.Order, lstItem []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
-	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrder")
+func (r *RepoPG) UpdateDetailOrderSellerV2(ctx context.Context, order model.Order, lstItem []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrderSellerV2")
 
 	var cancel context.CancelFunc
 	if tx == nil {
@@ -1274,7 +1274,7 @@ func (r *RepoPG) UpdateDetailOrderV1(ctx context.Context, order model.Order, lst
 
 			// log history order item
 			go func() {
-				desc := utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM + " in UpdateDetailOrder func - OrderService"
+				desc := utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM + " in UpdateDetailOrderSellerV2 func - OrderService"
 				history, _ := utils.PackHistoryModel(context.Background(), orderItem.UpdaterID, order.UpdaterID.String(), orderItem.ID, utils.TABLE_ORDER_ITEM, utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM, desc, orderItem, nil)
 				r.LogHistory(context.Background(), history, nil)
 			}()
@@ -1282,13 +1282,13 @@ func (r *RepoPG) UpdateDetailOrderV1(ctx context.Context, order model.Order, lst
 			// 01/03/2022 - hieucn - delete old item, create new item
 			orderItem.UpdaterID = order.UpdaterID
 			if err = tx.Where("id = ?", orderItem.ID).Delete(&orderItem).Error; err != nil {
-				log.WithError(err).Error("error_500: delete order_item in UpdateDetailOrder - RepoPG")
+				log.WithError(err).Error("error_500: delete order_item in UpdateDetailOrderSellerV2 - RepoPG")
 				return model.Order{}, nil, err
 			}
 
 			// log history order item
 			go func() {
-				desc := utils.ACTION_DELETE_ORDER_ITEM + " in UpdateDetailOrder func - OrderService"
+				desc := utils.ACTION_DELETE_ORDER_ITEM + " in UpdateDetailOrderSellerV2 func - OrderService"
 				history, _ := utils.PackHistoryModel(context.Background(), orderItem.UpdaterID, order.UpdaterID.String(), orderItem.ID, utils.TABLE_ORDER_ITEM, utils.ACTION_DELETE_ORDER_ITEM, desc, orderItem, nil)
 				r.LogHistory(context.Background(), history, nil)
 			}()
@@ -1296,7 +1296,7 @@ func (r *RepoPG) UpdateDetailOrderV1(ctx context.Context, order model.Order, lst
 	}
 
 	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
-		log.WithError(err).Error("error_500: update order in UpdateDetailOrder - RepoPG")
+		log.WithError(err).Error("error_500: update order in UpdateDetailOrderSellerV2 - RepoPG")
 		return model.Order{}, nil, err
 	}
 
