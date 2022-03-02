@@ -87,15 +87,17 @@ type Sku struct {
 	Barcode         string         `json:"barcode"`
 	CanPickQuantity float64        `json:"can_pick_quantity"`
 	Type            string         `json:"type"`
-	HistoricalCost  float64        `json:"historical_cost"`
-	WholesalePrice  *float64       `json:"wholesale_price"`
+	HistoricalCost  float64        `json:"historical_cost,omitempty"`
+	WholesalePrice  *float64       `json:"wholesale_price,omitempty"`
 }
 
 type SkuDetail struct {
-	SkuID           string         `json:"sku_id"`
+	ID              string         `json:"id"`
 	BusinessID      string         `json:"business_id"`
+	ProductID       string         `json:"product_id"`
 	ProductName     string         `json:"product_name"`
-	SkuName         string         `json:"sku_name"`
+	Name            string         `json:"name"`
+	SkuID           string         `json:"sku_id"`
 	SkuCode         string         `json:"sku_code"`
 	Barcode         string         `json:"bar_code"`
 	CanPickQuantity float64        `json:"can_pick_quantity"'`
