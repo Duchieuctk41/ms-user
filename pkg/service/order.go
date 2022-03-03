@@ -139,7 +139,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 				ProductType:         orderItem.ProductType,
 				CanPickQuantity:     orderItem.CanPickQuantity,
 				SkuActive:           orderItem.SkuActive,
-				Price:               orderItem.Price,
+				Price:               valid.Float64(orderItem.Price),
 			}
 			rs.OrderBuyerResponse.OrderItem = append(rs.OrderBuyerResponse.OrderItem, o)
 		}
@@ -453,10 +453,13 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
 			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
 		}
-		if orderItem.ProductSellingPrice != 0 {
-			orderItem.Price = orderItem.ProductSellingPrice
-		} else {
-			orderItem.Price = orderItem.ProductNormalPrice
+		// 03/03/2022 - hieucn - accept price == 0
+		if orderItem.Price == nil {
+			if orderItem.ProductSellingPrice != 0 {
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductSellingPrice)
+			} else {
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductNormalPrice)
+			}
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
@@ -1819,9 +1822,9 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
 			}
 			if req.ListOrderItem[i].ProductSellingPrice != 0 {
-				req.ListOrderItem[i].Price = v.ProductSellingPrice
+				req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductSellingPrice)
 			} else {
-				req.ListOrderItem[i].Price = v.ProductNormalPrice
+				req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
 			}
 			mapItem[v.SkuID.String()] = req.ListOrderItem[i]
 		}
@@ -2007,8 +2010,8 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 		for i, v := range req.ListOrderItem {
 
 			itemTotalAmount := 0.0
-			if v.Price != 0 {
-				itemTotalAmount = v.Price * v.Quantity
+			if v.Price != nil {
+				itemTotalAmount = valid.Float64(v.Price) * v.Quantity
 			} else {
 				if v.ProductSellingPrice > 0 {
 					itemTotalAmount = v.ProductSellingPrice * v.Quantity
@@ -2025,11 +2028,11 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 				req.ListOrderItem[i].WholesalePrice = mapSku[v.SkuID.String()].WholesalePrice
 			}
 
-			if req.ListOrderItem[i].Price == 0 {
+			if req.ListOrderItem[i].Price == nil {
 				if req.ListOrderItem[i].ProductSellingPrice != 0 {
-					req.ListOrderItem[i].Price = v.ProductSellingPrice
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductSellingPrice)
 				} else {
-					req.ListOrderItem[i].Price = v.ProductNormalPrice
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
 				}
 			}
 
@@ -2940,7 +2943,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		}
 		history.DataRequest = requestData
 
-		s.historyService.LogHistory(ctx, history, tx)
+		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
@@ -2956,9 +2959,9 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
 		}
 		if orderItem.ProductSellingPrice != 0 {
-			orderItem.Price = orderItem.ProductSellingPrice
+			orderItem.Price = valid.Float64Pointer(orderItem.ProductSellingPrice)
 		} else {
-			orderItem.Price = orderItem.ProductNormalPrice
+			orderItem.Price = valid.Float64Pointer(orderItem.ProductNormalPrice)
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
@@ -3347,8 +3350,8 @@ func (s *OrderService) ImplementCreateOrder(ctx context.Context, order *model.Or
 func (s *OrderService) CountAmountOrder(ctx context.Context, listOrderItem []model.OrderItem) (orderGrandTotal float64) {
 	for i, v := range listOrderItem {
 		itemTotalAmount := 0.0
-		if v.Price != 0 {
-			itemTotalAmount = v.Price * v.Quantity
+		if v.Price != nil {
+			itemTotalAmount = valid.Float64(v.Price) * v.Quantity
 		} else {
 			if v.ProductSellingPrice > 0 {
 				itemTotalAmount = v.ProductSellingPrice * v.Quantity
@@ -3384,11 +3387,12 @@ func (s *OrderService) CreateMultiOrderItem(ctx context.Context, listOrderItem [
 			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
 			orderItem.WholesalePrice = mapSku[orderItem.SkuID.String()].WholesalePrice
 		}
-		if orderItem.Price == 0 {
+		// 03/03/2022 - hieucn - accept price == 0
+		if orderItem.Price == nil {
 			if orderItem.ProductSellingPrice != 0 {
-				orderItem.Price = orderItem.ProductSellingPrice
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductSellingPrice)
 			} else {
-				orderItem.Price = orderItem.ProductNormalPrice
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductNormalPrice)
 			}
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
@@ -3906,8 +3910,8 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 		for i, v := range req.ListOrderItem {
 
 			itemTotalAmount := 0.0
-			if v.Price != 0 {
-				itemTotalAmount = v.Price * v.Quantity
+			if v.Price != nil {
+				itemTotalAmount = valid.Float64(v.Price) * v.Quantity
 			} else {
 				if v.ProductSellingPrice > 0 {
 					itemTotalAmount = v.ProductSellingPrice * v.Quantity
@@ -3924,11 +3928,11 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 				req.ListOrderItem[i].WholesalePrice = mapSku[v.SkuID.String()].WholesalePrice
 			}
 
-			if req.ListOrderItem[i].Price == 0 {
+			if req.ListOrderItem[i].Price == nil {
 				if req.ListOrderItem[i].ProductSellingPrice != 0 {
-					req.ListOrderItem[i].Price = v.ProductSellingPrice
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductSellingPrice)
 				} else {
-					req.ListOrderItem[i].Price = v.ProductNormalPrice
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
 				}
 			}
 		}

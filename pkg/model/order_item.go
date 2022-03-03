@@ -28,7 +28,7 @@ type OrderItem struct {
 	ProductType         *string        `json:"product_type,omitempty" gorm:"-"`
 	CanPickQuantity     *float64       `json:"can_pick_quantity,omitempty" gorm:"-"`
 	SkuActive           *bool          `json:"sku_active,omitempty" gorm:"-"`
-	Price               float64        `json:"price" gorm:"column:price;"`
+	Price               *float64       `json:"price" gorm:"column:price;"`
 	HistoricalCost      float64        `json:"historical_cost" gorm:"column:historical_cost;"`
 	WholesalePrice      *float64       `json:"wholesale_price"`
 }
