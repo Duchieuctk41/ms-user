@@ -74,6 +74,7 @@ type OrderServiceInterface interface {
 
 	OverviewOrder(ctx context.Context, req model.OrverviewRequest) (res model.OverviewOrderResponse, err error)
 	GetOrderItemRevenueAnalytics(ctx context.Context, req model.GetOrderRevenueAnalyticsParam) (res model.ListOrderRevenueAnalyticsResponse, err error)
+	CreateOrderSellerV3(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 }
@@ -4006,4 +4007,224 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 	}()
 
 	return res, nil
+}
+
+//============================== version 3 ===========================================//
+// 03/03/2022 - hieucn - separate product line
+func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
+
+	// 02/03/2022 - hieucn - check valid address with buyer
+	if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		log.Error("error_400: Địa chỉ không được để trống")
+		req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+	}
+
+	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
+	debit := model.Debit{}
+	paymentOrderHistory := model.PaymentOrderHistory{}
+	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 {
+		if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
+			log.WithError(err).Error("error_400: Invalid input:[PaymentSourceID or PaymentSourceName Can not be empty]")
+			return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
+		}
+		debit = *req.Debit
+		paymentOrderHistory.Amount = valid.Float64(req.Debit.BuyerPay)
+		paymentOrderHistory.Name = valid.String(req.PaymentSourceName)
+		paymentOrderHistory.CreatedAt = time.Now().UTC()
+		paymentOrderHistory.UpdatedAt = time.Now().UTC()
+		paymentOrderHistory.PaymentSourceID = valid.UUID(req.PaymentSourceID)
+		paymentOrderHistory.PaymentMethod = req.PaymentMethod
+	}
+
+	// Check format phone
+	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
+		log.WithError(err).Error("Error when check format phone")
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+	}
+
+	orderGrandTotal := 0.0
+	promotionDiscount := 0.0
+	grandTotal := 0.0
+
+	getContactRequest := model.GetContactRequest{
+		BusinessID:  valid.UUID(req.BusinessID),
+		Name:        req.BuyerInfo.Name,
+		PhoneNumber: req.BuyerInfo.PhoneNumber,
+		Address:     req.BuyerInfo.Address,
+	}
+
+	// Get Contact Info
+	info, err := s.GetContactInfo(ctx, getContactRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// check buyer received or not
+	if req.BuyerReceived {
+		req.State = utils.ORDER_STATE_COMPLETE
+		req.DeliveryMethod = valid.StringPointer(utils.DELIVERY_METHOD_BUYER_PICK_UP)
+	}
+
+	tUser, err := s.GetUserListV2(ctx, req.BuyerInfo.PhoneNumber, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Set buyer_id from Create Method request
+	buyerID := uuid.UUID{}
+	if len(tUser) > 0 {
+		buyerID = tUser[0].ID
+	}
+
+	if err = s.CreateProductFast(ctx, &req); err != nil {
+		return nil, err
+	}
+
+	// check listOrderItem empty
+	if len(req.ListOrderItem) == 0 {
+		log.Error("ListOrderItem mustn't empty")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
+	// check can pick quantity
+	rCheck, err := utils.CheckCanPickQuantityV5(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, utils.SELLER_CREATE_METHOD)
+	if err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	} else {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status == utils.SOLD_OUT {
+			log.WithError(err).Error("Error: Sản phẩm tạm hết hàng")
+			return rCheck, nil
+		}
+		if rCheck.Status != utils.STATUS_SUCCESS {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return rCheck, nil
+		}
+	}
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
+	}
+
+	// Tính tổng tiền
+	orderGrandTotal = s.CountAmountOrder(ctx, req.ListOrderItem)
+
+	// Set delivering free when buyer_pick_up
+	if req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+		req.DeliveryFee = 0
+	}
+
+	// Check valid Other discount
+	if req.OtherDiscount < 0 || orderGrandTotal < req.OtherDiscount {
+		log.WithField("other discount", req.OtherDiscount).Error("Error when get check valid delivery fee")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không hợp lệ")
+	}
+
+	// Check Promotion Code
+	promotionDiscount, err = s.CheckPromotionCode(ctx, req, promotionDiscount, orderGrandTotal, info)
+	if err != nil {
+		return nil, err
+	}
+
+	// check total amount
+	grandTotal = orderGrandTotal + req.DeliveryFee - promotionDiscount - req.OtherDiscount
+	if grandTotal < 0 {
+		grandTotal = 0
+	}
+
+	// Check số tiền request lên và số tiền trong db có khớp ko
+	if err = s.CheckAmountOrder(ctx, req, orderGrandTotal, promotionDiscount, req.DeliveryFee, grandTotal); err != nil {
+		return nil, err
+	}
+
+	order := model.Order{
+		BaseModel:         model.BaseModel{CreatorID: req.UserID},
+		BusinessID:        valid.UUID(req.BusinessID),
+		ContactID:         info.Data.Contact.ID,
+		PromotionCode:     req.PromotionCode,
+		PromotionDiscount: promotionDiscount,
+		DeliveryFee:       req.DeliveryFee,
+		OrderedGrandTotal: orderGrandTotal,
+		GrandTotal:        grandTotal,
+		State:             req.State,
+		PaymentMethod:     strings.ToLower(req.PaymentMethod),
+		DeliveryMethod:    valid.String(req.DeliveryMethod),
+		Note:              req.Note,
+		CreateMethod:      utils.SELLER_CREATE_METHOD,
+		BuyerId:           &buyerID,
+		OtherDiscount:     req.OtherDiscount,
+		Email:             req.Email,
+	}
+
+	// parse buyer_info from struct to jsonb
+	if err = s.ParseBuyerInfo(ctx, *req.BuyerInfo, &order); err != nil {
+		return nil, err
+	}
+
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+
+	if req.State == utils.ORDER_STATE_DELIVERING || req.State == utils.ORDER_STATE_COMPLETE {
+		if err = s.PreCountAmountTotal(ctx, &order, &debit); err != nil {
+			return nil, err
+		}
+	}
+
+	// create order
+	if err = s.ImplementCreateOrder(ctx, &order, req, tx); err != nil {
+		return nil, err
+	}
+
+	// create order tracking
+	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
+		return nil, err
+	}
+
+	// Create order_item
+	if err = s.CreateMultiOrderItem(ctx, req.ListOrderItem, &order, mapSku, tx); err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+
+	paymentOrderHistory.OrderID = order.ID
+
+	// create payment_order_history, then append to response
+	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+			return nil, err
+		}
+		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
+			ID:              paymentOrderHistory.ID,
+			OrderID:         order.ID,
+			PaymentMethod:   paymentOrderHistory.PaymentMethod,
+			PaymentSourceID: paymentOrderHistory.PaymentSourceID,
+			Name:            paymentOrderHistory.Name,
+			CreatedAt:       paymentOrderHistory.CreatedAt,
+			UpdatedAt:       paymentOrderHistory.UpdatedAt,
+			Amount:          valid.Float64(debit.BuyerPay),
+		}
+		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
+	}
+
+	go s.CountCustomer(context.Background(), order)
+	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
+	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
+	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
+
+	// push consumer to complete order mission
+	go CompletedOrderMission(context.Background(), order)
+
+	return order, nil
 }

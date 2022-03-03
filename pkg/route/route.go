@@ -49,6 +49,7 @@ func NewService() *Service {
 
 	v1Api := s.Router.Group("/api/v1")
 	v2Api := s.Router.Group("/api/v2")
+	v3Api := s.Router.Group("/api/v3")
 
 	// Order
 	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
@@ -94,6 +95,9 @@ func NewService() *Service {
 	v2Api.POST("/seller/create-order", ginext.WrapHandler(orderHandle.CreateOrderSeller))
 	v2Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrderV2))
 	v2Api.GET("/get-list-order", ginext.WrapHandler(orderHandle.GetlistOrderV2))
+
+	// version 3
+	v3Api.POST("/seller/create-order", ginext.WrapHandler(orderHandle.CreateOrderSellerV3))
 
 	//pro seller
 	v1Api.GET("pro-seller/get-overview", ginext.WrapHandler(orderHandle.OverviewOrder))
