@@ -968,3 +968,49 @@ func (h *OrderHandlers) GetOrderItemRevenueAnalytics(r *ginext.Request) (*ginext
 		},
 	}, nil
 }
+
+// CreateOrderSellerV3 Create order seler - update from CreateOrderSeller
+// 03/03/2022 - hieucn - separate product line
+func (h *OrderHandlers) CreateOrderSellerV3(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderSeller")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.OrderBody{}
+	r.MustBind(&req)
+	req.UserID = userID
+	if err = common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	// Check Permission
+	if req.BusinessID == nil {
+		log.WithError(err).Error("Missing business ID")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), req.BusinessID.String()); err != nil {
+		return nil, err
+	}
+
+	// create order
+	rs, err := h.service.CreateOrderSellerV3(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to create order %v", err.Error())
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
