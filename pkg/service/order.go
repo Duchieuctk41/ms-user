@@ -407,6 +407,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
@@ -633,7 +634,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				Action:          "create",
 				Description:     valid.String(debit.Note),
 				StartTime:       time.Now().UTC(),
-				Images:          debit.Images,
+				Images:          order.Images,
 				LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 				ObjectKey:       order.OrderNumber,
 				ObjectType:      "order",
@@ -1090,7 +1091,7 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 			Status:          "create",
 			Action:          "create",
 			StartTime:       time.Now().UTC(),
-			Images:          debit.Images,
+			Images:          order.Images,
 			LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 			ObjectKey:       order.OrderNumber,
 			ObjectType:      "order",
@@ -2881,6 +2882,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
@@ -3168,6 +3170,7 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	// parse buyer_info from struct to jsonb
@@ -4163,6 +4166,7 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	// parse buyer_info from struct to jsonb
