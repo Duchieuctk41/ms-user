@@ -54,6 +54,7 @@ const (
 	TOPIC_UPDATE_EMAIL_ORDER_RECENT   = "finan-order:update_email_order_recent"
 	TOPIC_UPDATE_SOLD_QUANTITY_CANCEL = "ms-product-management:update_sold_quantity_cancel"
 	TOPIC_UPDATE_ORDER_ECOM           = "finan-order:update_order_ecom"
+	TOPIC_DELETE_LOG_HISTORY          = "finan-order:delete_log_history"
 )
 
 // Some type mess

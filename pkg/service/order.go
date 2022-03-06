@@ -77,6 +77,7 @@ type OrderServiceInterface interface {
 	CreateOrderSellerV3(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
+	DeleteLogHistory(ctx context.Context) error
 }
 
 func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error) {
@@ -3519,8 +3520,9 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 			log.WithError(err).Error("error_500 : error when unmarshal payload data")
 			return nil, err
 		}
-
-		go s.repo.UpdateMultiOrderEcom(context.Background(), updateReq, nil)
+		// hieucn - 06/03/2022 - delete log history
+	case utils.TOPIC_DELETE_LOG_HISTORY:
+		go s.repo.DeleteLogHistory(context.Background(), nil)
 		break
 	default:
 		log.Errorf("Topic not found in this service!")
@@ -4235,4 +4237,11 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 	go CompletedOrderMission(context.Background(), order)
 
 	return order, nil
+}
+
+func (s *OrderService) DeleteLogHistory(ctx context.Context) error {
+	if err := s.repo.DeleteLogHistory(ctx, nil); err != nil {
+		return err
+	}
+	return nil
 }
