@@ -3514,6 +3514,16 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 
 		go s.repo.UpdateMultiOrderEcom(context.Background(), updateReq, nil)
 		break
+	case utils.TOPIC_UPDATE_ECOM_ORDER:
+		// Update multi order Ecom
+		var updateReq []model.EcomOrder
+		if err := json.Unmarshal([]byte(req.Payload), &updateReq); err != nil {
+			log.WithError(err).Error("error_500 : error when unmarshal payload data")
+			return nil, err
+		}
+
+		go s.repo.UpdateMultiEcomOrder(context.Background(), updateReq, nil)
+		break
 	default:
 		log.Errorf("Topic not found in this service!")
 		return nil, fmt.Errorf("Topic not found in this service!")
