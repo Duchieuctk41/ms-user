@@ -35,6 +35,7 @@ type Order struct {
 	DebtAmount          float64                       `json:"debt_amount" gorm:"column:debt_amount"`
 	AmountPaid          float64                       `json:"amount_paid" gorm:"column:amount_paid;null"`
 	PaymentOrderHistory []PaymentOrderHistoryResponse `json:"payment_order_history" gorm:"foreignkey:order_id;association_foreignkey:id"`
+	Images              pq.StringArray                `json:"images" gorm:"type:varchar(500)[]"`
 }
 
 func GenerateRandomString(n int) string {
@@ -71,28 +72,29 @@ func (Order) TableName() string {
 
 // Define your request body here
 type OrderBody struct {
-	UserID            uuid.UUID   `json:"user_id"`
-	ContactID         *uuid.UUID  `json:"contact_id,omitempty"`
-	BusinessID        *uuid.UUID  `json:"business_id" schema:"business_id"`
-	PromotionCode     string      `json:"promotion_code"`
-	PromotionDiscount float64     `json:"promotion_discount"`
-	OrderedGrandTotal float64     `json:"ordered_grand_total"`
-	GrandTotal        float64     `json:"grand_total"`
-	State             string      `json:"state"`
-	PaymentMethod     string      `json:"payment_method"`
-	Note              string      `json:"note"`
-	ListOrderItem     []OrderItem `json:"list_order_item"`
-	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
-	DeliveryFee       float64     `json:"delivery_fee"`
-	DeliveryMethod    *string     `json:"delivery_method" valid:"Required" schema:"delivery_method"`
-	PaymentSourceID   *uuid.UUID  `json:"payment_source_id"`
-	PaymentSourceName *string     `json:"payment_source_name"`
-	CreateMethod      string      `json:"create_method" valid:"Required"`
-	OtherDiscount     float64     `json:"other_discount"`
-	Email             string      `json:"email"`
-	ListProductFast   []Product   `json:"list_product_fast"`
-	Debit             *Debit      `json:"debit,omitempty"`
-	BuyerReceived     bool        `json:"buyer_received"`
+	UserID            uuid.UUID      `json:"user_id"`
+	ContactID         *uuid.UUID     `json:"contact_id,omitempty"`
+	BusinessID        *uuid.UUID     `json:"business_id" schema:"business_id"`
+	PromotionCode     string         `json:"promotion_code"`
+	PromotionDiscount float64        `json:"promotion_discount"`
+	OrderedGrandTotal float64        `json:"ordered_grand_total"`
+	GrandTotal        float64        `json:"grand_total"`
+	State             string         `json:"state"`
+	PaymentMethod     string         `json:"payment_method"`
+	Note              string         `json:"note"`
+	ListOrderItem     []OrderItem    `json:"list_order_item"`
+	BuyerInfo         *BuyerInfo     `json:"buyer_info"`
+	DeliveryFee       float64        `json:"delivery_fee"`
+	DeliveryMethod    *string        `json:"delivery_method" valid:"Required" schema:"delivery_method"`
+	PaymentSourceID   *uuid.UUID     `json:"payment_source_id"`
+	PaymentSourceName *string        `json:"payment_source_name"`
+	CreateMethod      string         `json:"create_method" valid:"Required"`
+	OtherDiscount     float64        `json:"other_discount"`
+	Email             string         `json:"email"`
+	ListProductFast   []Product      `json:"list_product_fast"`
+	Debit             *Debit         `json:"debit,omitempty"`
+	BuyerReceived     bool           `json:"buyer_received"`
+	Images            pq.StringArray `json:"images" gorm:"type:varchar(500)[]"`
 	//BuyerId           *uuid.UUID  `json:"buyer_id"`
 
 }
@@ -106,9 +108,8 @@ type BuyerInfo struct {
 }
 
 type Debit struct {
-	BuyerPay *float64       `json:"buyer_pay"`
-	Note     *string        `json:"note"`
-	Images   pq.StringArray `json:"images" type:"type:varchar(500)[]"`
+	BuyerPay *float64 `json:"buyer_pay"`
+	Note     *string  `json:"note"`
 }
 
 type RevenueBusiness struct {
@@ -141,24 +142,25 @@ type OrderParam struct {
 }
 
 type OrderUpdateBody struct {
-	ID                *uuid.UUID  `json:"id"`
-	BusinessID        *uuid.UUID  `json:"business_id" schema:"business_id"`
-	PromotionCode     *string     `json:"promotion_code"`
-	PromotionDiscount *float64    `json:"promotion_discount"`
-	OrderedGrandTotal *float64    `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
-	GrandTotal        *float64    `json:"grand_total" gorm:"grand_total"`
-	State             *string     `json:"state"`
-	PaymentMethod     *string     `json:"payment_method"`
-	PaymentSourceID   *uuid.UUID  `json:"payment_source_id"`
-	PaymentSourceName *string     `json:"payment_source_name"`
-	Note              *string     `json:"note"`
-	BuyerID           *uuid.UUID  `json:"buyer_id"`
-	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
-	UpdaterID         *uuid.UUID  `json:"updater_id,omitempty"`
-	OtherDiscount     *float64    `json:"other_discount"`
-	Email             *string     `json:"email,omitempty"`
-	ListOrderItem     []OrderItem `json:"list_order_item,omitempty"`
-	Debit             *Debit      `json:"debit,omitempty"`
+	ID                *uuid.UUID      `json:"id"`
+	BusinessID        *uuid.UUID      `json:"business_id" schema:"business_id"`
+	PromotionCode     *string         `json:"promotion_code"`
+	PromotionDiscount *float64        `json:"promotion_discount"`
+	OrderedGrandTotal *float64        `json:"ordered_grand_total" gorm:"column:ordered_grand_total"`
+	GrandTotal        *float64        `json:"grand_total" gorm:"grand_total"`
+	State             *string         `json:"state"`
+	PaymentMethod     *string         `json:"payment_method"`
+	PaymentSourceID   *uuid.UUID      `json:"payment_source_id"`
+	PaymentSourceName *string         `json:"payment_source_name"`
+	Note              *string         `json:"note"`
+	BuyerID           *uuid.UUID      `json:"buyer_id"`
+	BuyerInfo         *BuyerInfo      `json:"buyer_info"`
+	UpdaterID         *uuid.UUID      `json:"updater_id,omitempty"`
+	OtherDiscount     *float64        `json:"other_discount"`
+	Email             *string         `json:"email,omitempty"`
+	ListOrderItem     []OrderItem     `json:"list_order_item,omitempty"`
+	Debit             *Debit          `json:"debit,omitempty"`
+	Images            *pq.StringArray `json:"images" gorm:"type:varchar(500)[]"`
 }
 
 type OrverviewPandLRequest struct {
@@ -178,19 +180,20 @@ type OrverviewOrderRequest struct {
 }
 
 type UpdateDetailOrderRequest struct {
-	BusinessID        *uuid.UUID  `json:"business_id"`
-	ID                *uuid.UUID  `json:"id"`
-	PromotionDiscount *float64    `json:"promotion_discount,omitempty" valid:"Required"`
-	OrderedGrandTotal *float64    `json:"ordered_grand_total,omitempty" valid:"Required"`
-	GrandTotal        *float64    `json:"grand_total,omitempty" valid:"Required"`
-	DeliveryFee       *float64    `json:"delivery_fee,omitempty"`    // set valid:"Required" when APP done new version store
-	DeliveryMethod    *string     `json:"delivery_method,omitempty"` // set valid:"Required" when APP done new version store
-	Note              *string     `json:"note"`
-	UpdaterID         *uuid.UUID  `json:"updater_id,omitempty"`
-	UserRole          *string     `json:"user_role"`
-	OtherDiscount     *float64    `json:"other_discount,omitempty" valid:"Required"`
-	ListOrderItem     []OrderItem `json:"list_order_item,omitempty" valid:"Required"`
-	BuyerInfo         *BuyerInfo  `json:"buyer_info"`
+	BusinessID        *uuid.UUID      `json:"business_id"`
+	ID                *uuid.UUID      `json:"id"`
+	PromotionDiscount *float64        `json:"promotion_discount,omitempty" valid:"Required"`
+	OrderedGrandTotal *float64        `json:"ordered_grand_total,omitempty" valid:"Required"`
+	GrandTotal        *float64        `json:"grand_total,omitempty" valid:"Required"`
+	DeliveryFee       *float64        `json:"delivery_fee,omitempty"`    // set valid:"Required" when APP done new version store
+	DeliveryMethod    *string         `json:"delivery_method,omitempty"` // set valid:"Required" when APP done new version store
+	Note              *string         `json:"note"`
+	UpdaterID         *uuid.UUID      `json:"updater_id,omitempty"`
+	UserRole          *string         `json:"user_role"`
+	OtherDiscount     *float64        `json:"other_discount,omitempty" valid:"Required"`
+	ListOrderItem     []OrderItem     `json:"list_order_item,omitempty" valid:"Required"`
+	BuyerInfo         *BuyerInfo      `json:"buyer_info"`
+	Images            *pq.StringArray `json:"images" gorm:"type:varchar(500)[]"`
 }
 
 type ListOrderResponse struct {
