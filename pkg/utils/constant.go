@@ -1,5 +1,7 @@
 package utils
 
+import "time"
+
 const (
 	ADMIN_ROLE  = 64
 	BUYER_ROLE  = 1
@@ -146,3 +148,5 @@ const (
 	NOTI_CONTENT_REMINDER_DELIVERING      = "Bạn đã giao đơn %v - %v cho khách %v chưa? Nhấn để kiểm tra hoặc xác nhận đã giao"
 	NOTI_CONTENT_REMINDER_WAITING_CONFIRM = "Đơn hàng %v đang chờ xác nhận. Nhấn để thông báo cho khách đơn đã sẵn sàng giao"
 )
+
+var TIME_DELETE_LOG_HISTORY = time.Now().Add(time.Duration(-30*24) * time.Hour)
