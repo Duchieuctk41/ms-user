@@ -72,6 +72,7 @@ type PGInterface interface {
 
 	// ecom
 	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)
+	UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder, tx *gorm.DB)
 
 	// payment_order_history
 	CreatePaymentOrderHistory(ctx context.Context, payment *model.PaymentOrderHistory, tx *gorm.DB) (err error)

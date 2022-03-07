@@ -1128,13 +1128,49 @@ func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom,
 	eg := errgroup.Group{}
 
 	for _, v := range rs {
-		tmp := model.OrderEcom{}
 		eg.Go(func() error {
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
-			}).Create(&tmp).Error; err != nil {
+			}).Create(&v).Error; err != nil {
 				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
+			}
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait()
+
+	// log time
+	elapsed := time.Since(start)
+	log.Printf("%s took %s for %s orders", "Storage order ecom", elapsed, strconv.Itoa(len(rs)))
+}
+
+func (r *RepoPG) UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder, tx *gorm.DB) {
+	start := time.Now()
+	log := logger.WithCtx(ctx, "UpdateMultiEcomOrder")
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	eg := errgroup.Group{}
+
+	for _, v := range rs {
+		eg.Go(func() error {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				UpdateAll: true,
+			}).Create(&v).Error; err != nil {
+				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				UpdateAll: true,
+			}).Create(&v.EcomOrderItem).Error; err != nil {
+				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order item ecom")
 			}
 			return nil
 		})
