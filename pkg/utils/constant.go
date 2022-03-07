@@ -1,5 +1,7 @@
 package utils
 
+import "time"
+
 const (
 	ADMIN_ROLE  = 64
 	BUYER_ROLE  = 1
@@ -54,6 +56,7 @@ const (
 	TOPIC_UPDATE_EMAIL_ORDER_RECENT   = "finan-order:update_email_order_recent"
 	TOPIC_UPDATE_SOLD_QUANTITY_CANCEL = "ms-product-management:update_sold_quantity_cancel"
 	TOPIC_UPDATE_ORDER_ECOM           = "finan-order:update_order_ecom"
+	TOPIC_DELETE_LOG_HISTORY          = "finan-order:delete_log_history"
 	TOPIC_UPDATE_ECOM_ORDER           = "finan-order:update_ecom_order"
 )
 
@@ -146,3 +149,5 @@ const (
 	NOTI_CONTENT_REMINDER_DELIVERING      = "Bạn đã giao đơn %v - %v cho khách %v chưa? Nhấn để kiểm tra hoặc xác nhận đã giao"
 	NOTI_CONTENT_REMINDER_WAITING_CONFIRM = "Đơn hàng %v đang chờ xác nhận. Nhấn để thông báo cho khách đơn đã sẵn sàng giao"
 )
+
+var TIME_DELETE_LOG_HISTORY = time.Now().Add(time.Duration(-15*24) * time.Hour)

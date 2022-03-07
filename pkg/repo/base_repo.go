@@ -69,6 +69,7 @@ type PGInterface interface {
 
 	// log history
 	LogHistory(ctx context.Context, history model.History, tx *gorm.DB) (rs model.History, err error)
+	DeleteLogHistory(ctx context.Context, tx *gorm.DB) error
 
 	// ecom
 	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)

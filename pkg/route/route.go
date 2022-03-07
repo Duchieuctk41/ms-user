@@ -74,8 +74,9 @@ func NewService() *Service {
 	// Order tracking
 	v1Api.GET("/get-order-tracking", ginext.WrapHandler(orderTrackingHandle.GetOrderTracking))
 
-	// Send email order
+	// hieucn -06/03/2022 - test local
 	//v1Api.POST("/send-email-order", ginext.WrapHandler(orderHandle.SendEmailOrder))
+	//v1Api.DELETE("/delete-log-history", ginext.WrapHandler(orderHandle.DeleteLogHistory))
 
 	//ProfitAndLoss
 	v1Api.GET("/get-list-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetListProfitAndLoss))
