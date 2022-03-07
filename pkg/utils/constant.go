@@ -149,4 +149,4 @@ const (
 	NOTI_CONTENT_REMINDER_WAITING_CONFIRM = "Đơn hàng %v đang chờ xác nhận. Nhấn để thông báo cho khách đơn đã sẵn sàng giao"
 )
 
-var TIME_DELETE_LOG_HISTORY = time.Now().Add(time.Duration(-30*24) * time.Hour)
+var TIME_DELETE_LOG_HISTORY = time.Now().Add(time.Duration(-15*24) * time.Hour)
