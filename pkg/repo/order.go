@@ -1159,19 +1159,20 @@ func (r *RepoPG) UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder,
 	eg := errgroup.Group{}
 
 	for _, v := range rs {
+		tmp := v
 		eg.Go(func() error {
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
-			}).Create(&v).Error; err != nil {
+			}).Create(&tmp).Error; err != nil {
 				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
 			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "id"}},
-				UpdateAll: true,
-			}).Create(&v.EcomOrderItem).Error; err != nil {
-				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order item ecom")
-			}
+			// if err := tx.Clauses(clause.OnConflict{
+			// 	Columns:   []clause.Column{{Name: "id"}},
+			// 	UpdateAll: true,
+			// }).Create(&v.EcomOrderItem).Error; err != nil {
+			// 	log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order item ecom")
+			// }
 			return nil
 		})
 	}
