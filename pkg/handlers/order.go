@@ -809,6 +809,22 @@ func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, er
 	}, nil
 }
 
+// 06/03/2022 - hieucn - Test delete history
+func (h *OrderHandlers) DeleteLogHistory(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ProcessConsumer")
+
+	if err := h.service.DeleteLogHistory(r.Context()); err != nil {
+		log.WithError(err).Error("Fail to ProcessConsumer")
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: "delete success",
+		},
+	}, nil
+}
+
 ////Send email order
 //func (h *OrderHandlers) SendEmailOrder(r *ginext.Request) (*ginext.Response, error) {
 //	log := logger.WithCtx(r.GinCtx, "OrderHandlers.SendEmailOrder")

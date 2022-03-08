@@ -126,11 +126,11 @@ func CheckCanPickQuantityV4(userID string, req []model.OrderItem, businessID str
 		return res, err
 	}
 
-	// set quantity
+	// 07/03/2022 - hieucn - set quantity == req.Quantity for frontend
 	for i, v := range tm.Data.ItemsInfo {
 		if mapItem != nil {
 			if _, ok := mapItem[v.Sku.ID.String()]; ok {
-				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity + tm.Data.ItemsInfo[i].Quantity
 			}
 		}
 	}
@@ -265,11 +265,11 @@ func CheckCanPickQuantityV5(userID string, req []model.OrderItem, businessID str
 		return res, err
 	}
 
-	// set quantity
+	// 07/03/2022 - hieucn - set quantity == req.Quantity for frontend
 	for i, v := range tm.Data.ItemsInfo {
 		if mapItem != nil {
 			if _, ok := mapItem[v.Sku.ID.String()]; ok {
-				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity
+				tm.Data.ItemsInfo[i].Quantity = mapItem[v.Sku.ID.String()].Quantity + tm.Data.ItemsInfo[i].Quantity
 			}
 		}
 	}
