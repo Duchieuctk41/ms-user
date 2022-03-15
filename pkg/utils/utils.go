@@ -377,7 +377,7 @@ func CheckSkuEcomHasStock(businessID string, listSkuEcom []string) (rs []model.S
 		BusinessID:  businessID,
 		ListSkuEcom: listSkuEcom,
 	}
-	body, _, err := common.SendRestAPI(conf.LoadEnv().MSFinanProduct+"/api/v1/get-list-id-sku", rest.Post, header, nil, listIDSkuEcom)
+	body, _, err := common.SendRestAPI(conf.LoadEnv().FinanProduct+"/api/v1/get-list-id-sku", rest.Post, header, nil, listIDSkuEcom)
 	if err != nil {
 		// parsing error
 		tm := struct {
