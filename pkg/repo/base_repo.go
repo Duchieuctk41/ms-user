@@ -61,7 +61,7 @@ type PGInterface interface {
 
 	GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error)
 	GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
-
+	GetCountQuantityInOrderEcom(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
 	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) (rs []model.GetTotalOrderByBusinessResponse, err error)
 
 	// tutorial flow
@@ -74,6 +74,7 @@ type PGInterface interface {
 	// ecom
 	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)
 	UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder, tx *gorm.DB)
+	GetStateOrderEcom(ctx context.Context, id string, tx *gorm.DB) (rs model.EcomOrderState, err error)
 
 	// payment_order_history
 	CreatePaymentOrderHistory(ctx context.Context, payment *model.PaymentOrderHistory, tx *gorm.DB) (err error)

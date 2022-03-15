@@ -1065,6 +1065,48 @@ func (s *OrderService) CreateBusinessTransactionV2(ctx context.Context, order mo
 	return nil
 }
 
+func (s *OrderService) CreateBusinessTransactionEcom(ctx context.Context, order model.EcomOrder, payment model.PaymentOrderHistory, transactionType string, desc string, userID uuid.UUID) error {
+	log := logger.WithCtx(ctx, "OrderService.CreateBusinessTransactionEcom")
+	// Create Business transaction
+	cateIDSell, _ := uuid.Parse(utils.CATEGORY_SELL)
+	businessTransaction := model.BusinessTransaction{
+		ID:              uuid.New(),
+		CreatorID:       userID,
+		BusinessID:      order.BusinessID,
+		Day:             time.Now().UTC(),
+		Amount:          payment.Amount,
+		Currency:        "VND",
+		TransactionType: transactionType,
+		Status:          "paid",
+		Action:          "create",
+		Description:     desc,
+		CategoryID:      cateIDSell,
+		CategoryName:    "Shopee",
+		LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		ObjectKey:       order.OrderNumber,
+		ObjectType:      "order_ecom",
+		Table:           "income",
+		PaymentMethod:   order.PaymentMethod,
+		// PaymentSourceID:   payment.PaymentSourceID,
+		// PaymentSourceName: payment.Name,
+	}
+
+	header := make(map[string]string)
+	header["x-user-id"] = userID.String()
+
+	// 22-01-2022 - thanhvc - skip process complete mission case_book
+	// add more header skip-complete-mission = true, when call api to ms-transaction
+	// it will skip processing complete mission cash_book
+	header["skip-complete-mission"] = "true"
+
+	_, _, err := common.SendRestAPI(conf.LoadEnv().FinanTransaction+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
+	if err != nil {
+		log.WithError(err).Error("Error when create business transaction in CreateBusinessTransactionEcom")
+		return err
+	}
+	return nil
+}
+
 func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.ContactTransaction) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateContactTransaction")
 
@@ -1152,6 +1194,42 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCom
 					Quantity:           v.Quantity,
 					DeliveringQuantity: &countQuantityInOrder.Sum,
 				})
+			}
+
+		}
+		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO_V2)
+	}
+	return nil
+}
+
+func (s *OrderService) CreatePoEcom(ctx context.Context, order model.EcomOrder, tMap map[string]model.SkuHasSkuEcom, checkCompleted string, poType string) (err error) {
+	// Make data for push consumer
+	reqCreatePo := model.PurchaseOrderRequest{
+		PoType:        poType,
+		Note:          "Đơn hàng " + order.OrderNumber,
+		ContactID:     order.ContactID,
+		TotalDiscount: order.OtherDiscount,
+		BusinessID:    order.BusinessID,
+		PoDetails:     nil,
+		Option:        checkCompleted,
+	}
+	if len(tMap) > 0 {
+		for _, v := range order.EcomOrderItem {
+			if _, ok := tMap[v.ID.String()]; ok {
+				req := model.CountQuantityInOrderRequest{
+					BusinessID: order.BusinessID,
+					SkuID:      v.SkuID,
+					States:     []string{utils.ORDER_STATE_DELIVERING},
+				}
+				countQuantityInOrder, _ := s.repo.GetCountQuantityInOrder(ctx, req, nil)
+				skuID := uuid.MustParse(tMap[v.ID.String()].SkuID)
+				reqCreatePo.PoDetails = append(reqCreatePo.PoDetails, model.PoDetail{
+					SkuID:              skuID,
+					Pricing:            v.TotalAmount / v.Quantity,
+					Quantity:           v.Quantity,
+					DeliveringQuantity: &countQuantityInOrder.Sum,
+				})
+
 			}
 		}
 		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO_V2)
@@ -3533,6 +3611,107 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 		}
 
 		go s.repo.UpdateMultiEcomOrder(context.Background(), updateReq, nil)
+
+		for _, v := range updateReq {
+
+			orderEcom, err := s.repo.GetStateOrderEcom(ctx, v.ID.String(), nil)
+			if err != nil {
+				log.WithError(err).Errorf("Error when GetOneOrder")
+				return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+			var listSkuEcomRequest []string
+			for _, ecomOrderItem := range v.EcomOrderItem {
+				listSkuEcomRequest = append(listSkuEcomRequest, ecomOrderItem.SkuID.String())
+			}
+			perStateOrderEcom := orderEcom.State
+
+			// get sku_id and ecom_sku_id tương ứng
+			listSkuEcomResponse, err := utils.CheckSkuEcomHasStock(v.BusinessID.String(), listSkuEcomRequest)
+			if err != nil {
+				log.WithError(err).Errorf("Error when get sku ecom has stock")
+				return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+			tMap := make(map[string]model.SkuHasSkuEcom)
+			for _, v := range listSkuEcomResponse {
+				tMap[v.EcomSkuID] = v
+			}
+
+			switch v.State {
+			case utils.ORDER_STATE_DELIVERING:
+				if v.State == utils.ORDER_STATE_DELIVERING && perStateOrderEcom != utils.ORDER_STATE_DELIVERING {
+					// Make data for push consumer
+					reqUpdateStock := model.CreateStockRequest{
+						TrackingType:   "order_delivering",
+						IDTrackingType: v.OrderNumber,
+						BusinessID:     v.BusinessID,
+					}
+					tResToJson, _ := json.Marshal(v)
+					if err := json.Unmarshal(tResToJson, &reqUpdateStock.TrackingInfo); err != nil {
+						log.WithError(err).Error("Error when marshal parse response to json when create stock")
+					} else {
+						for _, ecomOrderItem := range v.EcomOrderItem {
+							if _, ok := tMap[ecomOrderItem.ID.String()]; ok {
+								req := model.CountQuantityInOrderRequest{
+									BusinessID: v.BusinessID,
+									SkuID:      ecomOrderItem.SkuID,
+									States:     []string{utils.ORDER_STATE_DELIVERING},
+								}
+								countQuantityInOrder, _ := s.repo.GetCountQuantityInOrderEcom(ctx, req, nil)
+								skuID := uuid.MustParse(tMap[ecomOrderItem.ID.String()].SkuID)
+								reqUpdateStock.ListStock = append(reqUpdateStock.ListStock, model.StockRequest{
+									SkuID:                  skuID,
+									QuantityChange:         ecomOrderItem.Quantity,
+									DeliveringEcomQuantity: countQuantityInOrder.Sum,
+								})
+							}
+						}
+						if len(reqUpdateStock.ListStock) != 0 {
+							go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK_V2)
+						}
+					}
+				}
+
+			case utils.ORDER_COMPLETED:
+				// Make data for push consumer
+				if v.State == utils.ORDER_STATE_DELIVERING && perStateOrderEcom != utils.ORDER_STATE_DELIVERING {
+					revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
+						BusinessID: v.BusinessID.String(),
+					}, nil)
+					if err == nil {
+						strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
+						s.UpdateBusinessCustomField(ctx, v.BusinessID, "business_revenue", strSumGrandTotal)
+					}
+
+					//----------------------------------------------------------------------------------------------------
+					go s.CreateBusinessTransactionEcom(ctx, v, model.PaymentOrderHistory{}, "in", "Đơn hàng Shopee "+v.OrderNumber, uuid.Nil)
+
+				}
+				if len(listSkuEcomResponse) > 0 {
+					go PushConsumer(context.Background(), v.EcomOrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
+					go s.CreatePoEcom(context.Background(), v, tMap, "", utils.PO_OUT)
+				}
+			case utils.ORDER_CANCELLED:
+				if v.State == utils.ORDER_CANCELLED && perStateOrderEcom != utils.ORDER_COMPLETED {
+					//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
+					revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
+						BusinessID: v.BusinessID.String(),
+					}, nil)
+					if err == nil {
+						strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
+						s.UpdateBusinessCustomField(ctx, v.BusinessID, "business_revenue", strSumGrandTotal)
+					}
+					//TODO--------Update Business custom_field Revenue --------------------------------------------------------------END
+					go s.CreateBusinessTransactionEcom(context.Background(), v, model.PaymentOrderHistory{}, "out", "Hủy đơn hàng Shopee "+v.OrderNumber, uuid.Nil)
+
+					//TODO--------Update Product sold_quantity -------------------------------------------------------------START
+					if len(listSkuEcomResponse) > 0 {
+						go PushConsumer(context.Background(), v.EcomOrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY_CANCEL)
+						//TODO--------Update Product sold_quantity -------------------------------------------------------------END
+						go s.CreatePoEcom(context.Background(), v, tMap, utils.ORDER_CANCELLED, utils.PO_IN)
+					}
+				}
+			}
+		}
 		break
 	default:
 		log.Errorf("Topic not found in this service!")
