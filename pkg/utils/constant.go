@@ -151,3 +151,23 @@ const (
 )
 
 var TIME_DELETE_LOG_HISTORY = time.Now().Add(time.Duration(-15*24) * time.Hour)
+
+const (
+	OPTION_FILTER_TODAY        = "today"
+	OPTION_FILTER_THIS_WEEK    = "this_week"
+	OPTION_FILTER_THIS_MONTH   = "this_month"
+	OPTION_FILTER_LAST_WEEK    = "last_week"
+	OPTION_FILTER_LAST_MONTH   = "last_month"
+	OPTION_FILTER_CUSTOM_RANGE = "custom_range"
+)
+
+const (
+	OPTION_FILTER_REVENUE          = "revenue"
+	OPTION_FILTER_ORDER            = "order"
+	OPTION_FILTER_CUSTOMER         = "customer"
+	OPTION_FILTER_ORDER_CANCEL     = "order_cancel"
+	OPTION_FILTER_VIEW_STORE       = "view_store"
+	OPTION_FILTER_NEW_CUSTOMER     = "new_customer"
+	OPTION_FILTER_AVERAGE_ORDER    = "average_order"
+	OPTION_FILTER_AVERAGE_CUSTOMER = "average_customer"
+)

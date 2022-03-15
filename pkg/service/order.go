@@ -57,6 +57,8 @@ type OrderServiceInterface interface {
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
+	GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error)
+	GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error)
 
 	// version 2
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
@@ -78,6 +80,24 @@ type OrderServiceInterface interface {
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
 	DeleteLogHistory(ctx context.Context) error
+}
+
+func CheckNanInt(i int, j int) float64 {
+	if j == 0 {
+		return 0
+	}
+	return float64(i) / float64(j)
+}
+
+func CheckNanFloat(i float64, j int) float64 {
+	if j == 0 {
+		return 0
+	}
+	return i / float64(j)
+}
+
+func Round(x, unit float64) float64 {
+	return math.Round(x/unit) * unit
 }
 
 func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error) {
@@ -4433,4 +4453,173 @@ func (s *OrderService) DeleteLogHistory(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (s *OrderService) GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error) {
+	log := logger.WithCtx(ctx, "AnalyticsService.GetDailyViewAnalytics")
+
+	// get domain business
+	business, err := s.GetDetailBusiness(ctx, valid.String(req.BusinessID))
+	if err != nil {
+		log.Errorf("Error GetDetailBusiness %v", err.Error())
+		return rs, err
+	}
+
+	// Get data from BI
+	rs, err = s.GetDailyVisitFromBIServer(business.Domain)
+	if err != nil {
+		log.WithError(err).Error("Error when GetDailyVisitFromBIServer")
+		return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	// Get users info
+	if len(rs.UserOnairList) > 0 {
+		rs.CustomerOnline, err = s.GetUserList(ctx, "", strings.Join(rs.UserOnairList, ","))
+		if err != nil {
+			log.WithError(err).Error("Error when GetUserList")
+			return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+	}
+
+	return rs, nil
+}
+
+func (s *OrderService) GetDailyVisitFromBIServer(domain string) (res model.GetDailyReportResponse, err error) {
+	bodyReq := struct {
+		Domain string `json:"domain"`
+	}{}
+	bodyReq.Domain = domain
+	headers := make(map[string]string)
+	headers["x-token"] = conf.LoadEnv().BIServerToken
+	body, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-trend-traffic-today", rest.Post, headers, nil, bodyReq)
+	if err != nil {
+		return res, err
+	}
+	if err = json.Unmarshal([]byte(body), &res); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+func (s *OrderService) GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error) {
+	type ResponseAnalytics struct {
+		Id               int     `json:"id"`
+		Type             string  `json:"type"`
+		Amount           float64 `json:"amount"`
+		LastPeriodAmount float64 `json:"last_period_amount"`
+	}
+	type ViewStore struct {
+		CountUser int `json:"count_user"`
+	}
+	rs, err := s.repo.CountOrderAnalytics(ctx, req)
+	if err != nil {
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	var reqBody struct {
+		Domain    string    `json:"domain"`
+		StartDate time.Time `json:"start_date"`
+		EndDate   time.Time `json:"end_date"`
+	}
+
+	reqBody.Domain = req.Domain
+	reqBody.StartDate = valid.DayTime(req.StartTime)
+	reqBody.EndDate = valid.DayTime(req.EndTime)
+	headers := make(map[string]string)
+	headers["x-token"] = conf.LoadEnv().BIServerToken
+	body, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
+	if err != nil {
+		logrus.WithError(err).Errorf("Fail to get-user-count %v", err.Error())
+		//return nil, err
+	}
+	viewStore := ViewStore{}
+	if err == nil {
+		if err = json.Unmarshal([]byte(body), &viewStore); err != nil {
+			logrus.Errorf("Fail to get contact list deleted due to %v", err)
+			return nil, err
+		}
+	}
+	checkLast := false
+	now := time.Now().Add(time.Duration(-7) * time.Hour)
+	switch req.Type {
+	case utils.OPTION_FILTER_TODAY:
+		reqBody.StartDate = req.StartTime.AddDate(0, 0, -1)
+		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -1)
+		checkLast = true
+		break
+	case utils.OPTION_FILTER_THIS_WEEK:
+		reqBody.StartDate = req.StartTime.AddDate(0, 0, -7)
+		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -7)
+		checkLast = true
+		break
+	case utils.OPTION_FILTER_THIS_MONTH:
+		reqBody.StartDate = req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7) * time.Hour)
+		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, -1, 0)
+		checkLast = true
+		break
+	default:
+		checkLast = false
+		break
+	}
+	viewStoreLast := ViewStore{}
+	if checkLast {
+		headers := make(map[string]string)
+		headers["x-token"] = conf.LoadEnv().BIServerToken
+		bodyLast, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
+		if err != nil {
+		}
+		if err = json.Unmarshal([]byte(bodyLast), &viewStoreLast); err != nil {
+			logrus.Errorf("Fail to get list deleted due to %v", err)
+		}
+	}
+	data := [8]ResponseAnalytics{}
+	data[0] = ResponseAnalytics{
+		Id:               1,
+		Type:             utils.OPTION_FILTER_REVENUE,
+		Amount:           rs.TotalRevenue,
+		LastPeriodAmount: rs.LastPeriodTotalRevenue,
+	}
+	data[1] = ResponseAnalytics{
+		Id:               2,
+		Type:             utils.OPTION_FILTER_ORDER,
+		Amount:           float64(rs.CountRevenue),
+		LastPeriodAmount: float64(rs.LastPeriodCountRevenue),
+	}
+	data[2] = ResponseAnalytics{
+		Id:               3,
+		Type:             utils.OPTION_FILTER_CUSTOMER,
+		Amount:           float64(rs.TotalBuyer),
+		LastPeriodAmount: float64(rs.LastPeriodTotalBuyer),
+	}
+	data[3] = ResponseAnalytics{
+		Id:               4,
+		Type:             utils.OPTION_FILTER_ORDER_CANCEL,
+		Amount:           rs.TotalCancel,
+		LastPeriodAmount: rs.LastPeriodTotalCancel,
+	}
+	data[4] = ResponseAnalytics{
+		Id:               5,
+		Type:             utils.OPTION_FILTER_VIEW_STORE,
+		Amount:           float64(viewStore.CountUser),
+		LastPeriodAmount: float64(viewStoreLast.CountUser),
+	}
+	data[5] = ResponseAnalytics{
+		Id:               6,
+		Type:             utils.OPTION_FILTER_NEW_CUSTOMER,
+		Amount:           float64(rs.TotalBuyerNew),
+		LastPeriodAmount: float64(rs.LastPeriodTotalBuyerNew),
+	}
+	data[6] = ResponseAnalytics{
+		Id:               7,
+		Type:             utils.OPTION_FILTER_AVERAGE_ORDER,
+		Amount:           Round(CheckNanFloat(rs.TotalRevenue, rs.CountRevenue), 1),
+		LastPeriodAmount: Round(CheckNanFloat(rs.LastPeriodTotalRevenue, rs.LastPeriodCountRevenue), 1),
+	}
+	data[7] = ResponseAnalytics{
+		Id:               8,
+		Type:             utils.OPTION_FILTER_AVERAGE_CUSTOMER,
+		Amount:           Round(CheckNanInt(rs.CountRevenue, rs.TotalBuyer), 0.01),
+		LastPeriodAmount: Round(CheckNanInt(rs.LastPeriodCountRevenue, rs.LastPeriodTotalBuyer), 0.01),
+	}
+
+	return data, nil
 }
