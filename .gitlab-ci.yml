@@ -18,13 +18,19 @@ deploy:dev:
   variables:
     APP_ENV: dev
     DB_NAME: "finan_dev_ms_order_management"
+    BI_SERVER_BASE_URL: http://122.248.233.230:8001
+    BI_SERVER_TOKEN: 1c26WtGMKNecLzX5BBea-7kYQDQo7XVm3JyeFkKEf-pdpEJtBwiWPhIdWxHupO
 
 deploy:stg:
   variables:
     APP_ENV: stg
     DB_NAME: "finan_stg_ms_order_management"
+    BI_SERVER_BASE_URL: http://122.248.233.230:8001
+    BI_SERVER_TOKEN: 1c26WtGMKNecLzX5BBea-7kYQDQo7XVm3JyeFkKEf-pdpEJtBwiWPhIdWxHupO
 
 deploy:prd:
   variables:
     APP_ENV: prd
     DB_NAME: "finan_prd_ms_order_management"
+    BI_SERVER_BASE_URL: https://api-bi.finan.me
+    BI_SERVER_TOKEN: 1c26WtGMKNecLzX5BBea-yOWgeX8rPX9oFvy0VsylXPwTvqqthqiz-7kYQDQo7XVm3JyeFkKEf
