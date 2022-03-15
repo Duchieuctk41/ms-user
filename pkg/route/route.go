@@ -76,7 +76,7 @@ func NewService() *Service {
 
 	// hieucn -06/03/2022 - test local
 	//v1Api.POST("/send-email-order", ginext.WrapHandler(orderHandle.SendEmailOrder))
-	//v1Api.DELETE("/delete-log-history", ginext.WrapHandler(orderHandle.DeleteLogHistory))
+	v1Api.DELETE("/delete-log-history", ginext.WrapHandler(orderHandle.DeleteLogHistory))
 
 	//ProfitAndLoss
 	v1Api.GET("/get-list-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetListProfitAndLoss))
@@ -103,6 +103,10 @@ func NewService() *Service {
 	//pro seller
 	v1Api.GET("pro-seller/get-overview", ginext.WrapHandler(orderHandle.OverviewOrder))
 	v1Api.GET("pro-seller/get-list-top-sales", ginext.WrapHandler(orderHandle.GetOrderItemRevenueAnalytics))
+
+	// analytic
+	v1Api.GET("/get-daily-visit-analytics", ginext.WrapHandler(orderHandle.GetDailyViewAnalytics))
+	v1Api.GET("/get-order-analytics", ginext.WrapHandler(orderHandle.GetOrderAnalytics))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

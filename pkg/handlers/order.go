@@ -1030,3 +1030,70 @@ func (h *OrderHandlers) CreateOrderSellerV3(r *ginext.Request) (*ginext.Response
 		},
 	}, nil
 }
+
+func (h *OrderHandlers) GetDailyViewAnalytics(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetDailyViewAnalytics")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	var req model.GetDailyVisitAnalyticsParam
+	r.MustBind(&req)
+
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), valid.String(req.BusinessID)); err != nil {
+		return nil, err
+	}
+
+	rs, err := h.service.GetDailyViewAnalytics(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Error("Fail to GetDailyViewAnalytics")
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
+func (h *OrderHandlers) GetOrderAnalytics(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetOrderAnalytics")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	var req model.GetOrderAnalyticsRequest
+	r.MustBind(&req)
+
+	if err = common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), valid.String(req.BusinessID)); err != nil {
+		return nil, err
+	}
+
+	rs, err := h.service.GetOrderAnalytics(r.Context(), req)
+	//if err != nil {
+	//	log.WithError(err).Error("Fail to GetOrderAnalytics")
+	//	return nil, err
+	//}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
