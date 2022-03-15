@@ -1348,3 +1348,273 @@ func (r *RepoPG) UpdateDetailOrderSellerV2(ctx context.Context, order model.Orde
 	tx.Commit()
 	return rs, stocks, nil
 }
+
+func (r *RepoPG) CountOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error) {
+	rs := model.CountOrderAnalytics{}
+	query := ""
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_WEEK || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query += `select temp.business_id,
+					COALESCE(MAX(temp.total_revenue),0) AS total_revenue,
+					COALESCE(MAX(temp.total_cancel),0) AS total_cancel,
+					COALESCE(MAX(temp.count_revenue),0) AS count_revenue,
+					COALESCE(MAX(temp.count_cancel),0) AS count_cancel
+   	from
+   		(select o.business_id ,
+   			case WHEN  state ='complete' then sum(grand_total) end as total_revenue ,
+   			case WHEN  state ='cancel' then sum(grand_total) end as total_cancel ,
+   			case WHEN  state ='complete' then count(*) end as count_revenue,
+   			case WHEN  state ='cancel' then count(*) end as count_cancel 
+  		 from orders o
+  			where business_id = ?`
+
+		if req.StartTime != nil && req.EndTime != nil {
+			query += ` AND updated_at BETWEEN ? AND ? `
+		}
+		query += `group by business_id ,state ) 
+		as temp group by business_id`
+	} else {
+		query += `select temp.business_id,
+					COALESCE(sum(temp.total_revenue),0) AS total_revenue,
+					COALESCE(sum(temp.last_period_total_revenue),0) AS last_period_total_revenue,
+					COALESCE(sum(temp.total_cancel),0) AS total_cancel,
+					COALESCE(sum(temp.last_period_total_cancel),0) AS last_period_total_cancel,
+					COALESCE(sum(temp.count_revenue),0) AS count_revenue,
+					COALESCE(sum(temp.last_period_count_revenue),0) AS last_period_count_revenue,
+					COALESCE(sum(temp.count_cancel),0) AS count_cancel,
+					COALESCE(sum(temp.last_period_count_cancel),0) AS last_period_count_cancel
+				from
+					  (select o.business_id ,
+						   case WHEN state ='complete' and updated_at  > 'first_date'
+							   then sum(grand_total) end as total_revenue,
+						   case WHEN  state ='complete' and updated_at  < 'per_last_date'
+							   then sum(grand_total) end as last_period_total_revenue,
+						   case WHEN  state ='cancel' and updated_at  > 'first_date' 
+							   then sum(grand_total) end as total_cancel ,
+						   case WHEN  state ='cancel' and updated_at  < 'per_last_date' 
+							  then sum(grand_total) end as last_period_total_cancel ,
+						   case WHEN  state ='complete' and updated_at > 'first_date'
+							  then count(*) end as count_revenue,
+						   case WHEN  state ='complete' and updated_at < 'per_last_date'
+							   then count(*) end as last_period_count_revenue,
+						   case WHEN  state ='cancel' and updated_at  > 'first_date'
+							   then count(*) end as count_cancel,
+						   case WHEN  state ='cancel' and updated_at < 'per_last_date' 
+							   then sum(grand_total) end as last_period_count_cancel
+				   from orders o where business_id = ?
+						  and ((updated_at) > 'per_first_date' AND (updated_at) < 'last_date')
+				  group by business_id ,updated_at,state) as temp group by business_id;`
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountOrderAnalytics{}, nil
+		}
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_WEEK || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.CountOrderAnalytics{}, nil
+			}
+		} else {
+			return model.CountOrderAnalytics{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountOrderAnalytics{}, nil
+		}
+	}
+
+	revenue, err := r.CountBuyer(ctx, model.GetOrderAnalyticsRequest{
+		BusinessID: req.BusinessID,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Type:       req.Type,
+	})
+	if err != nil {
+		return model.CountOrderAnalytics{}, err
+	}
+
+	buyerNew, err := r.CountBuyerNew(ctx, model.GetOrderAnalyticsRequest{
+		BusinessID: req.BusinessID,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Type:       req.Type,
+	})
+	if err != nil {
+		return model.CountOrderAnalytics{}, err
+	}
+	rs.TotalBuyerNew = buyerNew.TotalBuyerNew
+	rs.LastPeriodTotalBuyerNew = buyerNew.LastPeriodTotalBuyerNew
+	rs.TotalBuyer = revenue.TotalBuyer
+	rs.LastPeriodTotalBuyer = revenue.LastPeriodTotalBuyer
+	return rs, nil
+}
+
+func (r *RepoPG) CountBuyer(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyer, error) {
+	query := ""
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		query += `select count(*) total_buyer from (select contact_id  from orders o
+				where business_id = ?`
+		if req.StartTime != nil && req.EndTime != nil {
+			query += " AND created_at BETWEEN ? AND ? "
+		}
+		query += `group by contact_id ) as temp`
+	} else {
+
+		query += `select
+					COALESCE(count(total_buyer),0) AS total_buyer,
+					COALESCE(count(last_period_total_buyer),0) AS last_period_total_buyer
+				   	from
+					  (select distinct
+						   case WHEN created_at  > 'first_date'
+							   then contact_id end as total_buyer,
+						   case WHEN  created_at  < 'per_last_date'
+							   then contact_id end as last_period_total_buyer						  
+				   	from orders o where business_id = ?
+						  and (created_at > 'per_first_date' AND created_at < 'last_date')
+				  	group by contact_id,created_at) as temp;`
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountBuyer{}, nil
+		}
+	}
+	rs := model.CountBuyer{}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.CountBuyer{}, nil
+			}
+		} else {
+			return model.CountBuyer{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountBuyer{}, nil
+		}
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) CountBuyerNew(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyerNew, error) {
+	query := ""
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		query += `select count (*) as total_buyer_new, null as last_period_total_buyer_new from 
+					(select distinct contact_id as total_buyer_new
+				from orders o where business_id = 'business_id_req'
+					and (created_at > ? AND created_at < ? )
+		 		group by contact_id) temp  
+					where total_buyer_new not IN (
+		 		select distinct
+				   contact_id  as last_period_total_buyer
+			   from orders o where business_id = 'business_id_req'
+					and created_at < ? and contact_id is not null 
+	 	 	group by contact_id)`
+
+		query = strings.ReplaceAll(query, "business_id_req", valid.String(req.BusinessID))
+	} else {
+
+		query += `select total_buyer_new, last_period_total_buyer_new
+					from ( select generate_series(0, 0 ) as index, count (*) as total_buyer_new 
+						from ( select distinct contact_id as total_buyer_new
+							from orders o where business_id = 'req_business_id'
+								and (created_at) > 'first_date'
+								and (created_at) < 'last_date' 
+							group by
+								contact_id) temp
+						where total_buyer_new not in (
+							select distinct contact_id as last_period_total_buyer
+							from orders o
+							where
+								business_id = 'req_business_id'
+								and (created_at) < 'first_date'
+									and contact_id is not null
+								group by
+									contact_id)
+						) temp_order
+					inner join (
+						select generate_series(0, 0 ) as index, count (*) as last_period_total_buyer_new
+						from ( select distinct contact_id as total_buyer_new
+							from orders o where business_id = 'req_business_id'
+								and (created_at) > 'per_first_date'
+								and (created_at) < 'per_last_date' 
+							group by
+								contact_id) temp
+						where total_buyer_new not in ( select distinct contact_id as last_period_total_buyer
+							from orders o
+							where business_id = 'req_business_id'
+								and (created_at) < 'per_first_date'
+									and contact_id is not null
+								group by
+									contact_id)) last_temp_order on
+						temp_order.index = last_temp_order.index`
+
+		query = strings.ReplaceAll(query, "req_business_id", valid.String(req.BusinessID))
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountBuyerNew{}, nil
+		}
+	}
+	rs := model.CountBuyerNew{}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.StartTime, req.EndTime, req.StartTime).Scan(&rs).Error; err != nil {
+				return model.CountBuyerNew{}, nil
+			}
+		} else {
+			return model.CountBuyerNew{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query).Scan(&rs).Error; err != nil {
+			return model.CountBuyerNew{}, nil
+		}
+	}
+	return rs, nil
+}
