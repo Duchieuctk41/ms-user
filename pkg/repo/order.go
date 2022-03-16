@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
@@ -173,6 +174,40 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
 			} else {
 				log.WithError(err).Error("error_500: get one order in GetOneOrder - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
+		}
+	}
+
+	return rs, nil
+}
+
+func (r *RepoPG) GetStateOrderEcom(ctx context.Context, id string, tx *gorm.DB) (rs model.EcomOrderState, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetOneOrder")
+
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if len(id) == 9 {
+		if err = tx.Table("ecom_order").Select("id, state").Where("order_number = ?", id).First(&rs).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOneOrderEcom - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrderEcom - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
+		}
+	} else {
+		if err = tx.Table("ecom_order").Select("id, state").Where("id = ?", id).First(&rs).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOneOrderEcom - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrderEcom - RepoPG")
 				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 			}
 		}
@@ -1072,6 +1107,30 @@ func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQua
 	return rs, nil
 }
 
+func (r *RepoPG) GetCountQuantityInOrderEcom(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	query := `
+		SELECT sum(quantity) AS SUM
+		FROM ecom_order_item a
+		LEFT JOIN ecom_orders b ON b.id = a.order_id
+		WHERE a.sku_id = ?
+		  AND a.deleted_at IS NULL
+		  AND b.deleted_at IS NULL
+		  AND b.business_id = ?
+		  AND b.state IN (?)
+		`
+
+	if err := tx.Raw(query, req.SkuID, req.BusinessID, req.States).Scan(&rs).Error; err != nil {
+		return rs, err
+	}
+
+	return rs, nil
+}
+
 func (r *RepoPG) CountOrderForTutorial(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error) {
 	var cancel context.CancelFunc
 	if tx == nil {
@@ -1157,24 +1216,29 @@ func (r *RepoPG) UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder,
 	}
 
 	eg := errgroup.Group{}
-
+	mapEcomOrder := make(map[string]model.EcomOrder)
 	for _, v := range rs {
 		tmp := v
+		mapEcomOrder[v.ID.String()] = v
 		eg.Go(func() error {
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
-			}).Create(&tmp).Error; err != nil {
+				//DoNothing: true,
+			}).Omit("EcomOrderItem").Create(&tmp).Error; err != nil {
+				//}).Create(&tmp).Error; err != nil {
 				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
 			}
-			// if err := tx.Clauses(clause.OnConflict{
-			// 	Columns:   []clause.Column{{Name: "id"}},
-			// 	UpdateAll: true,
-			// }).Create(&v.EcomOrderItem).Error; err != nil {
-			// 	log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order item ecom")
-			// }
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				UpdateAll: true,
+			}).Create(&v.EcomOrderItem).Error; err != nil {
+				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order item ecom")
+			}
 			return nil
+
 		})
+
 	}
 
 	_ = eg.Wait()
@@ -1182,6 +1246,20 @@ func (r *RepoPG) UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder,
 	// log time
 	elapsed := time.Since(start)
 	log.Printf("%s took %s for %s orders", "Storage order ecom", elapsed, strconv.Itoa(len(rs)))
+}
+
+func PushConsumer(ctx context.Context, value interface{}, topic string) {
+	log := logger.WithCtx(ctx, "PushConsumer")
+
+	s, _ := json.Marshal(value)
+	_, err := utils.PushConsumer(utils.ConsumerRequest{
+		Topic: topic,
+		Body:  string(s),
+	})
+	log.WithError(err).Error("PushConsumer topic: " + topic + " body: " + string(s))
+	if err != nil {
+		log.WithError(err).Error("Fail to push consumer " + topic + ": %")
+	}
 }
 
 func (r *RepoPG) CountOrder(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.OrderTotal, error) {

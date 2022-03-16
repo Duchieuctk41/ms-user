@@ -366,6 +366,39 @@ func UUID(req *uuid.UUID) uuid.UUID {
 	return *req
 }
 
+func CheckSkuEcomHasStock(businessID string, listSkuEcom []string) (rs []model.SkuHasSkuEcom, err error) {
+	// Update req quantity
+	header := make(map[string]string)
+	type ListIDSkuEcom struct {
+		BusinessID  string   `json:"business_id" valid:"Required"`
+		ListSkuEcom []string `json:"list_sku_ecom" valid:"Required"`
+	}
+	listIDSkuEcom := ListIDSkuEcom{
+		BusinessID:  businessID,
+		ListSkuEcom: listSkuEcom,
+	}
+	body, _, err := common.SendRestAPI(conf.LoadEnv().FinanProduct+"/api/v1/get-list-id-sku", rest.Post, header, nil, listIDSkuEcom)
+	if err != nil {
+		// parsing error
+		tm := struct {
+			Message string `json:"message"`
+		}{}
+		if err = json.Unmarshal([]byte(body), &tm); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf(tm.Message)
+	}
+
+	tm := struct {
+		Data []model.SkuHasSkuEcom `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		return nil, err
+	}
+	//rs = strings.Split(tm.Data, ",")
+	return tm.Data, nil
+}
+
 func CheckSkuHasStock(userID string, req []model.OrderItem) (rs []string, err error) {
 	// Update req quantity
 	header := make(map[string]string)

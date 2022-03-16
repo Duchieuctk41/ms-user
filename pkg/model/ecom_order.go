@@ -64,3 +64,8 @@ type EcomOrderItem struct {
 func (OrderItem) EcomOrderItem() string {
 	return "ecom_order_item"
 }
+
+type EcomOrderState struct {
+	ID    uuid.UUID `gorm:"primary_key;type:uuid;default:uuid_generate_v4()" json:"id"`
+	State string    `json:"state" sql:"index" gorm:"column:state;not null;"`
+}

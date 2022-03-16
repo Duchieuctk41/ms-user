@@ -255,16 +255,17 @@ type CreateStockRequest struct {
 }
 
 type StockRequest struct {
-	ID                 uuid.UUID `json:"id,omitempty"`
-	UpdaterID          uuid.UUID `json:"updater_id,omitempty"`
-	CreatorID          uuid.UUID `json:"creator_id,omitempty"`
-	SkuID              uuid.UUID `json:"sku_id,omitempty" valid:"Required"`
-	BusinessID         uuid.UUID `json:"business_id,omitempty"`
-	DeliveringQuantity float64   `json:"delivering_quantity,omitempty"`
-	BlockedQuantity    float64   `json:"blocked_quantity,omitempty"`
-	WarningValue       float64   `json:"warning_value,omitempty"`
-	HistoricalCost     float64   `json:"historical_cost,omitempty"`
-	QuantityChange     float64   `json:"quantity_change,omitempty"`
+	ID                     uuid.UUID `json:"id,omitempty"`
+	UpdaterID              uuid.UUID `json:"updater_id,omitempty"`
+	CreatorID              uuid.UUID `json:"creator_id,omitempty"`
+	SkuID                  uuid.UUID `json:"sku_id,omitempty" valid:"Required"`
+	BusinessID             uuid.UUID `json:"business_id,omitempty"`
+	DeliveringQuantity     float64   `json:"delivering_quantity,omitempty"`
+	BlockedQuantity        float64   `json:"blocked_quantity,omitempty"`
+	WarningValue           float64   `json:"warning_value,omitempty"`
+	HistoricalCost         float64   `json:"historical_cost,omitempty"`
+	QuantityChange         float64   `json:"quantity_change,omitempty"`
+	DeliveringEcomQuantity float64   `json:"delivering_ecom_quantity,omitempty"`
 }
 
 type Product struct {

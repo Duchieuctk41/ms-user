@@ -17,7 +17,7 @@ type AppConfig struct {
 
 	MSBusinessManagement     string `env:"MS_BUSINESS_MANAGEMENT"  envDefault:"http://localhost:8012"`
 	MSProductManagement      string `env:"MS_PRODUCT_MANAGEMENT" envDefault:"http://localhost:8094"`
-	FinanProduct             string `env:"FINAN_PRODUCT" envDefault:"http://localhost:8093"`
+	FinanProduct             string `env:"FINAN_PRODUCT" envDefault:"http://localhost:8096"`
 	MSUserManagement         string `env:"MS_USER_MANAGEMENT"  envDefault:"http://127.0.0.1:8088"`
 	MSPromotionManagement    string `env:"MS_PROMOTION_MANAGEMENT" envDefault:"http://localhost:8083"`
 	MSConsumer               string `env:"MS_CONSUMER" envDefault:"http://127.0.0.1:8011"`
