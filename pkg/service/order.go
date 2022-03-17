@@ -3594,9 +3594,8 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 			log.Errorf("Error send email: %v", err.Error())
 			return nil, err
 		}
-		var sendEmailOrderReq model.SendEmailRequest
-		sendEmailOrderReq = sendEmailReq
-		if _, err = s.SendEmailOrder(ctx, sendEmailOrderReq); err != nil {
+
+		if _, err = s.SendEmailOrder(ctx, sendEmailReq); err != nil {
 			return nil, err
 		}
 		break
