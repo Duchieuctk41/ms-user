@@ -1050,6 +1050,25 @@ func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam,
 	return rs, nil
 }
 
+func (r *RepoPG) GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam, tx *gorm.DB) (rs []model.ContactDelivering, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	tx = tx.Model(&model.Order{}).Select("contact_id, count(contact_id) as count").Where("business_id = ?", req.BusinessID)
+
+	if req.ContactIDs != "" {
+		stateArr := strings.Split(req.ContactIDs, ",")
+		if err = tx.Where("contact_id IN (?)", stateArr).Group("contact_id").Find(&rs).Error; err != nil {
+			return rs, err
+		}
+	}
+
+	return rs, nil
+}
+
 func (r *RepoPG) GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error) {
 	log := logger.WithCtx(ctx, "RepoPG.GetTotalContactDelivery").WithField("req", req)
 

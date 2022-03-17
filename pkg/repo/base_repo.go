@@ -50,6 +50,7 @@ type PGInterface interface {
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
 	GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error)
+	GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam, tx *gorm.DB) (rs []model.ContactDelivering, err error)
 	GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error)
 
 	//analytics

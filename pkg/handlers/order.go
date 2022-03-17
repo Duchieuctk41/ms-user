@@ -336,6 +336,29 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 	}, nil
 }
 
+// GetNumberDelivering - 17/03/2022 - get number delivering of contact
+func (h *OrderHandlers) GetNumberDelivering(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetNumberDelivering")
+
+	// Check valid request
+	req := model.GetNumberDeliveringParam{}
+	r.MustBind(&req)
+
+	// Get contact delivering
+	rs, err := h.service.GetNumberDelivering(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to get contact have order due to %v", err.Error())
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
 // GetContactDelivering - hieucn - version app 1.1.0.1.0
 func (h *OrderHandlers) GetTotalContactDelivery(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetTotalContactDelivery")

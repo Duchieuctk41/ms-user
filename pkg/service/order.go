@@ -56,6 +56,7 @@ type OrderServiceInterface interface {
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res model.ListOrderResponse, err error)
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error)
+	GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam) (res map[string]int, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 	GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error)
 	GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error)
@@ -124,6 +125,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 			ContactID:           order.ContactID,
 			OrderNumber:         order.OrderNumber,
 			PromotionCode:       order.PromotionCode,
+			PromotionDiscount:   order.PromotionDiscount,
 			OrderedGrandTotal:   order.OrderedGrandTotal,
 			DeliveryFee:         order.DeliveryFee,
 			GrandTotal:          order.GrandTotal,
@@ -2713,10 +2715,26 @@ func (s *OrderService) GetContactDelivering(ctx context.Context, req model.Order
 			return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
 		}
 		if len(lstContact) > 0 {
-			contact.Data[i].ContactInfo = lstContact[0]
+			contact.Data[i].ContactInfo = &lstContact[0]
 		}
 	}
 	return contact, nil
+}
+func (s *OrderService) GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam) (res map[string]int, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetNumberDelivering")
+
+	contact, err := s.repo.GetNumberDelivering(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
+		return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+	}
+
+	data := make(map[string]int)
+	for _, v := range contact {
+		data[v.ContactID.String()] = v.Count
+	}
+
+	return data, nil
 }
 
 func (s *OrderService) GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (res model.TotalContactDelivery, err error) {
