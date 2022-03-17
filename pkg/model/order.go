@@ -244,7 +244,7 @@ type ExportOrderReportRequest struct {
 type ContactDelivering struct {
 	ContactID   uuid.UUID `json:"contact_id"`
 	Count       int       `json:"count"`
-	ContactInfo Contact   `json:"contact_info"`
+	ContactInfo *Contact  `json:"contact_info"`
 }
 
 type TotalContactDelivery struct {
@@ -364,4 +364,10 @@ type GetOrderRevenueAnalyticsParam struct {
 type ListOrderRevenueAnalyticsResponse struct {
 	Data []OrderItemAnalytic    `json:"data"`
 	Meta map[string]interface{} `json:"meta"`
+}
+
+type GetNumberDeliveringParam struct {
+	BusinessID string `json:"business_id" form:"business_id" valid:"Required"`
+	ContactIDs string `json:"contact_ids" form:"contact_ids" valid:"Required"`
+	State      string `json:"state" form:"state"`
 }
