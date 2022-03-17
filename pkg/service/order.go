@@ -809,7 +809,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 	return nil
 }
 
-func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID) error {
+func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID, tx *gorm.DB) error {
 	log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
 	payment.CreatorID = userID
 
@@ -832,7 +832,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	//}
 
 	// get shop info
-	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, nil); err != nil {
+	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, tx); err != nil {
 		log.Errorf("Fail to CreatePaymentOrderHistory due to %v", err)
 		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
@@ -841,7 +841,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	go func() {
 		desc := utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY + " in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
 		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_PAYMENT_ORDER_HISTORY, utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY, desc, payment, nil)
-		s.historyService.LogHistory(context.Background(), history, nil)
+		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
 	// count
@@ -3307,13 +3307,11 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		return nil, err
 	}
 
-	tx.Commit()
-
 	paymentOrderHistory.OrderID = order.ID
 
 	// create payment_order_history, then append to response
 	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
-		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID, tx); err != nil {
 			return nil, err
 		}
 		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -3328,6 +3326,8 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 	}
+
+	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
@@ -3952,7 +3952,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 			}
 
 			// create payment_order_history, then append to response
-			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID)); err != nil {
+			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID), tx); err != nil {
 				return nil, err
 			}
 			paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -4283,6 +4283,7 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		req.DeliveryMethod = valid.StringPointer(utils.DELIVERY_METHOD_BUYER_PICK_UP)
 	}
 
+	//
 	tUser, err := s.GetUserListV2(ctx, req.BuyerInfo.PhoneNumber, "")
 	if err != nil {
 		return nil, err
@@ -4414,13 +4415,12 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		return nil, err
 	}
 
-	tx.Commit()
 
 	paymentOrderHistory.OrderID = order.ID
 
 	// create payment_order_history, then append to response
 	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
-		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID, tx); err != nil {
 			return nil, err
 		}
 		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -4435,6 +4435,8 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 	}
+
+	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
