@@ -843,7 +843,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	go func() {
 		desc := utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY + " in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
 		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_PAYMENT_ORDER_HISTORY, utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY, desc, payment, nil)
-		s.historyService.LogHistory(context.Background(), history, tx)
+		s.historyService.LogHistory(context.Background(), history, nil)
 	}()
 
 	// count
@@ -3945,8 +3945,6 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		log.WithError(err).Errorf("Create order tracking error")
 	}
 
-	tx.Commit()
-
 	if valid.String(req.State) == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
 		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
@@ -3998,6 +3996,8 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		//}
 		go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory)
 	}
+
+	tx.Commit()
 
 	if preOrderState == utils.ORDER_STATE_DELIVERING && valid.String(req.State) == utils.ORDER_STATE_CANCEL {
 		go s.UpdateStock(context.Background(), order, "order_cancelled_when_delivering")
@@ -4432,7 +4432,6 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 	if err = s.CreateMultiOrderItem(ctx, req.ListOrderItem, &order, mapSku, tx); err != nil {
 		return nil, err
 	}
-
 
 	paymentOrderHistory.OrderID = order.ID
 

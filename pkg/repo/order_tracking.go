@@ -17,7 +17,7 @@ func (r *RepoPG) CreateOrderTracking(ctx context.Context, orderTracking model.Or
 		defer cancel()
 	}
 
-	if err := r.DB.Create(&orderTracking).Error; err != nil {
+	if err := tx.Create(&orderTracking).Error; err != nil {
 		return err
 	}
 	return nil
@@ -32,7 +32,7 @@ func (r *RepoPG) CreateOrderTrackingV2(ctx context.Context, orderTracking model.
 		defer cancel()
 	}
 
-	if err = r.DB.Create(&orderTracking).Error; err != nil {
+	if err = tx.Create(&orderTracking).Error; err != nil {
 		log.WithError(err).Error("error_500: Error when CreateOrderTrackingV2")
 		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}

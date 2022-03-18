@@ -291,7 +291,7 @@ func (r *RepoPG) UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB
 		return model.Order{}, err
 	}
 
-	tx.Commit()
+	//tx.Commit()
 	return order, nil
 }
 
