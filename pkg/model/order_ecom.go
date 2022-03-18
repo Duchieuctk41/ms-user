@@ -1,9 +1,10 @@
 package model
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm/dialects/postgres"
-	"time"
 )
 
 type OrderEcom struct {
@@ -49,4 +50,9 @@ type OrderEcomRequest struct {
 type ListOrderEcomResponse struct {
 	Data []OrderEcom            `json:"data"`
 	Meta map[string]interface{} `json:"meta"`
+}
+
+type SkuHasSkuEcom struct {
+	EcomSkuID string `json:"ecom_sku_id"`
+	SkuID     string `json:"sku_id"`
 }

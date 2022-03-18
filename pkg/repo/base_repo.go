@@ -44,12 +44,17 @@ type PGInterface interface {
 	GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
 	GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error)
 	UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
+	UpdateDetailOrderSellerV2(ctx context.Context, order model.Order, req []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
 	GetOrderTracking(ctx context.Context, req model.OrderTrackingRequest, tx *gorm.DB) (rs model.OrderTrackingResponse, err error)
 	CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error)
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
 	GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error)
+	GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam, tx *gorm.DB) (rs []model.ContactDelivering, err error)
 	GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error)
+
+	//analytics
+	CountOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error)
 
 	//
 	CreateOrderV2(ctx context.Context, order *model.Order, tx *gorm.DB) error
@@ -60,7 +65,7 @@ type PGInterface interface {
 
 	GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error)
 	GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
-
+	GetCountQuantityInOrderEcom(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
 	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) (rs []model.GetTotalOrderByBusinessResponse, err error)
 
 	// tutorial flow
@@ -68,9 +73,12 @@ type PGInterface interface {
 
 	// log history
 	LogHistory(ctx context.Context, history model.History, tx *gorm.DB) (rs model.History, err error)
+	DeleteLogHistory(ctx context.Context, tx *gorm.DB) error
 
 	// ecom
 	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)
+	UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder, tx *gorm.DB)
+	GetStateOrderEcom(ctx context.Context, id string, tx *gorm.DB) (rs model.EcomOrderState, err error)
 
 	// payment_order_history
 	CreatePaymentOrderHistory(ctx context.Context, payment *model.PaymentOrderHistory, tx *gorm.DB) (err error)

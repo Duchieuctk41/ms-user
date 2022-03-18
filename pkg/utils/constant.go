@@ -1,5 +1,7 @@
 package utils
 
+import "time"
+
 const (
 	ADMIN_ROLE  = 64
 	BUYER_ROLE  = 1
@@ -11,6 +13,7 @@ const (
 	STATUS_SUCCESS       = "success"
 	STATUS_SKU_NOT_FOUND = "sku_not_found"
 	SOLD_OUT             = "sold_out"
+	STATUS_OUT_OF_STOCK  = "out_of_stock"
 )
 
 const (
@@ -46,11 +49,15 @@ const (
 	ORDER_STATE_UPDATE          = "update"
 )
 
+const ADDRESS_DEFAUTL = "địa chỉ mặc định"
+
 const (
 	TOPIC_SEND_EMAIL_ORDER            = "finan-order:send-email-order"
 	TOPIC_UPDATE_EMAIL_ORDER_RECENT   = "finan-order:update_email_order_recent"
 	TOPIC_UPDATE_SOLD_QUANTITY_CANCEL = "ms-product-management:update_sold_quantity_cancel"
 	TOPIC_UPDATE_ORDER_ECOM           = "finan-order:update_order_ecom"
+	TOPIC_DELETE_LOG_HISTORY          = "finan-order:delete_log_history"
+	TOPIC_UPDATE_ECOM_ORDER           = "finan-order:update_ecom_order"
 )
 
 // Some type mess
@@ -100,8 +107,10 @@ const (
 	FAST_ORDER_COMPLETED = "fast_order_completed"
 )
 
-const PO_IN = "in"
-const PO_OUT = "out"
+const (
+	PO_IN  = "in"
+	PO_OUT = "out"
+)
 
 // type ms-chat
 const (
@@ -139,4 +148,26 @@ const (
 
 	NOTI_CONTENT_REMINDER_DELIVERING      = "Bạn đã giao đơn %v - %v cho khách %v chưa? Nhấn để kiểm tra hoặc xác nhận đã giao"
 	NOTI_CONTENT_REMINDER_WAITING_CONFIRM = "Đơn hàng %v đang chờ xác nhận. Nhấn để thông báo cho khách đơn đã sẵn sàng giao"
+)
+
+var TIME_DELETE_LOG_HISTORY = time.Now().Add(time.Duration(-15*24) * time.Hour)
+
+const (
+	OPTION_FILTER_TODAY        = "today"
+	OPTION_FILTER_THIS_WEEK    = "this_week"
+	OPTION_FILTER_THIS_MONTH   = "this_month"
+	OPTION_FILTER_LAST_WEEK    = "last_week"
+	OPTION_FILTER_LAST_MONTH   = "last_month"
+	OPTION_FILTER_CUSTOM_RANGE = "custom_range"
+)
+
+const (
+	OPTION_FILTER_REVENUE          = "revenue"
+	OPTION_FILTER_ORDER            = "order"
+	OPTION_FILTER_CUSTOMER         = "customer"
+	OPTION_FILTER_ORDER_CANCEL     = "order_cancel"
+	OPTION_FILTER_VIEW_STORE       = "view_store"
+	OPTION_FILTER_NEW_CUSTOMER     = "new_customer"
+	OPTION_FILTER_AVERAGE_ORDER    = "average_order"
+	OPTION_FILTER_AVERAGE_CUSTOMER = "average_customer"
 )

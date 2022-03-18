@@ -49,6 +49,7 @@ func NewService() *Service {
 
 	v1Api := s.Router.Group("/api/v1")
 	v2Api := s.Router.Group("/api/v2")
+	v3Api := s.Router.Group("/api/v3")
 
 	// Order
 	v1Api.GET("/get-one-order/:id", ginext.WrapHandler(orderHandle.GetOneOrder))
@@ -57,6 +58,7 @@ func NewService() *Service {
 	v1Api.GET("/count-order-state", ginext.WrapHandler(orderHandle.CountOrderState))
 	v1Api.GET("/get-order-by-contact", ginext.WrapHandler(orderHandle.GetOrderByContact))
 	v1Api.GET("/get-contact-delivering", ginext.WrapHandler(orderHandle.GetContactDelivering))
+	v1Api.GET("/get-number-delivering", ginext.WrapHandler(orderHandle.GetNumberDelivering))
 	v1Api.GET("/get-total-contact-delivery", ginext.WrapHandler(orderHandle.GetTotalContactDelivery))
 	v1Api.GET("/get-sum-order-complete-contact", ginext.WrapHandler(orderHandle.GetSumOrderCompleteContact))
 
@@ -73,8 +75,9 @@ func NewService() *Service {
 	// Order tracking
 	v1Api.GET("/get-order-tracking", ginext.WrapHandler(orderTrackingHandle.GetOrderTracking))
 
-	// Send email order
+	// hieucn -06/03/2022 - test local
 	//v1Api.POST("/send-email-order", ginext.WrapHandler(orderHandle.SendEmailOrder))
+	v1Api.DELETE("/delete-log-history", ginext.WrapHandler(orderHandle.DeleteLogHistory))
 
 	//ProfitAndLoss
 	v1Api.GET("/get-list-profit-and-loss", ginext.WrapHandler(ProfitAndLossHandle.GetListProfitAndLoss))
@@ -90,13 +93,21 @@ func NewService() *Service {
 
 	// version 2
 	v2Api.POST("/create-order", ginext.WrapHandler(orderHandle.CreateOrderV2))
+	v2Api.PUT("/seller/update-detail-order/:id", ginext.WrapHandler(orderHandle.UpdateDetailOrderSellerV2))
 	v2Api.POST("/seller/create-order", ginext.WrapHandler(orderHandle.CreateOrderSeller))
 	v2Api.PUT("/update-order/:id", ginext.WrapHandler(orderHandle.UpdateOrderV2))
 	v2Api.GET("/get-list-order", ginext.WrapHandler(orderHandle.GetlistOrderV2))
 
+	// version 3
+	v3Api.POST("/seller/create-order", ginext.WrapHandler(orderHandle.CreateOrderSellerV3))
+
 	//pro seller
 	v1Api.GET("pro-seller/get-overview", ginext.WrapHandler(orderHandle.OverviewOrder))
 	v1Api.GET("pro-seller/get-list-top-sales", ginext.WrapHandler(orderHandle.GetOrderItemRevenueAnalytics))
+
+	// analytic
+	v1Api.GET("/get-daily-visit-analytics", ginext.WrapHandler(orderHandle.GetDailyViewAnalytics))
+	v1Api.GET("/get-order-analytics", ginext.WrapHandler(orderHandle.GetOrderAnalytics))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)

@@ -336,6 +336,29 @@ func (h *OrderHandlers) GetContactDelivering(r *ginext.Request) (*ginext.Respons
 	}, nil
 }
 
+// GetNumberDelivering - 17/03/2022 - get number delivering of contact
+func (h *OrderHandlers) GetNumberDelivering(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetNumberDelivering")
+
+	// Check valid request
+	req := model.GetNumberDeliveringParam{}
+	r.MustBind(&req)
+
+	// Get contact delivering
+	rs, err := h.service.GetNumberDelivering(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to get contact have order due to %v", err.Error())
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
 // GetContactDelivering - hieucn - version app 1.1.0.1.0
 func (h *OrderHandlers) GetTotalContactDelivery(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetTotalContactDelivery")
@@ -560,6 +583,51 @@ func (h *OrderHandlers) UpdateDetailOrderSeller(r *ginext.Request) (*ginext.Resp
 	}, nil
 }
 
+// UpdateDetailOrderSellerV2 from UpdateDetailOrderSeller - 01/03/2022 - hieucn
+// multi product line
+func (h *OrderHandlers) UpdateDetailOrderSellerV2(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.UpdateDetailOrderSellerV2")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.UpdateDetailOrderRequest{}
+	r.MustBind(&req)
+	req.UpdaterID = &userID
+
+	// parse ID from URI
+	if req.ID = utils.ParseIDFromUri(r.GinCtx); req.ID == nil {
+		log.WithError(err).Error("Lỗi: ID đơn hàng không đúng định dạng")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: ID đơn hàng không đúng định dạng")
+	}
+
+	// log request information
+	field, err := json.Marshal(req)
+	if err != nil {
+		log.WithError(err).Error("error_400: Cannot marshal request in UpdateDetailOrderSellerV2")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	}
+	log.WithField("req", string(field)).Info("OrderHandlers.UpdateDetailOrderSellerV2")
+
+	// implement the business logic of UpdateDetailOrder
+	rs, err := h.service.UpdateDetailOrderSellerV2(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to update detail order: %v", err.Error())
+		return nil, err
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
 // ExportOrderReport - convert from /api/export-order-report - version app 1.0.35.1.4
 func (h *OrderHandlers) ExportOrderReport(r *ginext.Request) (*ginext.Response, error) {
 	log := logger.WithCtx(r.GinCtx, "OrderHandlers.ExportOrderReport")
@@ -764,6 +832,22 @@ func (h *OrderHandlers) ProcessConsumer(r *ginext.Request) (*ginext.Response, er
 	}, nil
 }
 
+// 06/03/2022 - hieucn - Test delete history
+func (h *OrderHandlers) DeleteLogHistory(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.DeleteLogHistory")
+
+	if err := h.service.DeleteLogHistory(r.Context()); err != nil {
+		log.WithError(err).Error("Fail to DeleteLogHistory")
+		return nil, err
+	}
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: "delete success",
+		},
+	}, nil
+}
+
 ////Send email order
 //func (h *OrderHandlers) SendEmailOrder(r *ginext.Request) (*ginext.Response, error) {
 //	log := logger.WithCtx(r.GinCtx, "OrderHandlers.SendEmailOrder")
@@ -920,6 +1004,119 @@ func (h *OrderHandlers) GetOrderItemRevenueAnalytics(r *ginext.Request) (*ginext
 		GeneralBody: &ginext.GeneralBody{
 			Data: rs.Data,
 			Meta: rs.Meta,
+		},
+	}, nil
+}
+
+// CreateOrderSellerV3 Create order seler - update from CreateOrderSeller
+// 03/03/2022 - hieucn - separate product line
+func (h *OrderHandlers) CreateOrderSellerV3(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.CreateOrderSeller")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	// Check valid request
+	req := model.OrderBody{}
+	r.MustBind(&req)
+	req.UserID = userID
+	if err = common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	// Check Permission
+	if req.BusinessID == nil {
+		log.WithError(err).Error("Missing business ID")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), req.BusinessID.String()); err != nil {
+		return nil, err
+	}
+
+	// create order
+	rs, err := h.service.CreateOrderSellerV3(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Errorf("Fail to create order %v", err.Error())
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
+func (h *OrderHandlers) GetDailyViewAnalytics(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetDailyViewAnalytics")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	var req model.GetDailyVisitAnalyticsParam
+	r.MustBind(&req)
+
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), valid.String(req.BusinessID)); err != nil {
+		return nil, err
+	}
+
+	rs, err := h.service.GetDailyViewAnalytics(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Error("Fail to GetDailyViewAnalytics")
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
+		},
+	}, nil
+}
+
+func (h *OrderHandlers) GetOrderAnalytics(r *ginext.Request) (*ginext.Response, error) {
+	log := logger.WithCtx(r.GinCtx, "OrderHandlers.GetOrderAnalytics")
+
+	// check x-user-id
+	userID, err := utils.CurrentUser(r.GinCtx.Request)
+	if err != nil {
+		log.WithError(err).Error("Error when get current user")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	var req model.GetOrderAnalyticsRequest
+	r.MustBind(&req)
+
+	if err = common.CheckRequireValid(req); err != nil {
+		log.WithError(err).Error("Invalid input")
+		return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:"+err.Error())
+	}
+
+	if err = utils.CheckPermissionV4(r.GinCtx, userID.String(), valid.String(req.BusinessID)); err != nil {
+		return nil, err
+	}
+
+	rs, err := h.service.GetOrderAnalytics(r.Context(), req)
+	if err != nil {
+		log.WithError(err).Error("Fail to GetOrderAnalytics")
+		return nil, err
+	}
+
+	return &ginext.Response{
+		Code: http.StatusOK,
+		GeneralBody: &ginext.GeneralBody{
+			Data: rs,
 		},
 	}, nil
 }

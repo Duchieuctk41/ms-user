@@ -87,24 +87,29 @@ type Sku struct {
 	Barcode         string         `json:"barcode"`
 	CanPickQuantity float64        `json:"can_pick_quantity"`
 	Type            string         `json:"type"`
-	HistoricalCost  float64        `json:"historical_cost"`
-	WholesalePrice  *float64       `json:"wholesale_price"`
+	HistoricalCost  float64        `json:"historical_cost,omitempty"`
+	WholesalePrice  *float64       `json:"wholesale_price,omitempty"`
 }
 
 type SkuDetail struct {
-	SkuID          string         `json:"sku_id"`
-	BusinessID     string         `json:"business_id"`
-	ProductName    string         `json:"product_name"`
-	SkuName        string         `json:"sku_name"`
-	SoldQuantity   float64        `json:"sold_quantity"`
-	Media          pq.StringArray `json:"media"`
-	NormalPrice    float64        `json:"normal_price"`
-	SellingPrice   float64        `json:"selling_price"`
-	HistoricalCost float64        `json:"historical_cost"`
-	Note           string         `json:"note"`
-	Type           string         `json:"type"`
-	Uom            string         `json:"uom"`
-	TotalAmount    float64        `json:"total_amount" gorm:"column:total_amount"`
+	ID              string         `json:"id"`
+	BusinessID      string         `json:"business_id"`
+	ProductID       string         `json:"product_id"`
+	ProductName     string         `json:"product_name"`
+	Name            string         `json:"name"`
+	SkuID           string         `json:"sku_id"`
+	SkuCode         string         `json:"sku_code"`
+	Barcode         string         `json:"bar_code"`
+	CanPickQuantity float64        `json:"can_pick_quantity"'`
+	SoldQuantity    float64        `json:"sold_quantity"`
+	Media           pq.StringArray `json:"media"`
+	NormalPrice     float64        `json:"normal_price"`
+	SellingPrice    float64        `json:"selling_price"`
+	HistoricalCost  float64        `json:"historical_cost"`
+	Note            string         `json:"note"`
+	Type            string         `json:"type"`
+	Uom             string         `json:"uom"`
+	TotalAmount     float64        `json:"total_amount" gorm:"column:total_amount"`
 }
 
 type StockForCheckValid struct {
@@ -250,16 +255,17 @@ type CreateStockRequest struct {
 }
 
 type StockRequest struct {
-	ID                 uuid.UUID `json:"id,omitempty"`
-	UpdaterID          uuid.UUID `json:"updater_id,omitempty"`
-	CreatorID          uuid.UUID `json:"creator_id,omitempty"`
-	SkuID              uuid.UUID `json:"sku_id,omitempty" valid:"Required"`
-	BusinessID         uuid.UUID `json:"business_id,omitempty"`
-	DeliveringQuantity float64   `json:"delivering_quantity,omitempty"`
-	BlockedQuantity    float64   `json:"blocked_quantity,omitempty"`
-	WarningValue       float64   `json:"warning_value,omitempty"`
-	HistoricalCost     float64   `json:"historical_cost,omitempty"`
-	QuantityChange     float64   `json:"quantity_change,omitempty"`
+	ID                     uuid.UUID `json:"id,omitempty"`
+	UpdaterID              uuid.UUID `json:"updater_id,omitempty"`
+	CreatorID              uuid.UUID `json:"creator_id,omitempty"`
+	SkuID                  uuid.UUID `json:"sku_id,omitempty" valid:"Required"`
+	BusinessID             uuid.UUID `json:"business_id,omitempty"`
+	DeliveringQuantity     float64   `json:"delivering_quantity,omitempty"`
+	BlockedQuantity        float64   `json:"blocked_quantity,omitempty"`
+	WarningValue           float64   `json:"warning_value,omitempty"`
+	HistoricalCost         float64   `json:"historical_cost,omitempty"`
+	QuantityChange         float64   `json:"quantity_change,omitempty"`
+	DeliveringEcomQuantity float64   `json:"delivering_ecom_quantity,omitempty"`
 }
 
 type Product struct {
@@ -344,4 +350,24 @@ type UserGuideRequest struct {
 	State     string `json:"state"`
 	StepDoing int    `json:"step_doing"`
 	UserID    string `json:"user_id"`
+}
+
+type GetListStockRequest struct {
+	ListSku    []uuid.UUID `json:"list_sku"`
+	BusinessID uuid.UUID   `json:"business_id"`
+	Page       int         `json:"page"`
+	PageSize   int         `json:"page_size"`
+	Sort       string      `json:"sort"`
+}
+
+type Stock struct {
+	BaseModel
+	SkuID              uuid.UUID `json:"sku_id" gorm:"not null;type:uuid;index"`
+	TotalQuantity      float64   `json:"total_quantity" gorm:"not null"`
+	DeliveringQuantity float64   `json:"delivering_quantity" gorm:"not null"`
+	BlockedQuantity    float64   `json:"blocked_quantity" gorm:"not null"`
+	WarningValue       float64   `json:"warning_value" gorm:"not null"`
+	HistoricalCost     float64   `json:"historical_cost" gorm:"not null"`
+	BusinessID         uuid.UUID `json:"business_id" gorm:"not null;type:uuid"`
+	LastSendWarning    time.Time `json:"last_send_warning" gorm:""`
 }

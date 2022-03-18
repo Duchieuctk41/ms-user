@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"finan/ms-order-management/pkg/model"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -25,6 +26,8 @@ func (h *MigrationHandler) Migrate(ctx *gin.Context) {
 		&model.OrderEcom{},
 		&model.History{},
 		&model.PaymentOrderHistory{},
+		&model.EcomOrder{},
+		&model.EcomOrderItem{},
 	}
 	for _, m := range models {
 		err := h.db.AutoMigrate(m)

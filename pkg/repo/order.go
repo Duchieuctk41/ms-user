@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"finan/ms-order-management/pkg/model"
 	"finan/ms-order-management/pkg/utils"
 	"finan/ms-order-management/pkg/valid"
@@ -173,6 +174,40 @@ func (r *RepoPG) GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs mo
 				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
 			} else {
 				log.WithError(err).Error("error_500: get one order in GetOneOrder - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
+		}
+	}
+
+	return rs, nil
+}
+
+func (r *RepoPG) GetStateOrderEcom(ctx context.Context, id string, tx *gorm.DB) (rs model.EcomOrderState, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetOneOrder")
+
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if len(id) == 9 {
+		if err = tx.Table("ecom_order").Select("id, state").Where("order_number = ?", id).First(&rs).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOneOrderEcom - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrderEcom - RepoPG")
+				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+			}
+		}
+	} else {
+		if err = tx.Table("ecom_order").Select("id, state").Where("id = ?", id).First(&rs).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				log.WithError(err).Error("error_404: record not found in GetOneOrderEcom - RepoPG")
+				return rs, ginext.NewError(http.StatusNotFound, utils.MessageError()[http.StatusNotFound])
+			} else {
+				log.WithError(err).Error("error_500: get one order in GetOneOrderEcom - RepoPG")
 				return rs, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 			}
 		}
@@ -1015,6 +1050,29 @@ func (r *RepoPG) GetContactDelivering(ctx context.Context, req model.OrderParam,
 	return rs, nil
 }
 
+func (r *RepoPG) GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam, tx *gorm.DB) (rs []model.ContactDelivering, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	tx = tx.Model(&model.Order{}).Select("contact_id, count(contact_id) as count").Where("business_id = ?", req.BusinessID)
+
+	if req.State != "" {
+		tx = tx.Where("state IN (?)", req.State)
+	}
+
+	if req.ContactIDs != "" {
+		stateArr := strings.Split(req.ContactIDs, ",")
+		if err = tx.Where("contact_id IN (?)", stateArr).Group("contact_id").Find(&rs).Error; err != nil {
+			return rs, err
+		}
+	}
+
+	return rs, nil
+}
+
 func (r *RepoPG) GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error) {
 	log := logger.WithCtx(ctx, "RepoPG.GetTotalContactDelivery").WithField("req", req)
 
@@ -1058,6 +1116,30 @@ func (r *RepoPG) GetCountQuantityInOrder(ctx context.Context, req model.CountQua
 		SELECT sum(quantity) AS SUM
 		FROM order_item a
 		LEFT JOIN orders b ON b.id = a.order_id
+		WHERE a.sku_id = ?
+		  AND a.deleted_at IS NULL
+		  AND b.deleted_at IS NULL
+		  AND b.business_id = ?
+		  AND b.state IN (?)
+		`
+
+	if err := tx.Raw(query, req.SkuID, req.BusinessID, req.States).Scan(&rs).Error; err != nil {
+		return rs, err
+	}
+
+	return rs, nil
+}
+
+func (r *RepoPG) GetCountQuantityInOrderEcom(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error) {
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+	query := `
+		SELECT sum(quantity) AS SUM
+		FROM ecom_order_item a
+		LEFT JOIN ecom_orders b ON b.id = a.order_id
 		WHERE a.sku_id = ?
 		  AND a.deleted_at IS NULL
 		  AND b.deleted_at IS NULL
@@ -1128,14 +1210,14 @@ func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom,
 	eg := errgroup.Group{}
 
 	for _, v := range rs {
-		tmp := model.OrderEcom{}
 		eg.Go(func() error {
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				UpdateAll: true,
-			}).Create(&tmp).Error; err != nil {
+			}).Create(&v).Error; err != nil {
 				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
 			}
+
 			return nil
 		})
 	}
@@ -1145,6 +1227,62 @@ func (r *RepoPG) UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom,
 	// log time
 	elapsed := time.Since(start)
 	log.Printf("%s took %s for %s orders", "Storage order ecom", elapsed, strconv.Itoa(len(rs)))
+}
+
+func (r *RepoPG) UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder, tx *gorm.DB) {
+	start := time.Now()
+	log := logger.WithCtx(ctx, "UpdateMultiEcomOrder")
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	eg := errgroup.Group{}
+	mapEcomOrder := make(map[string]model.EcomOrder)
+	for _, v := range rs {
+		tmp := v
+		mapEcomOrder[v.ID.String()] = v
+		eg.Go(func() error {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				UpdateAll: true,
+				//DoNothing: true,
+			}).Omit("EcomOrderItem").Create(&tmp).Error; err != nil {
+				//}).Create(&tmp).Error; err != nil {
+				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order ecom")
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				UpdateAll: true,
+			}).Create(&v.EcomOrderItem).Error; err != nil {
+				log.WithError(err).WithField("order ecom ID ", v.ID).Error("error_500 : Error when create or update order item ecom")
+			}
+			return nil
+
+		})
+
+	}
+
+	_ = eg.Wait()
+
+	// log time
+	elapsed := time.Since(start)
+	log.Printf("%s took %s for %s orders", "Storage order ecom", elapsed, strconv.Itoa(len(rs)))
+}
+
+func PushConsumer(ctx context.Context, value interface{}, topic string) {
+	log := logger.WithCtx(ctx, "PushConsumer")
+
+	s, _ := json.Marshal(value)
+	_, err := utils.PushConsumer(utils.ConsumerRequest{
+		Topic: topic,
+		Body:  string(s),
+	})
+	log.WithError(err).Error("PushConsumer topic: " + topic + " body: " + string(s))
+	if err != nil {
+		log.WithError(err).Error("Fail to push consumer " + topic + ": %")
+	}
 }
 
 func (r *RepoPG) CountOrder(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.OrderTotal, error) {
@@ -1234,6 +1372,350 @@ func (r *RepoPG) GetOrderItemRevenueAnalytics(ctx context.Context, input model.G
 
 	if rs.Meta, err = r.GetPaginationInfo("", tx, int(total), page, pageSize); err != nil {
 		return rs, err
+	}
+	return rs, nil
+}
+
+// 01/03/2022 - hieucn - multi product line
+func (r *RepoPG) UpdateDetailOrderSellerV2(ctx context.Context, order model.Order, lstItem []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.UpdateDetailOrderSellerV2")
+
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		tx = tx.Begin()
+		defer func() {
+			tx.Rollback()
+			cancel()
+		}()
+	}
+
+	for _, item := range lstItem {
+		item.OrderID = order.ID
+		order.OrderItem = append(order.OrderItem, item)
+		// Thêm số lượng khách đang đặt bên stock (+ quantity)
+		stocks = append(stocks, model.StockRequest{
+			SkuID:          item.SkuID,
+			QuantityChange: item.Quantity,
+		})
+	}
+
+	for _, orderItem := range order.OrderItem {
+		if orderItem.ID == uuid.Nil {
+			orderItem.CreatorID = order.UpdaterID
+			//time.Sleep(3 * time.Second) - test multi request call in one time
+			// 01/03/2022 - hieucn - change FirstAndCreate to Create
+			if err = tx.Create(&orderItem).Error; err != nil {
+				log.WithError(err).Error("error_500: create if exists order_item in UpdateDetailOrder - RepoPG")
+				return model.Order{}, nil, err
+			}
+
+			// log history order item
+			go func() {
+				desc := utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM + " in UpdateDetailOrderSellerV2 func - OrderService"
+				history, _ := utils.PackHistoryModel(context.Background(), orderItem.UpdaterID, order.UpdaterID.String(), orderItem.ID, utils.TABLE_ORDER_ITEM, utils.ACTION_CREATE_OR_SELECT_ORDER_ITEM, desc, orderItem, nil)
+				r.LogHistory(context.Background(), history, nil)
+			}()
+		} else {
+			// 01/03/2022 - hieucn - delete old item, create new item
+			orderItem.UpdaterID = order.UpdaterID
+			if err = tx.Where("id = ?", orderItem.ID).Delete(&orderItem).Error; err != nil {
+				log.WithError(err).Error("error_500: delete order_item in UpdateDetailOrderSellerV2 - RepoPG")
+				return model.Order{}, nil, err
+			}
+
+			// log history order item
+			go func() {
+				desc := utils.ACTION_DELETE_ORDER_ITEM + " in UpdateDetailOrderSellerV2 func - OrderService"
+				history, _ := utils.PackHistoryModel(context.Background(), orderItem.UpdaterID, order.UpdaterID.String(), orderItem.ID, utils.TABLE_ORDER_ITEM, utils.ACTION_DELETE_ORDER_ITEM, desc, orderItem, nil)
+				r.LogHistory(context.Background(), history, nil)
+			}()
+		}
+	}
+
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Save(&order).Error; err != nil {
+		log.WithError(err).Error("error_500: update order in UpdateDetailOrderSellerV2 - RepoPG")
+		return model.Order{}, nil, err
+	}
+
+	if err = tx.Model(&model.Order{}).Where("id = ?", order.ID).Preload("OrderItem", func(db *gorm.DB) *gorm.DB {
+		return db.Order("order_item.created_at ASC")
+	}).Preload("PaymentOrderHistory", func(db *gorm.DB) *gorm.DB {
+		return db.Table("payment_order_history").Order("payment_order_history.created_at DESC")
+	}).First(&rs).Error; err != nil {
+		return model.Order{}, nil, err
+	}
+
+	tx.Commit()
+	return rs, stocks, nil
+}
+
+func (r *RepoPG) CountOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error) {
+	rs := model.CountOrderAnalytics{}
+	query := ""
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_WEEK || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query += `select temp.business_id,
+					COALESCE(MAX(temp.total_revenue),0) AS total_revenue,
+					COALESCE(MAX(temp.total_cancel),0) AS total_cancel,
+					COALESCE(MAX(temp.count_revenue),0) AS count_revenue,
+					COALESCE(MAX(temp.count_cancel),0) AS count_cancel
+   	from
+   		(select o.business_id ,
+   			case WHEN  state ='complete' then sum(grand_total) end as total_revenue ,
+   			case WHEN  state ='cancel' then sum(grand_total) end as total_cancel ,
+   			case WHEN  state ='complete' then count(*) end as count_revenue,
+   			case WHEN  state ='cancel' then count(*) end as count_cancel 
+  		 from orders o
+  			where business_id = ?`
+
+		if req.StartTime != nil && req.EndTime != nil {
+			query += ` AND updated_at BETWEEN ? AND ? `
+		}
+		query += `group by business_id ,state ) 
+		as temp group by business_id`
+	} else {
+		query += `select temp.business_id,
+					COALESCE(sum(temp.total_revenue),0) AS total_revenue,
+					COALESCE(sum(temp.last_period_total_revenue),0) AS last_period_total_revenue,
+					COALESCE(sum(temp.total_cancel),0) AS total_cancel,
+					COALESCE(sum(temp.last_period_total_cancel),0) AS last_period_total_cancel,
+					COALESCE(sum(temp.count_revenue),0) AS count_revenue,
+					COALESCE(sum(temp.last_period_count_revenue),0) AS last_period_count_revenue,
+					COALESCE(sum(temp.count_cancel),0) AS count_cancel,
+					COALESCE(sum(temp.last_period_count_cancel),0) AS last_period_count_cancel
+				from
+					  (select o.business_id ,
+						   case WHEN state ='complete' and updated_at  > 'first_date'
+							   then sum(grand_total) end as total_revenue,
+						   case WHEN  state ='complete' and updated_at  < 'per_last_date'
+							   then sum(grand_total) end as last_period_total_revenue,
+						   case WHEN  state ='cancel' and updated_at  > 'first_date' 
+							   then sum(grand_total) end as total_cancel ,
+						   case WHEN  state ='cancel' and updated_at  < 'per_last_date' 
+							  then sum(grand_total) end as last_period_total_cancel ,
+						   case WHEN  state ='complete' and updated_at > 'first_date'
+							  then count(*) end as count_revenue,
+						   case WHEN  state ='complete' and updated_at < 'per_last_date'
+							   then count(*) end as last_period_count_revenue,
+						   case WHEN  state ='cancel' and updated_at  > 'first_date'
+							   then count(*) end as count_cancel,
+						   case WHEN  state ='cancel' and updated_at < 'per_last_date' 
+							   then sum(grand_total) end as last_period_count_cancel
+				   from orders o where business_id = ?
+						  and ((updated_at) > 'per_first_date' AND (updated_at) < 'last_date')
+				  group by business_id ,updated_at,state) as temp group by business_id;`
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountOrderAnalytics{}, nil
+		}
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_WEEK || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.CountOrderAnalytics{}, nil
+			}
+		} else {
+			return model.CountOrderAnalytics{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountOrderAnalytics{}, nil
+		}
+	}
+
+	revenue, err := r.CountBuyer(ctx, model.GetOrderAnalyticsRequest{
+		BusinessID: req.BusinessID,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Type:       req.Type,
+	})
+	if err != nil {
+		return model.CountOrderAnalytics{}, err
+	}
+
+	buyerNew, err := r.CountBuyerNew(ctx, model.GetOrderAnalyticsRequest{
+		BusinessID: req.BusinessID,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Type:       req.Type,
+	})
+	if err != nil {
+		return model.CountOrderAnalytics{}, err
+	}
+	rs.TotalBuyerNew = buyerNew.TotalBuyerNew
+	rs.LastPeriodTotalBuyerNew = buyerNew.LastPeriodTotalBuyerNew
+	rs.TotalBuyer = revenue.TotalBuyer
+	rs.LastPeriodTotalBuyer = revenue.LastPeriodTotalBuyer
+	return rs, nil
+}
+
+func (r *RepoPG) CountBuyer(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyer, error) {
+	query := ""
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		query += `select count(*) total_buyer from (select contact_id  from orders o
+				where business_id = ?`
+		if req.StartTime != nil && req.EndTime != nil {
+			query += " AND created_at BETWEEN ? AND ? "
+		}
+		query += `group by contact_id ) as temp`
+	} else {
+
+		query += `select
+					COALESCE(count(total_buyer),0) AS total_buyer,
+					COALESCE(count(last_period_total_buyer),0) AS last_period_total_buyer
+				   	from
+					  (select distinct
+						   case WHEN created_at  > 'first_date'
+							   then contact_id end as total_buyer,
+						   case WHEN  created_at  < 'per_last_date'
+							   then contact_id end as last_period_total_buyer						  
+				   	from orders o where business_id = ?
+						  and (created_at > 'per_first_date' AND created_at < 'last_date')
+				  	group by contact_id,created_at) as temp;`
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountBuyer{}, nil
+		}
+	}
+	rs := model.CountBuyer{}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.CountBuyer{}, nil
+			}
+		} else {
+			return model.CountBuyer{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountBuyer{}, nil
+		}
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) CountBuyerNew(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyerNew, error) {
+	query := ""
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		query += `select count (*) as total_buyer_new, null as last_period_total_buyer_new from 
+					(select distinct contact_id as total_buyer_new
+				from orders o where business_id = 'business_id_req'
+					and (created_at > ? AND created_at < ? )
+		 		group by contact_id) temp  
+					where total_buyer_new not IN (
+		 		select distinct
+				   contact_id  as last_period_total_buyer
+			   from orders o where business_id = 'business_id_req'
+					and created_at < ? and contact_id is not null 
+	 	 	group by contact_id)`
+
+		query = strings.ReplaceAll(query, "business_id_req", valid.String(req.BusinessID))
+	} else {
+
+		query += `select total_buyer_new, last_period_total_buyer_new
+					from ( select generate_series(0, 0 ) as index, count (*) as total_buyer_new 
+						from ( select distinct contact_id as total_buyer_new
+							from orders o where business_id = 'req_business_id'
+								and (created_at) > 'first_date'
+								and (created_at) < 'last_date' 
+							group by
+								contact_id) temp
+						where total_buyer_new not in (
+							select distinct contact_id as last_period_total_buyer
+							from orders o
+							where
+								business_id = 'req_business_id'
+								and (created_at) < 'first_date'
+									and contact_id is not null
+								group by
+									contact_id)
+						) temp_order
+					inner join (
+						select generate_series(0, 0 ) as index, count (*) as last_period_total_buyer_new
+						from ( select distinct contact_id as total_buyer_new
+							from orders o where business_id = 'req_business_id'
+								and (created_at) > 'per_first_date'
+								and (created_at) < 'per_last_date' 
+							group by
+								contact_id) temp
+						where total_buyer_new not in ( select distinct contact_id as last_period_total_buyer
+							from orders o
+							where business_id = 'req_business_id'
+								and (created_at) < 'per_first_date'
+									and contact_id is not null
+								group by
+									contact_id)) last_temp_order on
+						temp_order.index = last_temp_order.index`
+
+		query = strings.ReplaceAll(query, "req_business_id", valid.String(req.BusinessID))
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountBuyerNew{}, nil
+		}
+	}
+	rs := model.CountBuyerNew{}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.StartTime, req.EndTime, req.StartTime).Scan(&rs).Error; err != nil {
+				return model.CountBuyerNew{}, nil
+			}
+		} else {
+			return model.CountBuyerNew{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query).Scan(&rs).Error; err != nil {
+			return model.CountBuyerNew{}, nil
+		}
 	}
 	return rs, nil
 }

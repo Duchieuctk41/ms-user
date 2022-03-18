@@ -56,12 +56,16 @@ type OrderServiceInterface interface {
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res model.ListOrderResponse, err error)
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error)
+	GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam) (res map[string]int, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
+	GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error)
+	GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error)
 
 	// version 2
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 	UpdateDetailOrderSeller(ctx context.Context, req model.UpdateDetailOrderRequest, userRole string) (res interface{}, err error)
+	UpdateDetailOrderSellerV2(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error)
 	GetOneOrderBuyer(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 	UpdateOrderV2(ctx context.Context, req model.OrderUpdateBody) (res interface{}, err error)
 	GetlistOrderV2(ctx context.Context, req model.OrderParam) (res model.ListOrderResponse, err error)
@@ -73,8 +77,28 @@ type OrderServiceInterface interface {
 
 	OverviewOrder(ctx context.Context, req model.OrverviewRequest) (res model.OverviewOrderResponse, err error)
 	GetOrderItemRevenueAnalytics(ctx context.Context, req model.GetOrderRevenueAnalyticsParam) (res model.ListOrderRevenueAnalyticsResponse, err error)
+	CreateOrderSellerV3(ctx context.Context, req model.OrderBody) (res interface{}, err error)
 
 	//SendEmailOrder(ctx context.Context, req model.SendEmailRequest) (res interface{}, err error)
+	DeleteLogHistory(ctx context.Context) error
+}
+
+func CheckNanInt(i int, j int) float64 {
+	if j == 0 {
+		return 0
+	}
+	return float64(i) / float64(j)
+}
+
+func CheckNanFloat(i float64, j int) float64 {
+	if j == 0 {
+		return 0
+	}
+	return i / float64(j)
+}
+
+func Round(x, unit float64) float64 {
+	return math.Round(x/unit) * unit
 }
 
 func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error) {
@@ -101,6 +125,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 			ContactID:           order.ContactID,
 			OrderNumber:         order.OrderNumber,
 			PromotionCode:       order.PromotionCode,
+			PromotionDiscount:   order.PromotionDiscount,
 			OrderedGrandTotal:   order.OrderedGrandTotal,
 			DeliveryFee:         order.DeliveryFee,
 			GrandTotal:          order.GrandTotal,
@@ -137,7 +162,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 				ProductType:         orderItem.ProductType,
 				CanPickQuantity:     orderItem.CanPickQuantity,
 				SkuActive:           orderItem.SkuActive,
-				Price:               orderItem.Price,
+				Price:               valid.Float64(orderItem.Price),
 			}
 			rs.OrderBuyerResponse.OrderItem = append(rs.OrderBuyerResponse.OrderItem, o)
 		}
@@ -405,6 +430,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
@@ -451,10 +477,13 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 			orderItem.UOM = mapSku[orderItem.SkuID.String()].Uom
 			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
 		}
-		if orderItem.ProductSellingPrice != 0 {
-			orderItem.Price = orderItem.ProductSellingPrice
-		} else {
-			orderItem.Price = orderItem.ProductNormalPrice
+		// 03/03/2022 - hieucn - accept price == 0
+		if orderItem.Price == nil {
+			if orderItem.ProductSellingPrice != 0 {
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductSellingPrice)
+			} else {
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductNormalPrice)
+			}
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
@@ -628,7 +657,7 @@ func (s *OrderService) OrderProcessing(ctx context.Context, order model.Order, d
 				Action:          "create",
 				Description:     valid.String(debit.Note),
 				StartTime:       time.Now().UTC(),
-				Images:          debit.Images,
+				Images:          order.Images,
 				LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 				ObjectKey:       order.OrderNumber,
 				ObjectType:      "order",
@@ -782,7 +811,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 	return nil
 }
 
-func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID) error {
+func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID, tx *gorm.DB) error {
 	log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
 	payment.CreatorID = userID
 
@@ -805,7 +834,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	//}
 
 	// get shop info
-	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, nil); err != nil {
+	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, tx); err != nil {
 		log.Errorf("Fail to CreatePaymentOrderHistory due to %v", err)
 		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
@@ -814,7 +843,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	go func() {
 		desc := utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY + " in CreatePaymentOrderHistory func - PaymentOrderHistoryService"
 		history, _ := utils.PackHistoryModel(context.Background(), userID, userID.String(), payment.ID, utils.TABLE_PAYMENT_ORDER_HISTORY, utils.ACTION_CREATE_PAYMENT_ORDER_HISTORY, desc, payment, nil)
-		s.historyService.LogHistory(context.Background(), history, nil)
+		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
 	// count
@@ -1058,6 +1087,48 @@ func (s *OrderService) CreateBusinessTransactionV2(ctx context.Context, order mo
 	return nil
 }
 
+func (s *OrderService) CreateBusinessTransactionEcom(ctx context.Context, order model.EcomOrder, payment model.PaymentOrderHistory, transactionType string, desc string, userID uuid.UUID) error {
+	log := logger.WithCtx(ctx, "OrderService.CreateBusinessTransactionEcom")
+	// Create Business transaction
+	cateIDSell, _ := uuid.Parse(utils.CATEGORY_SELL)
+	businessTransaction := model.BusinessTransaction{
+		ID:              uuid.New(),
+		CreatorID:       userID,
+		BusinessID:      order.BusinessID,
+		Day:             time.Now().UTC(),
+		Amount:          payment.Amount,
+		Currency:        "VND",
+		TransactionType: transactionType,
+		Status:          "paid",
+		Action:          "create",
+		Description:     desc,
+		CategoryID:      cateIDSell,
+		CategoryName:    "Shopee",
+		LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		ObjectKey:       order.OrderNumber,
+		ObjectType:      "order_ecom",
+		Table:           "income",
+		PaymentMethod:   order.PaymentMethod,
+		// PaymentSourceID:   payment.PaymentSourceID,
+		// PaymentSourceName: payment.Name,
+	}
+
+	header := make(map[string]string)
+	header["x-user-id"] = userID.String()
+
+	// 22-01-2022 - thanhvc - skip process complete mission case_book
+	// add more header skip-complete-mission = true, when call api to ms-transaction
+	// it will skip processing complete mission cash_book
+	header["skip-complete-mission"] = "true"
+
+	_, _, err := common.SendRestAPI(conf.LoadEnv().FinanTransaction+"/api/v1/business-transaction/create", rest.Post, header, nil, businessTransaction)
+	if err != nil {
+		log.WithError(err).Error("Error when create business transaction in CreateBusinessTransactionEcom")
+		return err
+	}
+	return nil
+}
+
 func (s *OrderService) CreateContactTransaction(ctx context.Context, req model.ContactTransaction) error {
 	log := logger.WithCtx(ctx, "OrderService.CreateContactTransaction")
 
@@ -1085,7 +1156,7 @@ func (s *OrderService) CreateContactTransactionV2(ctx context.Context, order mod
 			Status:          "create",
 			Action:          "create",
 			StartTime:       time.Now().UTC(),
-			Images:          debit.Images,
+			Images:          order.Images,
 			LatestSyncTime:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 			ObjectKey:       order.OrderNumber,
 			ObjectType:      "order",
@@ -1145,6 +1216,42 @@ func (s *OrderService) CreatePo(ctx context.Context, order model.Order, checkCom
 					Quantity:           v.Quantity,
 					DeliveringQuantity: &countQuantityInOrder.Sum,
 				})
+			}
+
+		}
+		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO_V2)
+	}
+	return nil
+}
+
+func (s *OrderService) CreatePoEcom(ctx context.Context, order model.EcomOrder, tMap map[string]model.SkuHasSkuEcom, checkCompleted string, poType string) (err error) {
+	// Make data for push consumer
+	reqCreatePo := model.PurchaseOrderRequest{
+		PoType:        poType,
+		Note:          "Đơn hàng " + order.OrderNumber,
+		ContactID:     order.ContactID,
+		TotalDiscount: order.OtherDiscount,
+		BusinessID:    order.BusinessID,
+		PoDetails:     nil,
+		Option:        checkCompleted,
+	}
+	if len(tMap) > 0 {
+		for _, v := range order.EcomOrderItem {
+			if _, ok := tMap[v.ID.String()]; ok {
+				req := model.CountQuantityInOrderRequest{
+					BusinessID: order.BusinessID,
+					SkuID:      v.SkuID,
+					States:     []string{utils.ORDER_STATE_DELIVERING},
+				}
+				countQuantityInOrder, _ := s.repo.GetCountQuantityInOrder(ctx, req, nil)
+				skuID := uuid.MustParse(tMap[v.ID.String()].SkuID)
+				reqCreatePo.PoDetails = append(reqCreatePo.PoDetails, model.PoDetail{
+					SkuID:              skuID,
+					Pricing:            v.TotalAmount / v.Quantity,
+					Quantity:           v.Quantity,
+					DeliveringQuantity: &countQuantityInOrder.Sum,
+				})
+
 			}
 		}
 		go PushConsumer(ctx, reqCreatePo, utils.TOPIC_CREATE_PO_V2)
@@ -1783,7 +1890,7 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 			mapItemOld[v.SkuID.String()] = v
 		}
 
-		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, order.CreateMethod)
+		rCheck, err := utils.CheckCanPickQuantityV4(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.BUYER_CREATE_METHOD)
 		if err != nil {
 			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
 			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
@@ -1817,9 +1924,9 @@ func (s *OrderService) UpdateDetailOrder(ctx context.Context, req model.UpdateDe
 				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
 			}
 			if req.ListOrderItem[i].ProductSellingPrice != 0 {
-				req.ListOrderItem[i].Price = v.ProductSellingPrice
+				req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductSellingPrice)
 			} else {
-				req.ListOrderItem[i].Price = v.ProductNormalPrice
+				req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
 			}
 			mapItem[v.SkuID.String()] = req.ListOrderItem[i]
 		}
@@ -2005,8 +2112,8 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 		for i, v := range req.ListOrderItem {
 
 			itemTotalAmount := 0.0
-			if v.Price != 0 {
-				itemTotalAmount = v.Price * v.Quantity
+			if v.Price != nil {
+				itemTotalAmount = valid.Float64(v.Price) * v.Quantity
 			} else {
 				if v.ProductSellingPrice > 0 {
 					itemTotalAmount = v.ProductSellingPrice * v.Quantity
@@ -2023,11 +2130,11 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 				req.ListOrderItem[i].WholesalePrice = mapSku[v.SkuID.String()].WholesalePrice
 			}
 
-			if req.ListOrderItem[i].Price == 0 {
+			if req.ListOrderItem[i].Price == nil {
 				if req.ListOrderItem[i].ProductSellingPrice != 0 {
-					req.ListOrderItem[i].Price = v.ProductSellingPrice
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductSellingPrice)
 				} else {
-					req.ListOrderItem[i].Price = v.ProductNormalPrice
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
 				}
 			}
 
@@ -2045,6 +2152,7 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 		}
 
 		// hieucn -02/03/2022 - fix seller self setup delevery_fee
+		deliveryFee = valid.Float64(req.DeliveryFee)
 		//if req.DeliveryMethod != nil {
 		//	switch valid.String(req.DeliveryMethod) {
 		//	case utils.DELIVERY_METHOD_BUYER_PICK_UP:
@@ -2607,10 +2715,26 @@ func (s *OrderService) GetContactDelivering(ctx context.Context, req model.Order
 			return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
 		}
 		if len(lstContact) > 0 {
-			contact.Data[i].ContactInfo = lstContact[0]
+			contact.Data[i].ContactInfo = &lstContact[0]
 		}
 	}
 	return contact, nil
+}
+func (s *OrderService) GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam) (res map[string]int, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetNumberDelivering")
+
+	contact, err := s.repo.GetNumberDelivering(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
+		return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+	}
+
+	data := make(map[string]int)
+	for _, v := range contact {
+		data[v.ContactID.String()] = v.Count
+	}
+
+	return data, nil
 }
 
 func (s *OrderService) GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (res model.TotalContactDelivery, err error) {
@@ -2670,6 +2794,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		req.State = utils.ORDER_STATE_WAITING_CONFIRM
 		buyerID = req.UserID
 
+		// 02/03/2022 - hieucn - check valid address with buyer
+		if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+			log.Error("error_400: Địa chỉ không được để trống")
+			return nil, ginext.NewError(http.StatusBadRequest, "Địa chỉ không được để trống")
+		}
+
 		break
 	case utils.SELLER_CREATE_METHOD:
 		// check buyer received or not
@@ -2680,6 +2810,11 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		// if req.State == utils.ORDER_STATE_COMPLETE {
 		// 	checkCompleted = utils.FAST_ORDER_COMPLETED
 		// }
+
+		// 02/03/2022 - hieucn - set adress default with null address
+		if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+			req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+		}
 
 		tUser, err := s.GetUserList(ctx, req.BuyerInfo.PhoneNumber, "")
 		if err != nil {
@@ -2864,6 +2999,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
@@ -2926,7 +3062,7 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 		}
 		history.DataRequest = requestData
 
-		s.historyService.LogHistory(ctx, history, tx)
+		s.historyService.LogHistory(context.Background(), history, tx)
 	}()
 
 	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
@@ -2942,9 +3078,9 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
 		}
 		if orderItem.ProductSellingPrice != 0 {
-			orderItem.Price = orderItem.ProductSellingPrice
+			orderItem.Price = valid.Float64Pointer(orderItem.ProductSellingPrice)
 		} else {
-			orderItem.Price = orderItem.ProductNormalPrice
+			orderItem.Price = valid.Float64Pointer(orderItem.ProductNormalPrice)
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
 		if err != nil {
@@ -3005,6 +3141,12 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 //============================== version 2 ===========================================//
 func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
 	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
+
+	// 02/03/2022 - hieucn - check valid address with buyer
+	if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		log.Error("error_400: Địa chỉ không được để trống")
+		req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+	}
 
 	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
 	debit := model.Debit{}
@@ -3074,9 +3216,23 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	}
 
 	// check can pick quantity
-	rCheck, err := utils.CheckCanPickQuantityV5(ctx, req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, req.CreateMethod)
+	rCheck, err := utils.CheckCanPickQuantityV4(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, utils.SELLER_CREATE_METHOD)
 	if err != nil {
-		return rCheck, err
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	} else {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status == utils.SOLD_OUT {
+			log.WithError(err).Error("Error: Sản phẩm tạm hết hàng")
+			return rCheck, nil
+		}
+		if rCheck.Status != utils.STATUS_SUCCESS {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return rCheck, nil
+		}
 	}
 	mapSku := make(map[string]model.CheckValidStockResponse)
 	for _, v := range rCheck.ItemsInfo {
@@ -3131,6 +3287,7 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		BuyerId:           &buyerID,
 		OtherDiscount:     req.OtherDiscount,
 		Email:             req.Email,
+		Images:            req.Images,
 	}
 
 	// parse buyer_info from struct to jsonb
@@ -3168,13 +3325,11 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		return nil, err
 	}
 
-	tx.Commit()
-
 	paymentOrderHistory.OrderID = order.ID
 
 	// create payment_order_history, then append to response
 	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
-		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID, tx); err != nil {
 			return nil, err
 		}
 		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -3189,6 +3344,8 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 	}
+
+	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
@@ -3313,8 +3470,8 @@ func (s *OrderService) ImplementCreateOrder(ctx context.Context, order *model.Or
 func (s *OrderService) CountAmountOrder(ctx context.Context, listOrderItem []model.OrderItem) (orderGrandTotal float64) {
 	for i, v := range listOrderItem {
 		itemTotalAmount := 0.0
-		if v.Price != 0 {
-			itemTotalAmount = v.Price * v.Quantity
+		if v.Price != nil {
+			itemTotalAmount = valid.Float64(v.Price) * v.Quantity
 		} else {
 			if v.ProductSellingPrice > 0 {
 				itemTotalAmount = v.ProductSellingPrice * v.Quantity
@@ -3350,11 +3507,12 @@ func (s *OrderService) CreateMultiOrderItem(ctx context.Context, listOrderItem [
 			orderItem.HistoricalCost = mapSku[orderItem.SkuID.String()].HistoricalCost
 			orderItem.WholesalePrice = mapSku[orderItem.SkuID.String()].WholesalePrice
 		}
-		if orderItem.Price == 0 {
+		// 03/03/2022 - hieucn - accept price == 0
+		if orderItem.Price == nil {
 			if orderItem.ProductSellingPrice != 0 {
-				orderItem.Price = orderItem.ProductSellingPrice
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductSellingPrice)
 			} else {
-				orderItem.Price = orderItem.ProductNormalPrice
+				orderItem.Price = valid.Float64Pointer(orderItem.ProductNormalPrice)
 			}
 		}
 		tm, err := s.repo.CreateOrderItem(ctx, orderItem, tx)
@@ -3454,9 +3612,8 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 			log.Errorf("Error send email: %v", err.Error())
 			return nil, err
 		}
-		var sendEmailOrderReq model.SendEmailRequest
-		sendEmailOrderReq = sendEmailReq
-		if _, err = s.SendEmailOrder(ctx, sendEmailOrderReq); err != nil {
+
+		if _, err = s.SendEmailOrder(ctx, sendEmailReq); err != nil {
 			return nil, err
 		}
 		break
@@ -3478,8 +3635,120 @@ func (s *OrderService) ProcessConsumer(ctx context.Context, req model.ProcessCon
 			log.WithError(err).Error("error_500 : error when unmarshal payload data")
 			return nil, err
 		}
+		// hieucn - 06/03/2022 - delete log history
+	case utils.TOPIC_DELETE_LOG_HISTORY:
+		go s.repo.DeleteLogHistory(context.Background(), nil)
+		break
+	case utils.TOPIC_UPDATE_ECOM_ORDER:
+		// Update multi order Ecom
+		var updateReq []model.EcomOrder
+		if err := json.Unmarshal([]byte(req.Payload), &updateReq); err != nil {
+			log.WithError(err).Error("error_500 : error when unmarshal payload data")
+			return nil, err
+		}
 
-		go s.repo.UpdateMultiOrderEcom(context.Background(), updateReq, nil)
+		go s.repo.UpdateMultiEcomOrder(context.Background(), updateReq, nil)
+
+		for _, v := range updateReq {
+
+			orderEcom, err := s.repo.GetStateOrderEcom(ctx, v.ID.String(), nil)
+			if err != nil {
+				log.WithError(err).Errorf("Error when GetOneOrder")
+				return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+			var listSkuEcomRequest []string
+			for _, ecomOrderItem := range v.EcomOrderItem {
+				listSkuEcomRequest = append(listSkuEcomRequest, ecomOrderItem.SkuID.String())
+			}
+			perStateOrderEcom := orderEcom.State
+
+			// get sku_id and ecom_sku_id tương ứng
+			listSkuEcomResponse, err := utils.CheckSkuEcomHasStock(v.BusinessID.String(), listSkuEcomRequest)
+			if err != nil {
+				log.WithError(err).Errorf("Error when get sku ecom has stock")
+				return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+			tMap := make(map[string]model.SkuHasSkuEcom)
+			for _, v := range listSkuEcomResponse {
+				tMap[v.EcomSkuID] = v
+			}
+
+			switch v.State {
+			case utils.ORDER_STATE_DELIVERING:
+				if v.State == utils.ORDER_STATE_DELIVERING && perStateOrderEcom != utils.ORDER_STATE_DELIVERING {
+					// Make data for push consumer
+					reqUpdateStock := model.CreateStockRequest{
+						TrackingType:   "order_delivering",
+						IDTrackingType: v.OrderNumber,
+						BusinessID:     v.BusinessID,
+					}
+					tResToJson, _ := json.Marshal(v)
+					if err := json.Unmarshal(tResToJson, &reqUpdateStock.TrackingInfo); err != nil {
+						log.WithError(err).Error("Error when marshal parse response to json when create stock")
+					} else {
+						for _, ecomOrderItem := range v.EcomOrderItem {
+							if _, ok := tMap[ecomOrderItem.ID.String()]; ok {
+								req := model.CountQuantityInOrderRequest{
+									BusinessID: v.BusinessID,
+									SkuID:      ecomOrderItem.SkuID,
+									States:     []string{utils.ORDER_STATE_DELIVERING},
+								}
+								countQuantityInOrder, _ := s.repo.GetCountQuantityInOrderEcom(ctx, req, nil)
+								skuID := uuid.MustParse(tMap[ecomOrderItem.ID.String()].SkuID)
+								reqUpdateStock.ListStock = append(reqUpdateStock.ListStock, model.StockRequest{
+									SkuID:                  skuID,
+									QuantityChange:         ecomOrderItem.Quantity,
+									DeliveringEcomQuantity: countQuantityInOrder.Sum,
+								})
+							}
+						}
+						if len(reqUpdateStock.ListStock) != 0 {
+							go PushConsumer(ctx, reqUpdateStock, utils.TOPIC_UPDATE_STOCK_V2)
+						}
+					}
+				}
+
+			case utils.ORDER_COMPLETED:
+				// Make data for push consumer
+				if v.State == utils.ORDER_STATE_DELIVERING && perStateOrderEcom != utils.ORDER_STATE_DELIVERING {
+					revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
+						BusinessID: v.BusinessID.String(),
+					}, nil)
+					if err == nil {
+						strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
+						s.UpdateBusinessCustomField(ctx, v.BusinessID, "business_revenue", strSumGrandTotal)
+					}
+
+					//----------------------------------------------------------------------------------------------------
+					go s.CreateBusinessTransactionEcom(ctx, v, model.PaymentOrderHistory{}, "in", "Đơn hàng Shopee "+v.OrderNumber, uuid.Nil)
+
+				}
+				if len(listSkuEcomResponse) > 0 {
+					go PushConsumer(context.Background(), v.EcomOrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY)
+					go s.CreatePoEcom(context.Background(), v, tMap, "", utils.PO_OUT)
+				}
+			case utils.ORDER_CANCELLED:
+				if v.State == utils.ORDER_CANCELLED && perStateOrderEcom != utils.ORDER_COMPLETED {
+					//TODO--------Update Business custom_field Revenue -------------------------------------------------------------START
+					revenue, err := s.repo.RevenueBusiness(ctx, model.RevenueBusinessParam{
+						BusinessID: v.BusinessID.String(),
+					}, nil)
+					if err == nil {
+						strSumGrandTotal := fmt.Sprintf("%.0f", revenue.SumGrandTotal)
+						s.UpdateBusinessCustomField(ctx, v.BusinessID, "business_revenue", strSumGrandTotal)
+					}
+					//TODO--------Update Business custom_field Revenue --------------------------------------------------------------END
+					go s.CreateBusinessTransactionEcom(context.Background(), v, model.PaymentOrderHistory{}, "out", "Hủy đơn hàng Shopee "+v.OrderNumber, uuid.Nil)
+
+					//TODO--------Update Product sold_quantity -------------------------------------------------------------START
+					if len(listSkuEcomResponse) > 0 {
+						go PushConsumer(context.Background(), v.EcomOrderItem, utils.TOPIC_UPDATE_SOLD_QUANTITY_CANCEL)
+						//TODO--------Update Product sold_quantity -------------------------------------------------------------END
+						go s.CreatePoEcom(context.Background(), v, tMap, utils.ORDER_CANCELLED, utils.PO_IN)
+					}
+				}
+			}
+		}
 		break
 	default:
 		log.Errorf("Topic not found in this service!")
@@ -3635,6 +3904,17 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		}
 	}
 
+	if req.State != nil && valid.String(req.State) == utils.ORDER_STATE_COMPLETE && preOrderState == utils.ORDER_STATE_DELIVERING {
+		if rCheck, err := utils.CheckValidStock(order.BusinessID, order.OrderItem); err != nil {
+			logrus.WithError(err).Errorf("Error when CheckValidStock from MS Warehouse")
+			return nil, ginext.NewError(http.StatusBadRequest, "Check valid stock for this order")
+		} else {
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				return rCheck, nil
+			}
+		}
+	}
+
 	common.Sync(req, &order)
 	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 {
 		debit = *req.Debit
@@ -3690,7 +3970,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 			}
 
 			// create payment_order_history, then append to response
-			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID)); err != nil {
+			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID), tx); err != nil {
 				return nil, err
 			}
 			paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -3781,4 +4061,584 @@ func (s *OrderService) GetOrderItemRevenueAnalytics(ctx context.Context, req mod
 	}
 
 	return orderItemAnalytic, nil
+}
+
+func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.UpdateDetailOrderRequest) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.UpdateDetailOrderSellerV2")
+
+	if len(req.ListOrderItem) == 0 {
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
+	order, err := s.repo.GetOneOrder(ctx, req.ID.String(), nil)
+	if err != nil {
+		log.WithError(err).Error("Error when call func GetOneOrder")
+		return nil, err
+	}
+
+	// check permission
+	if err = utils.CheckPermissionV4(ctx, req.UpdaterID.String(), order.BusinessID.String()); err != nil {
+		log.WithError(err).Error("Unauthorized")
+		return nil, ginext.NewError(http.StatusUnauthorized, utils.MessageError()[http.StatusUnauthorized])
+	}
+
+	if req.DeliveryFee != nil && req.DeliveryMethod != nil {
+		if valid.Float64(req.OtherDiscount) > (valid.Float64(req.OrderedGrandTotal) + valid.Float64(req.DeliveryFee) - valid.Float64(req.PromotionDiscount)) {
+			log.WithError(err).Error("Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không thể lớn hơn số tiền phải trả")
+		}
+	}
+
+	if order.State != utils.ORDER_STATE_WAITING_CONFIRM && order.State != utils.ORDER_STATE_DELIVERING {
+		log.WithError(err).Error("Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+		return nil, ginext.NewError(http.StatusBadRequest, "Trạng thái đơn hàng hiện tại không cho phép chỉnh sửa")
+	}
+
+	// Check valid order
+	//mapItem := make(map[string]model.OrderItem)
+	if len(req.ListOrderItem) > 0 && req.OrderedGrandTotal != nil && req.GrandTotal != nil && req.PromotionDiscount != nil && req.OtherDiscount != nil {
+		orderGrandTotal := 0.0
+		grandTotal := 0.0
+		deliveryFee := 0.0
+
+		//  Check valid order item
+		mapItemOld := make(map[string]model.OrderItem)
+		for _, v := range order.OrderItem {
+			mapItemOld[v.SkuID.String()] = v
+		}
+
+		rCheck, err := utils.CheckCanPickQuantityV5(req.UpdaterID.String(), req.ListOrderItem, order.BusinessID.String(), mapItemOld, utils.SELLER_CREATE_METHOD)
+		if err != nil {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+		} else {
+			if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+			}
+			if rCheck.Status != utils.STATUS_SUCCESS {
+				log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+				return rCheck, nil
+			}
+		}
+
+		mapSku := make(map[string]model.CheckValidStockResponse)
+		mapQuantity := map[string]float64{}
+		for _, v := range rCheck.ItemsInfo {
+			mapSku[v.ID.String()] = v
+			if _, ok := mapSku[v.ID.String()]; ok {
+				mapQuantity[v.ID.String()] += v.Quantity
+			} else {
+				mapQuantity[v.ID.String()] = v.Quantity
+			}
+			// 01/03/2022 - hieucn - check can pick quantity
+			if v.Quantity > mapSku[v.ID.String()].CanPickQuantity {
+				log.WithError(err).Error("error_400: Số lượng sản phẩm đặt hàng không đủ")
+				return rCheck, ginext.NewError(http.StatusBadRequest, "Lỗi: Số lượng sản phẩm đặt hàng không đủ")
+			}
+		}
+
+		for i, v := range req.ListOrderItem {
+
+			itemTotalAmount := 0.0
+			if v.Price != nil {
+				itemTotalAmount = valid.Float64(v.Price) * v.Quantity
+			} else {
+				if v.ProductSellingPrice > 0 {
+					itemTotalAmount = v.ProductSellingPrice * v.Quantity
+				} else {
+					itemTotalAmount = v.ProductNormalPrice * v.Quantity
+				}
+			}
+
+			req.ListOrderItem[i].TotalAmount = math.Round(itemTotalAmount)
+			orderGrandTotal += req.ListOrderItem[i].TotalAmount
+			if _, ok := mapSku[v.SkuID.String()]; ok {
+				req.ListOrderItem[i].UOM = mapSku[v.SkuID.String()].Uom
+				req.ListOrderItem[i].HistoricalCost = mapSku[v.SkuID.String()].HistoricalCost
+				req.ListOrderItem[i].WholesalePrice = mapSku[v.SkuID.String()].WholesalePrice
+			}
+
+			if req.ListOrderItem[i].Price == nil {
+				if req.ListOrderItem[i].ProductSellingPrice != 0 {
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductSellingPrice)
+				} else {
+					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
+				}
+			}
+		}
+
+		// Check promotion discount
+		if req.PromotionDiscount != nil && math.Round(valid.Float64(req.PromotionDiscount)) != math.Round(order.PromotionDiscount) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền khuyến mãi không được thay đổi khi cập nhật đơn")
+		}
+
+		// Check order grand total
+		if math.Round(orderGrandTotal) != math.Round(valid.Float64(req.OrderedGrandTotal)) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
+		}
+
+		deliveryFee = valid.Float64(req.DeliveryFee)
+
+		// Check other discount
+		if valid.Float64(req.OtherDiscount) < 0 || orderGrandTotal-order.PromotionDiscount-valid.Float64(req.OtherDiscount) < 0 {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền chiết khấu không hợp lệ")
+		}
+
+		// Check grand total
+		grandTotal = orderGrandTotal + deliveryFee - order.PromotionDiscount - valid.Float64(req.OtherDiscount)
+		if grandTotal < 0 {
+			grandTotal = 0
+		}
+		if math.Round(grandTotal) != math.Round(valid.Float64(req.GrandTotal)) {
+			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền phải trả không hợp lệ")
+		}
+	}
+
+	// Check and update buyer info
+	if req.BuyerInfo != nil && req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		// Update to order record
+		req.BuyerInfo.PhoneNumber = utils.ConvertVNPhoneFormat(req.BuyerInfo.PhoneNumber)
+		buyerInfo, err := json.Marshal(req.BuyerInfo)
+		if err != nil {
+			log.WithError(err).Errorf("Error when parse buyerInfo: %v", err.Error())
+		}
+		order.BuyerInfo.RawMessage = buyerInfo
+
+		// Update address of contact
+		getContactRequest := model.GetContactRequest{
+			BusinessID:  order.BusinessID,
+			Name:        req.BuyerInfo.Name,
+			PhoneNumber: req.BuyerInfo.PhoneNumber,
+			Address:     req.BuyerInfo.Address,
+		}
+		_, _, err = common.SendRestAPI(conf.LoadEnv().MSBusinessManagement+"/api/contact/get-contact-by-phone-number", rest.Post, nil, nil, getContactRequest)
+		if err != nil {
+			log.WithError(err).Errorf("Get contact error: %v", err.Error())
+		}
+	}
+
+	req.BuyerInfo = nil
+	common.Sync(req, &order)
+
+	res, stocks, err := s.repo.UpdateDetailOrderSellerV2(ctx, order, req.ListOrderItem, nil)
+	if err != nil {
+		log.WithError(err).Error("Error when UpdateDetailOrderSelleV2")
+		return nil, ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
+	}
+
+	if order.State == utils.ORDER_STATE_DELIVERING {
+		go s.UpdateStockWhenUpdateDetailOrder(context.Background(), order, stocks, "order_delivering")
+	}
+
+	go utils.SendAutoChatWhenUpdateOrder(utils.UUID(order.BuyerId).String(), utils.MESS_TYPE_UPDATE_ORDER, order.OrderNumber, fmt.Sprintf(utils.MESS_ORDER_UPDATE_DETAIL, order.OrderNumber))
+	go s.PushConsumerSendEmail(context.Background(), order.ID.String(), utils.ORDER_STATE_UPDATE)
+
+	// log history UpdateOrder ver1
+	go func() {
+		desc := utils.ACTION_UPDATE_ORDER + " in UpdateDetailOrderSellerV2 func - OrderService"
+		history, _ := utils.PackHistoryModel(context.Background(), order.UpdaterID, order.UpdaterID.String(), order.ID, utils.TABLE_ORDER, utils.ACTION_UPDATE_ORDER, desc, order, req)
+		s.historyService.LogHistory(context.Background(), history, nil)
+	}()
+
+	return res, nil
+}
+
+//============================== version 3 ===========================================//
+// 03/03/2022 - hieucn - separate product line
+func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderBody) (res interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.CreateOrderSeller")
+
+	// 02/03/2022 - hieucn - check valid address with buyer
+	if req.BuyerInfo.Address == "" && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_SELLER_DELIVERY {
+		log.Error("error_400: Địa chỉ không được để trống")
+		req.BuyerInfo.Address = utils.ADDRESS_DEFAUTL
+	}
+
+	// check invalid payment_source_id & payment_source_name with state: [delivering, complete]
+	debit := model.Debit{}
+	paymentOrderHistory := model.PaymentOrderHistory{}
+	if req.Debit != nil && valid.Float64(req.Debit.BuyerPay) > 0 {
+		if req.PaymentSourceID == nil || req.PaymentSourceName == nil {
+			log.WithError(err).Error("error_400: Invalid input:[PaymentSourceID or PaymentSourceName Can not be empty]")
+			return nil, ginext.NewError(http.StatusBadRequest, "Invalid input:[PaymentSourceName: PaymentSourceName Can not be empty]")
+		}
+		debit = *req.Debit
+		paymentOrderHistory.Amount = valid.Float64(req.Debit.BuyerPay)
+		paymentOrderHistory.Name = valid.String(req.PaymentSourceName)
+		paymentOrderHistory.CreatedAt = time.Now().UTC()
+		paymentOrderHistory.UpdatedAt = time.Now().UTC()
+		paymentOrderHistory.PaymentSourceID = valid.UUID(req.PaymentSourceID)
+		paymentOrderHistory.PaymentMethod = req.PaymentMethod
+	}
+
+	// Check format phone
+	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
+		log.WithError(err).Error("Error when check format phone")
+		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+	}
+
+	orderGrandTotal := 0.0
+	promotionDiscount := 0.0
+	grandTotal := 0.0
+
+	getContactRequest := model.GetContactRequest{
+		BusinessID:  valid.UUID(req.BusinessID),
+		Name:        req.BuyerInfo.Name,
+		PhoneNumber: req.BuyerInfo.PhoneNumber,
+		Address:     req.BuyerInfo.Address,
+	}
+
+	// Get Contact Info
+	info, err := s.GetContactInfo(ctx, getContactRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// check buyer received or not
+	if req.BuyerReceived {
+		req.State = utils.ORDER_STATE_COMPLETE
+		req.DeliveryMethod = valid.StringPointer(utils.DELIVERY_METHOD_BUYER_PICK_UP)
+	}
+
+	//
+	tUser, err := s.GetUserListV2(ctx, req.BuyerInfo.PhoneNumber, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Set buyer_id from Create Method request
+	buyerID := uuid.UUID{}
+	if len(tUser) > 0 {
+		buyerID = tUser[0].ID
+	}
+
+	if err = s.CreateProductFast(ctx, &req); err != nil {
+		return nil, err
+	}
+
+	// check listOrderItem empty
+	if len(req.ListOrderItem) == 0 {
+		log.Error("ListOrderItem mustn't empty")
+		return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Đơn hàng phải có ít nhất 1 sản phẩm")
+	}
+
+	// check can pick quantity
+	rCheck, err := utils.CheckCanPickQuantityV5(req.UserID.String(), req.ListOrderItem, req.BusinessID.String(), nil, utils.SELLER_CREATE_METHOD)
+	if err != nil {
+		log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+		return nil, ginext.NewError(http.StatusBadRequest, err.Error())
+	} else {
+		if rCheck.Status == utils.STATUS_SKU_NOT_FOUND {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return nil, ginext.NewError(http.StatusBadRequest, "Không tìm thấy sản phẩm trong cửa hàng")
+		}
+		if rCheck.Status == utils.SOLD_OUT {
+			log.WithError(err).Error("Error: Sản phẩm tạm hết hàng")
+			return rCheck, nil
+		}
+		if rCheck.Status != utils.STATUS_SUCCESS {
+			log.WithError(err).Error("Error when CheckValidOrderItems from MS Product")
+			return rCheck, nil
+		}
+	}
+	mapSku := make(map[string]model.CheckValidStockResponse)
+	for _, v := range rCheck.ItemsInfo {
+		mapSku[v.ID.String()] = v
+	}
+
+	// Tính tổng tiền
+	orderGrandTotal = s.CountAmountOrder(ctx, req.ListOrderItem)
+
+	// Set delivering free when buyer_pick_up
+	if req.DeliveryMethod != nil && valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+		req.DeliveryFee = 0
+	}
+
+	// Check valid Other discount
+	if req.OtherDiscount < 0 || orderGrandTotal < req.OtherDiscount {
+		log.WithField("other discount", req.OtherDiscount).Error("Error when get check valid delivery fee")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số tiền chiết khấu không hợp lệ")
+	}
+
+	// Check Promotion Code
+	promotionDiscount, err = s.CheckPromotionCode(ctx, req, promotionDiscount, orderGrandTotal, info)
+	if err != nil {
+		return nil, err
+	}
+
+	// check total amount
+	grandTotal = orderGrandTotal + req.DeliveryFee - promotionDiscount - req.OtherDiscount
+	if grandTotal < 0 {
+		grandTotal = 0
+	}
+
+	// Check số tiền request lên và số tiền trong db có khớp ko
+	if err = s.CheckAmountOrder(ctx, req, orderGrandTotal, promotionDiscount, req.DeliveryFee, grandTotal); err != nil {
+		return nil, err
+	}
+
+	order := model.Order{
+		BaseModel:         model.BaseModel{CreatorID: req.UserID},
+		BusinessID:        valid.UUID(req.BusinessID),
+		ContactID:         info.Data.Contact.ID,
+		PromotionCode:     req.PromotionCode,
+		PromotionDiscount: promotionDiscount,
+		DeliveryFee:       req.DeliveryFee,
+		OrderedGrandTotal: orderGrandTotal,
+		GrandTotal:        grandTotal,
+		State:             req.State,
+		PaymentMethod:     strings.ToLower(req.PaymentMethod),
+		DeliveryMethod:    valid.String(req.DeliveryMethod),
+		Note:              req.Note,
+		CreateMethod:      utils.SELLER_CREATE_METHOD,
+		BuyerId:           &buyerID,
+		OtherDiscount:     req.OtherDiscount,
+		Email:             req.Email,
+		Images:            req.Images,
+	}
+
+	// parse buyer_info from struct to jsonb
+	if err = s.ParseBuyerInfo(ctx, *req.BuyerInfo, &order); err != nil {
+		return nil, err
+	}
+
+	// Create transaction
+	var cancel context.CancelFunc
+	tx, cancel := s.repo.DBWithTimeout(ctx)
+	tx = tx.Begin()
+	defer func() {
+		tx.Rollback()
+		cancel()
+	}()
+
+	if req.State == utils.ORDER_STATE_DELIVERING || req.State == utils.ORDER_STATE_COMPLETE {
+		if err = s.PreCountAmountTotal(ctx, &order, &debit); err != nil {
+			return nil, err
+		}
+	}
+
+	// create order
+	if err = s.ImplementCreateOrder(ctx, &order, req, tx); err != nil {
+		return nil, err
+	}
+
+	// create order tracking
+	if err = s.CreateOrderTracking(ctx, order, tx); err != nil {
+		return nil, err
+	}
+
+	// Create order_item
+	if err = s.CreateMultiOrderItem(ctx, req.ListOrderItem, &order, mapSku, tx); err != nil {
+		return nil, err
+	}
+
+
+	paymentOrderHistory.OrderID = order.ID
+
+	// create payment_order_history, then append to response
+	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID, tx); err != nil {
+			return nil, err
+		}
+		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
+			ID:              paymentOrderHistory.ID,
+			OrderID:         order.ID,
+			PaymentMethod:   paymentOrderHistory.PaymentMethod,
+			PaymentSourceID: paymentOrderHistory.PaymentSourceID,
+			Name:            paymentOrderHistory.Name,
+			CreatedAt:       paymentOrderHistory.CreatedAt,
+			UpdatedAt:       paymentOrderHistory.UpdatedAt,
+			Amount:          valid.Float64(debit.BuyerPay),
+		}
+		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
+	}
+
+	tx.Commit()
+
+	go s.CountCustomer(context.Background(), order)
+	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
+	go s.UpdateContactUser(context.Background(), order, order.CreatorID)
+	go s.CheckCompletedTutorialCreate(context.Background(), order.CreatorID) // tutorial flow
+
+	// push consumer to complete order mission
+	go CompletedOrderMission(context.Background(), order)
+
+	return order, nil
+}
+
+func (s *OrderService) DeleteLogHistory(ctx context.Context) error {
+	if err := s.repo.DeleteLogHistory(ctx, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *OrderService) GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error) {
+	log := logger.WithCtx(ctx, "AnalyticsService.GetDailyViewAnalytics")
+
+	// get domain business
+	business, err := s.GetDetailBusiness(ctx, valid.String(req.BusinessID))
+	if err != nil {
+		log.Errorf("Error GetDetailBusiness %v", err.Error())
+		return rs, err
+	}
+
+	// Get data from BI
+	rs, err = s.GetDailyVisitFromBIServer(business.Domain)
+	if err != nil {
+		log.WithError(err).Error("Error when GetDailyVisitFromBIServer")
+		return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+
+	// Get users info
+	if len(rs.UserOnairList) > 0 {
+		rs.CustomerOnline, err = s.GetUserList(ctx, "", strings.Join(rs.UserOnairList, ","))
+		if err != nil {
+			log.WithError(err).Error("Error when GetUserList")
+			return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+	}
+
+	return rs, nil
+}
+
+func (s *OrderService) GetDailyVisitFromBIServer(domain string) (res model.GetDailyReportResponse, err error) {
+	bodyReq := struct {
+		Domain string `json:"domain"`
+	}{}
+	bodyReq.Domain = domain
+	headers := make(map[string]string)
+	headers["x-token"] = conf.LoadEnv().BIServerToken
+	body, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-trend-traffic-today", rest.Post, headers, nil, bodyReq)
+	if err != nil {
+		return res, err
+	}
+	if err = json.Unmarshal([]byte(body), &res); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+func (s *OrderService) GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error) {
+	type ResponseAnalytics struct {
+		Id               int     `json:"id"`
+		Type             string  `json:"type"`
+		Amount           float64 `json:"amount"`
+		LastPeriodAmount float64 `json:"last_period_amount"`
+	}
+	type ViewStore struct {
+		CountUser int `json:"count_user"`
+	}
+	rs, err := s.repo.CountOrderAnalytics(ctx, req)
+	if err != nil {
+		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+	}
+	var reqBody struct {
+		Domain    string    `json:"domain"`
+		StartDate time.Time `json:"start_date"`
+		EndDate   time.Time `json:"end_date"`
+	}
+
+	reqBody.Domain = req.Domain
+	reqBody.StartDate = valid.DayTime(req.StartTime)
+	reqBody.EndDate = valid.DayTime(req.EndTime)
+	headers := make(map[string]string)
+	headers["x-token"] = conf.LoadEnv().BIServerToken
+	body, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
+	if err != nil {
+		logrus.WithError(err).Errorf("Fail to get-user-count %v", err.Error())
+		//return nil, err
+	}
+	viewStore := ViewStore{}
+	if err == nil {
+		if err = json.Unmarshal([]byte(body), &viewStore); err != nil {
+			logrus.Errorf("Fail to get contact list deleted due to %v", err)
+			return nil, err
+		}
+	}
+	checkLast := false
+	now := time.Now().Add(time.Duration(-7) * time.Hour)
+	switch req.Type {
+	case utils.OPTION_FILTER_TODAY:
+		reqBody.StartDate = req.StartTime.AddDate(0, 0, -1)
+		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -1)
+		checkLast = true
+		break
+	case utils.OPTION_FILTER_THIS_WEEK:
+		reqBody.StartDate = req.StartTime.AddDate(0, 0, -7)
+		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -7)
+		checkLast = true
+		break
+	case utils.OPTION_FILTER_THIS_MONTH:
+		reqBody.StartDate = req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7) * time.Hour)
+		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, -1, 0)
+		checkLast = true
+		break
+	default:
+		checkLast = false
+		break
+	}
+	viewStoreLast := ViewStore{}
+	if checkLast {
+		headers := make(map[string]string)
+		headers["x-token"] = conf.LoadEnv().BIServerToken
+		bodyLast, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
+		if err != nil {
+		}
+		if err = json.Unmarshal([]byte(bodyLast), &viewStoreLast); err != nil {
+			logrus.Errorf("Fail to get list deleted due to %v", err)
+		}
+	}
+	data := [8]ResponseAnalytics{}
+	data[0] = ResponseAnalytics{
+		Id:               1,
+		Type:             utils.OPTION_FILTER_REVENUE,
+		Amount:           rs.TotalRevenue,
+		LastPeriodAmount: rs.LastPeriodTotalRevenue,
+	}
+	data[1] = ResponseAnalytics{
+		Id:               2,
+		Type:             utils.OPTION_FILTER_ORDER,
+		Amount:           float64(rs.CountRevenue),
+		LastPeriodAmount: float64(rs.LastPeriodCountRevenue),
+	}
+	data[2] = ResponseAnalytics{
+		Id:               3,
+		Type:             utils.OPTION_FILTER_CUSTOMER,
+		Amount:           float64(rs.TotalBuyer),
+		LastPeriodAmount: float64(rs.LastPeriodTotalBuyer),
+	}
+	data[3] = ResponseAnalytics{
+		Id:               4,
+		Type:             utils.OPTION_FILTER_ORDER_CANCEL,
+		Amount:           rs.TotalCancel,
+		LastPeriodAmount: rs.LastPeriodTotalCancel,
+	}
+	data[4] = ResponseAnalytics{
+		Id:               5,
+		Type:             utils.OPTION_FILTER_VIEW_STORE,
+		Amount:           float64(viewStore.CountUser),
+		LastPeriodAmount: float64(viewStoreLast.CountUser),
+	}
+	data[5] = ResponseAnalytics{
+		Id:               6,
+		Type:             utils.OPTION_FILTER_NEW_CUSTOMER,
+		Amount:           float64(rs.TotalBuyerNew),
+		LastPeriodAmount: float64(rs.LastPeriodTotalBuyerNew),
+	}
+	data[6] = ResponseAnalytics{
+		Id:               7,
+		Type:             utils.OPTION_FILTER_AVERAGE_ORDER,
+		Amount:           Round(CheckNanFloat(rs.TotalRevenue, rs.CountRevenue), 1),
+		LastPeriodAmount: Round(CheckNanFloat(rs.LastPeriodTotalRevenue, rs.LastPeriodCountRevenue), 1),
+	}
+	data[7] = ResponseAnalytics{
+		Id:               8,
+		Type:             utils.OPTION_FILTER_AVERAGE_CUSTOMER,
+		Amount:           Round(CheckNanInt(rs.CountRevenue, rs.TotalBuyer), 0.01),
+		LastPeriodAmount: Round(CheckNanInt(rs.LastPeriodCountRevenue, rs.LastPeriodTotalBuyer), 0.01),
+	}
+
+	return data, nil
 }
