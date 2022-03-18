@@ -1059,6 +1059,10 @@ func (r *RepoPG) GetNumberDelivering(ctx context.Context, req model.GetNumberDel
 
 	tx = tx.Model(&model.Order{}).Select("contact_id, count(contact_id) as count").Where("business_id = ?", req.BusinessID)
 
+	if req.State != "" {
+		tx = tx.Where("state IN (?)", req.State)
+	}
+
 	if req.ContactIDs != "" {
 		stateArr := strings.Split(req.ContactIDs, ",")
 		if err = tx.Where("contact_id IN (?)", stateArr).Group("contact_id").Find(&rs).Error; err != nil {
