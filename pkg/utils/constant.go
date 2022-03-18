@@ -49,7 +49,8 @@ const (
 	ORDER_STATE_UPDATE          = "update"
 )
 
-const ADDRESS_DEFAUTL = "địa chỉ mặc định"
+// hieunm - 18/03/2022 - replace addrss default to empty (PO req)
+const ADDRESS_DEFAUTL = ""
 
 const (
 	TOPIC_SEND_EMAIL_ORDER            = "finan-order:send-email-order"
