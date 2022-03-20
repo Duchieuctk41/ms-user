@@ -218,9 +218,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	//
@@ -2754,9 +2755,10 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	orderGrandTotal := 0.0
@@ -3166,9 +3168,10 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	}
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	orderGrandTotal := 0.0
@@ -4273,9 +4276,10 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 	}
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	orderGrandTotal := 0.0
