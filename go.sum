@@ -472,8 +472,8 @@ github.com/xuri/excelize/v2 v2.4.1/go.mod h1:rSu0C3papjzxQA3sdK8cU544TebhrPUoTOa
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/gopher-lua v0.0.0-20171031051903-609c9cd26973/go.mod h1:aEV29XrmTYFr3CiRxZeGHpkvbwq+prZduBqMaascyCU=
 github.com/zenazn/goji v0.9.0/go.mod h1:7S9M489iMyHBNxwZnk9/EHS098H4/F6TATF2mIxtB1Q=
-gitlab.com/goxp/cloud0 v1.5.0 h1:DPiT/Z0wHB8fExrDq0moO1T3ge1wJfwZnJq6Fb1uEG4=
-gitlab.com/goxp/cloud0 v1.5.0/go.mod h1:tXyr+tH0FLzli3dCnf1Lhs3Ee/pgtA/Dor8Li1+CIwk=
+gitlab.com/goxp/cloud0 v1.5.2 h1:E06G4CYlCNWQy4ABLCchDqaPeQzCydY+Z2KP1cLtF7E=
+gitlab.com/goxp/cloud0 v1.5.2/go.mod h1:tXyr+tH0FLzli3dCnf1Lhs3Ee/pgtA/Dor8Li1+CIwk=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738/go.mod h1:dnLIgRNXwCJa5e+c6mIZCrds/GIG4ncV9HhK5PX7jPg=
 go.opencensus.io v0.20.1/go.mod h1:6WKK9ahsWS3RSO+PY9ZHZUfv2irvY6gN279GOPZjmmk=
