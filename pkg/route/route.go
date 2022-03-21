@@ -58,6 +58,7 @@ func NewService() *Service {
 	v1Api.GET("/count-order-state", ginext.WrapHandler(orderHandle.CountOrderState))
 	v1Api.GET("/get-order-by-contact", ginext.WrapHandler(orderHandle.GetOrderByContact))
 	v1Api.GET("/get-contact-delivering", ginext.WrapHandler(orderHandle.GetContactDelivering))
+	v1Api.GET("/get-number-delivering", ginext.WrapHandler(orderHandle.GetNumberDelivering))
 	v1Api.GET("/get-total-contact-delivery", ginext.WrapHandler(orderHandle.GetTotalContactDelivery))
 	v1Api.GET("/get-sum-order-complete-contact", ginext.WrapHandler(orderHandle.GetSumOrderCompleteContact))
 

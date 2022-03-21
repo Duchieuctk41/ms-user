@@ -56,6 +56,7 @@ type OrderServiceInterface interface {
 	GetOrderByContact(ctx context.Context, req model.OrderByContactParam) (res model.ListOrderResponse, err error)
 	ExportOrderReport(ctx context.Context, req model.ExportOrderReportRequest) (res interface{}, err error)
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error)
+	GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam) (res map[string]int, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 	GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error)
 	GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest, userID string) (interface{}, error)
@@ -124,6 +125,7 @@ func (s *OrderService) GetOneOrder(ctx context.Context, req model.GetOneOrderReq
 			ContactID:           order.ContactID,
 			OrderNumber:         order.OrderNumber,
 			PromotionCode:       order.PromotionCode,
+			PromotionDiscount:   order.PromotionDiscount,
 			OrderedGrandTotal:   order.OrderedGrandTotal,
 			DeliveryFee:         order.DeliveryFee,
 			GrandTotal:          order.GrandTotal,
@@ -216,9 +218,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, req model.OrderBody) (re
 	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	//
@@ -809,7 +812,7 @@ func (s *OrderService) OrderProcessingV2(ctx context.Context, order model.Order,
 	return nil
 }
 
-func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID) error {
+func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order model.Order, payment *model.PaymentOrderHistory, userID uuid.UUID, tx *gorm.DB) error {
 	log := logger.WithCtx(ctx, "OrderService.CreatePaymentOrderHistory")
 	payment.CreatorID = userID
 
@@ -832,7 +835,7 @@ func (s *OrderService) CreatePaymentOrderHistory(ctx context.Context, order mode
 	//}
 
 	// get shop info
-	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, nil); err != nil {
+	if err := s.repo.CreatePaymentOrderHistory(ctx, payment, tx); err != nil {
 		log.Errorf("Fail to CreatePaymentOrderHistory due to %v", err)
 		return ginext.NewError(http.StatusInternalServerError, utils.MessageError()[http.StatusInternalServerError])
 	}
@@ -2713,10 +2716,26 @@ func (s *OrderService) GetContactDelivering(ctx context.Context, req model.Order
 			return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact list: "+err.Error())
 		}
 		if len(lstContact) > 0 {
-			contact.Data[i].ContactInfo = lstContact[0]
+			contact.Data[i].ContactInfo = &lstContact[0]
 		}
 	}
 	return contact, nil
+}
+func (s *OrderService) GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam) (res map[string]int, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetNumberDelivering")
+
+	contact, err := s.repo.GetNumberDelivering(ctx, req, nil)
+	if err != nil {
+		log.WithError(err).Errorf("Error when get contact have order due to %v", err.Error())
+		return res, ginext.NewError(http.StatusBadRequest, "Fail to get contact have order: "+err.Error())
+	}
+
+	data := make(map[string]int)
+	for _, v := range contact {
+		data[v.ContactID.String()] = v.Count
+	}
+
+	return data, nil
 }
 
 func (s *OrderService) GetTotalContactDelivery(ctx context.Context, req model.OrderParam) (res model.TotalContactDelivery, err error) {
@@ -2736,9 +2755,10 @@ func (s *OrderService) CreateOrderV2(ctx context.Context, req model.OrderBody) (
 	log := logger.WithCtx(ctx, "OrderService.CreateOrder")
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	orderGrandTotal := 0.0
@@ -3148,9 +3168,10 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 	}
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	orderGrandTotal := 0.0
@@ -3307,13 +3328,11 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		return nil, err
 	}
 
-	tx.Commit()
-
 	paymentOrderHistory.OrderID = order.ID
 
 	// create payment_order_history, then append to response
 	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
-		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID, tx); err != nil {
 			return nil, err
 		}
 		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -3328,6 +3347,8 @@ func (s *OrderService) CreateOrderSeller(ctx context.Context, req model.OrderBod
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 	}
+
+	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
@@ -3927,8 +3948,6 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		log.WithError(err).Errorf("Create order tracking error")
 	}
 
-	tx.Commit()
-
 	if valid.String(req.State) == utils.ORDER_STATE_CANCEL && preOrderState == utils.ORDER_STATE_COMPLETE {
 		go s.OrderCancelProcessing(context.Background(), order, tx)
 	} else {
@@ -3952,7 +3971,7 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 			}
 
 			// create payment_order_history, then append to response
-			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID)); err != nil {
+			if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, valid.UUID(req.UpdaterID), tx); err != nil {
 				return nil, err
 			}
 			paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -3980,6 +3999,8 @@ func (s *OrderService) UpdateOrderV2(ctx context.Context, req model.OrderUpdateB
 		//}
 		go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, buyerInfo, paymentOrderHistory)
 	}
+
+	tx.Commit()
 
 	if preOrderState == utils.ORDER_STATE_DELIVERING && valid.String(req.State) == utils.ORDER_STATE_CANCEL {
 		go s.UpdateStock(context.Background(), order, "order_cancelled_when_delivering")
@@ -4255,9 +4276,10 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 	}
 
 	// Check format phone
+	req.BuyerInfo.PhoneNumber = strings.ReplaceAll(req.BuyerInfo.PhoneNumber, " ", "")
 	if !utils.ValidPhoneFormat(req.BuyerInfo.PhoneNumber) {
-		log.WithError(err).Error("Error when check format phone")
-		return nil, ginext.NewError(http.StatusBadRequest, "Error when check format phone")
+		log.WithError(err).Error("Số điện thoại định dạng không hợp lệ")
+		return nil, ginext.NewError(http.StatusBadRequest, "Số điện thoại định dạng không hợp lệ")
 	}
 
 	orderGrandTotal := 0.0
@@ -4283,6 +4305,7 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		req.DeliveryMethod = valid.StringPointer(utils.DELIVERY_METHOD_BUYER_PICK_UP)
 	}
 
+	//
 	tUser, err := s.GetUserListV2(ctx, req.BuyerInfo.PhoneNumber, "")
 	if err != nil {
 		return nil, err
@@ -4414,13 +4437,11 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		return nil, err
 	}
 
-	tx.Commit()
-
 	paymentOrderHistory.OrderID = order.ID
 
 	// create payment_order_history, then append to response
 	if valid.Float64(debit.BuyerPay) > 0 && (order.State == utils.ORDER_STATE_DELIVERING || order.State == utils.ORDER_STATE_COMPLETE) {
-		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID); err != nil {
+		if err = s.CreatePaymentOrderHistory(ctx, order, &paymentOrderHistory, req.UserID, tx); err != nil {
 			return nil, err
 		}
 		paymentOrderHistoryResponse := model.PaymentOrderHistoryResponse{
@@ -4435,6 +4456,8 @@ func (s *OrderService) CreateOrderSellerV3(ctx context.Context, req model.OrderB
 		}
 		order.PaymentOrderHistory = append(order.PaymentOrderHistory, paymentOrderHistoryResponse)
 	}
+
+	tx.Commit()
 
 	go s.CountCustomer(context.Background(), order)
 	go s.OrderProcessingV2(context.Background(), order, debit, utils.ORDER_COMPLETED, *req.BuyerInfo, paymentOrderHistory)
