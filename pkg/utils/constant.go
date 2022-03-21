@@ -170,4 +170,7 @@ const (
 	OPTION_FILTER_NEW_CUSTOMER     = "new_customer"
 	OPTION_FILTER_AVERAGE_ORDER    = "average_order"
 	OPTION_FILTER_AVERAGE_CUSTOMER = "average_customer"
+	OPTION_REVENUE_BY_CHANNEL      = "revenue_by_channel"
 )
+
+const SHOPEE = "Shopee"

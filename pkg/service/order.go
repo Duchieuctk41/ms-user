@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/xuri/excelize/v2"
 
-	"github.com/sirupsen/logrus"
 	"gitlab.com/goxp/cloud0/logger"
 
 	"github.com/google/uuid"
@@ -58,7 +58,7 @@ type OrderServiceInterface interface {
 	GetContactDelivering(ctx context.Context, req model.OrderParam) (res model.ContactDeliveringResponse, err error)
 	GetOneOrder(ctx context.Context, req model.GetOneOrderRequest) (res interface{}, err error)
 	GetDailyViewAnalytics(ctx context.Context, req model.GetDailyVisitAnalyticsParam) (rs model.GetDailyReportResponse, err error)
-	GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error)
+	GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest, userID string) (interface{}, error)
 
 	// version 2
 	CreateOrderV2(ctx context.Context, req model.OrderBody) (res interface{}, err error)
@@ -4500,125 +4500,294 @@ func (s *OrderService) GetDailyVisitFromBIServer(domain string) (res model.GetDa
 	return res, nil
 }
 
-func (s *OrderService) GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (interface{}, error) {
-	type ResponseAnalytics struct {
-		Id               int     `json:"id"`
-		Type             string  `json:"type"`
-		Amount           float64 `json:"amount"`
-		LastPeriodAmount float64 `json:"last_period_amount"`
+func (s *OrderService) GetOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest, userID string) (rss interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOrderAnalytics")
+	defer timeTrack(time.Now(), "Fetching GetOrderAnalytics")
+
+	rCheck, err := utils.CheckBusinessHasEcom(userID, *req.BusinessID)
+	if err != nil {
+		log.WithError(err).Error("error_400 : Error when CheckBusinessHasEcom from MS Ecom Adapter")
+	} else {
+		if rCheck {
+			req.Ecom = utils.SHOPEE
+		}
 	}
+
+	var waitgroup sync.WaitGroup
+	waitgroup.Add(2)
+	var countOrderAnalytics model.CountOrderAnalytics
 	type ViewStore struct {
 		CountUser int `json:"count_user"`
 	}
-	rs, err := s.repo.CountOrderAnalytics(ctx, req)
-	if err != nil {
-		return nil, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
-	}
-	var reqBody struct {
-		Domain    string    `json:"domain"`
-		StartDate time.Time `json:"start_date"`
-		EndDate   time.Time `json:"end_date"`
-	}
 
-	reqBody.Domain = req.Domain
-	reqBody.StartDate = valid.DayTime(req.StartTime)
-	reqBody.EndDate = valid.DayTime(req.EndTime)
-	headers := make(map[string]string)
-	headers["x-token"] = conf.LoadEnv().BIServerToken
-	body, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
-	if err != nil {
-		logrus.WithError(err).Errorf("Fail to get-user-count %v", err.Error())
-		//return nil, err
-	}
-	viewStore := ViewStore{}
-	if err == nil {
-		if err = json.Unmarshal([]byte(body), &viewStore); err != nil {
-			logrus.Errorf("Fail to get contact list deleted due to %v", err)
-			return nil, err
+	var err1 error
+	var dataSell model.DataSell
+	go func() {
+		countOrderAnalytics, err = s.repo.CountOrderAnalytics(ctx, req)
+		if err != nil {
+			log.WithError(err).Errorf("error_400: Fail to count order analytics %v", err.Error())
+			err1 = ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
 		}
-	}
-	checkLast := false
-	now := time.Now().Add(time.Duration(-7) * time.Hour)
-	switch req.Type {
-	case utils.OPTION_FILTER_TODAY:
-		reqBody.StartDate = req.StartTime.AddDate(0, 0, -1)
-		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -1)
-		checkLast = true
-		break
-	case utils.OPTION_FILTER_THIS_WEEK:
-		reqBody.StartDate = req.StartTime.AddDate(0, 0, -7)
-		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -7)
-		checkLast = true
-		break
-	case utils.OPTION_FILTER_THIS_MONTH:
-		reqBody.StartDate = req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7) * time.Hour)
-		reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, -1, 0)
-		checkLast = true
-		break
-	default:
-		checkLast = false
-		break
-	}
+
+		if req.Ecom == utils.SHOPEE {
+			countOrderEcomAnalytics, err := s.repo.CountOrderEcomAnalytics(ctx, req)
+			if err != nil {
+				log.WithError(err).Errorf("error_400: Fail to count order analytics %v", err.Error())
+				err1 = ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+			countOrderAnalytics.TotalRevenue += countOrderEcomAnalytics.TotalRevenue
+			countOrderAnalytics.CountCancel += countOrderEcomAnalytics.CountCancel
+			countOrderAnalytics.TotalBuyer += countOrderEcomAnalytics.TotalBuyer
+			countOrderAnalytics.TotalCancel += countOrderEcomAnalytics.TotalCancel
+			countOrderAnalytics.TotalBuyerNew += countOrderEcomAnalytics.TotalBuyerNew
+			countOrderAnalytics.LastPeriodCountCancel += countOrderEcomAnalytics.LastPeriodCountCancel
+			countOrderAnalytics.LastPeriodCountRevenue += countOrderEcomAnalytics.LastPeriodCountRevenue
+			countOrderAnalytics.LastPeriodTotalBuyer += countOrderEcomAnalytics.LastPeriodTotalBuyer
+			countOrderAnalytics.LastPeriodTotalBuyerNew += countOrderEcomAnalytics.LastPeriodTotalBuyerNew
+			countOrderAnalytics.LastPeriodTotalCancel += countOrderEcomAnalytics.LastPeriodTotalCancel
+			countOrderAnalytics.LastPeriodTotalRevenue += countOrderEcomAnalytics.LastPeriodTotalRevenue
+
+		}
+
+		dataSell, err = s.repo.OrderDataDell(ctx, req)
+		if err != nil {
+			log.WithError(err).Errorf("error_400: to order data detail %v", err.Error())
+			err1 = ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		waitgroup.Done()
+	}()
+	viewStore := ViewStore{}
 	viewStoreLast := ViewStore{}
-	if checkLast {
+	go func() {
+		var reqBody struct {
+			Domain    string    `json:"domain"`
+			StartDate time.Time `json:"start_date"`
+			EndDate   time.Time `json:"end_date"`
+		}
+
+		reqBody.Domain = req.Domain
+		reqBody.StartDate = valid.DayTime(req.StartTime)
+		reqBody.EndDate = valid.DayTime(req.EndTime)
 		headers := make(map[string]string)
 		headers["x-token"] = conf.LoadEnv().BIServerToken
-		bodyLast, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
+		body, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
 		if err != nil {
+			log.WithError(err).Errorf("Fail to get-user-count %v", err.Error())
 		}
-		if err = json.Unmarshal([]byte(bodyLast), &viewStoreLast); err != nil {
-			logrus.Errorf("Fail to get list deleted due to %v", err)
+		if err == nil {
+			if err = json.Unmarshal([]byte(body), &viewStore); err != nil {
+				log.Errorf("Fail to get contact list deleted due to %v", err)
+			}
 		}
+		checkLast := false
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			reqBody.StartDate = req.StartTime.AddDate(0, 0, -1)
+			reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -1)
+			checkLast = true
+		case utils.OPTION_FILTER_THIS_WEEK:
+			reqBody.StartDate = req.StartTime.AddDate(0, 0, -7)
+			reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, 0, -7)
+			checkLast = true
+		case utils.OPTION_FILTER_THIS_MONTH:
+			reqBody.StartDate = req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7) * time.Hour)
+			reqBody.EndDate = now.UTC().Add(7*time.Hour).AddDate(0, -1, 0)
+			checkLast = true
+		default:
+			checkLast = false
+		}
+		viewStoreLast := ViewStore{}
+		if checkLast {
+			headers := make(map[string]string)
+			headers["x-token"] = conf.LoadEnv().BIServerToken
+			bodyLast, _, err := common.SendRestAPI(conf.LoadEnv().BIServerBaseURL+"/internal/traffic/get-user-count", rest.Post, headers, nil, reqBody)
+			if err != nil {
+				log.WithError(err).Errorf("error_400: BI Fail to get-user-count %v", err.Error())
+			}
+			if err = json.Unmarshal([]byte(bodyLast), &viewStoreLast); err != nil {
+				log.Errorf("error_400: BI Fail to get list deleted due to %v", err)
+			}
+		}
+		waitgroup.Done()
+	}()
+	waitgroup.Wait()
+
+	if err1 != nil {
+		log.WithError(err).Errorf("error_400: Fail to get order analytics %v", err1.Error())
+		return nil, err1
 	}
-	data := [8]ResponseAnalytics{}
-	data[0] = ResponseAnalytics{
+	data := [9]model.ResponseAnalytics{}
+	data[0] = model.ResponseAnalytics{
 		Id:               1,
 		Type:             utils.OPTION_FILTER_REVENUE,
-		Amount:           rs.TotalRevenue,
-		LastPeriodAmount: rs.LastPeriodTotalRevenue,
+		Amount:           countOrderAnalytics.TotalRevenue,
+		LastPeriodAmount: countOrderAnalytics.LastPeriodTotalRevenue,
 	}
-	data[1] = ResponseAnalytics{
+	data[1] = model.ResponseAnalytics{
 		Id:               2,
 		Type:             utils.OPTION_FILTER_ORDER,
-		Amount:           float64(rs.CountRevenue),
-		LastPeriodAmount: float64(rs.LastPeriodCountRevenue),
+		Amount:           float64(countOrderAnalytics.CountRevenue),
+		LastPeriodAmount: float64(countOrderAnalytics.LastPeriodCountRevenue),
 	}
-	data[2] = ResponseAnalytics{
+	data[2] = model.ResponseAnalytics{
 		Id:               3,
 		Type:             utils.OPTION_FILTER_CUSTOMER,
-		Amount:           float64(rs.TotalBuyer),
-		LastPeriodAmount: float64(rs.LastPeriodTotalBuyer),
+		Amount:           float64(countOrderAnalytics.TotalBuyer),
+		LastPeriodAmount: float64(countOrderAnalytics.LastPeriodTotalBuyer),
 	}
-	data[3] = ResponseAnalytics{
+	data[3] = model.ResponseAnalytics{
 		Id:               4,
 		Type:             utils.OPTION_FILTER_ORDER_CANCEL,
-		Amount:           rs.TotalCancel,
-		LastPeriodAmount: rs.LastPeriodTotalCancel,
+		Amount:           countOrderAnalytics.TotalCancel,
+		LastPeriodAmount: countOrderAnalytics.LastPeriodTotalCancel,
 	}
-	data[4] = ResponseAnalytics{
+	data[4] = model.ResponseAnalytics{
 		Id:               5,
 		Type:             utils.OPTION_FILTER_VIEW_STORE,
 		Amount:           float64(viewStore.CountUser),
 		LastPeriodAmount: float64(viewStoreLast.CountUser),
 	}
-	data[5] = ResponseAnalytics{
+	data[5] = model.ResponseAnalytics{
 		Id:               6,
 		Type:             utils.OPTION_FILTER_NEW_CUSTOMER,
-		Amount:           float64(rs.TotalBuyerNew),
-		LastPeriodAmount: float64(rs.LastPeriodTotalBuyerNew),
+		Amount:           float64(countOrderAnalytics.TotalBuyerNew),
+		LastPeriodAmount: float64(countOrderAnalytics.LastPeriodTotalBuyerNew),
 	}
-	data[6] = ResponseAnalytics{
+	data[6] = model.ResponseAnalytics{
 		Id:               7,
 		Type:             utils.OPTION_FILTER_AVERAGE_ORDER,
-		Amount:           Round(CheckNanFloat(rs.TotalRevenue, rs.CountRevenue), 1),
-		LastPeriodAmount: Round(CheckNanFloat(rs.LastPeriodTotalRevenue, rs.LastPeriodCountRevenue), 1),
+		Amount:           Round(CheckNanFloat(countOrderAnalytics.TotalRevenue, countOrderAnalytics.CountRevenue), 1),
+		LastPeriodAmount: Round(CheckNanFloat(countOrderAnalytics.LastPeriodTotalRevenue, countOrderAnalytics.LastPeriodCountRevenue), 1),
 	}
-	data[7] = ResponseAnalytics{
+	data[7] = model.ResponseAnalytics{
 		Id:               8,
 		Type:             utils.OPTION_FILTER_AVERAGE_CUSTOMER,
-		Amount:           Round(CheckNanInt(rs.CountRevenue, rs.TotalBuyer), 0.01),
-		LastPeriodAmount: Round(CheckNanInt(rs.LastPeriodCountRevenue, rs.LastPeriodTotalBuyer), 0.01),
+		Amount:           Round(CheckNanInt(countOrderAnalytics.CountRevenue, countOrderAnalytics.TotalBuyer), 0.01),
+		LastPeriodAmount: Round(CheckNanInt(countOrderAnalytics.LastPeriodCountRevenue, countOrderAnalytics.LastPeriodTotalBuyer), 0.01),
+	}
+	data[8] = model.ResponseAnalytics{
+		Id:   8,
+		Type: utils.OPTION_REVENUE_BY_CHANNEL,
+		Data: &dataSell,
 	}
 
-	return data, nil
+	chart, err := s.GetOrderChartAnalytics(ctx, req)
+	if err1 != nil {
+		log.WithError(err).Errorf("error_400: Fail to get chart analytics %v", err1.Error())
+		return nil, err1
+	}
+	return model.AnalyticsResponse{
+		Data:  data,
+		Chart: chart,
+	}, nil
+}
+
+func (s *OrderService) GetOrderChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs interface{}, err error) {
+	log := logger.WithCtx(ctx, "OrderService.GetOrderChartAnalytics")
+	if err = s.SetTimeForAnalytics(ctx, &req); err != nil {
+		log.Errorf("Wrong revenue analytics error: %v", err.Error())
+		return nil, err
+	}
+	var result []model.ChartDataDetail
+	switch req.Option {
+	case utils.OPTION_FILTER_REVENUE:
+		result, err = s.repo.GetDetailChartAnalytics(ctx, req)
+		if err != nil {
+			log.Errorf("error_400 : Error get revenue analytics error: %v", err.Error())
+			return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if req.Ecom == utils.SHOPEE {
+			result, err = s.repo.GetDetailChartEcomAnalytics(ctx, req)
+			if err != nil {
+				log.Errorf("error_400 : Error get revenue analytics error: %v", err.Error())
+				return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+			// mapEcom := make(map[int]model.ChartDataDetail)
+			// for _, v := range rsEcom {
+			// 	mapEcom[*v.Index] = v
+			// }
+			// for i, v := range result {
+			// 	if _, ok := mapEcom[*v.Index]; ok {
+			// 		result[i].Value = utils.ResultFloat(result[i].Value, mapEcom[*v.Index].Value)
+			// 		result[i].PerValue = utils.ResultFloat(result[i].PerValue, mapEcom[*v.Index].PerValue)
+			// 	}
+			// }
+		}
+	case utils.OPTION_FILTER_ORDER:
+		result, err = s.repo.GetOrderChartAnalytics(ctx, req)
+		if err != nil {
+			log.Errorf("error_400 : Error get order analytics error: %v", err.Error())
+			return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if req.Ecom == utils.SHOPEE {
+			result, err = s.repo.GetOrderChartEcomAnalytics(ctx, req)
+			if err != nil {
+				log.Errorf("error_400 : Error get order analytics error: %v", err.Error())
+				return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+		}
+	case utils.OPTION_FILTER_CUSTOMER:
+		result, err = s.repo.GetCustomerChartAnalytics(ctx, req)
+		if err != nil {
+			log.Errorf("error_400 : Error get customer analytics error: %v", err.Error())
+			return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if req.Ecom == utils.SHOPEE {
+			result, err = s.repo.GetCustomerChartEcomAnalytics(ctx, req)
+			if err != nil {
+				log.Errorf("error_400 : Error get customer analytics error: %v", err.Error())
+				return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+		}
+	case utils.OPTION_FILTER_ORDER_CANCEL:
+		result, err = s.repo.GetCancelChartAnalytics(ctx, req)
+		if err != nil {
+			log.Errorf("error_400 : Error get cancel analytics error: %v", err.Error())
+			return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+		}
+		if req.Ecom == utils.SHOPEE {
+			result, err = s.repo.GetCancelChartEcomAnalytics(ctx, req)
+			if err != nil {
+				log.Errorf("error_400 : Error get cancel analytics error: %v", err.Error())
+				return rs, ginext.NewError(http.StatusBadRequest, utils.MessageError()[http.StatusBadRequest])
+			}
+		}
+	}
+	return result, err
+}
+
+func (s *OrderService) SetTimeForAnalytics(ctx context.Context, req *model.GetOrderAnalyticsRequest) error {
+	switch req.Type {
+	case utils.OPTION_FILTER_TODAY:
+		req.StartTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-24 * time.Hour))
+		req.EndTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-1 * time.Second))
+		req.EndTimeTotalSamePeriod = utils.DayTime(time.Unix(req.StartTimeSamePeriod.Unix()+(req.StartTime.Unix()-req.EndTime.Unix()), 0))
+	case utils.OPTION_FILTER_THIS_WEEK:
+		req.StartTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-24 * 7 * time.Hour))
+		req.EndTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-1 * time.Second))
+		req.EndTimeTotalSamePeriod = utils.DayTime(time.Unix(req.StartTimeSamePeriod.Unix()+(req.StartTime.Unix()-req.EndTime.Unix()), 0))
+	case utils.OPTION_FILTER_THIS_MONTH:
+		req.StartTimeSamePeriod = utils.DayTime(utils.BeginningOfMonth(req.StartTime.UTC()).Add(-24 * time.Hour))
+		req.EndTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-1 * time.Second))
+		req.EndTimeTotalSamePeriod = utils.DayTime(time.Unix(req.StartTimeSamePeriod.Unix()+(req.StartTime.Unix()-req.EndTime.Unix()), 0))
+	case utils.OPTION_FILTER_LAST_MONTH:
+		req.StartTimeSamePeriod = utils.DayTime(utils.BeginningOfMonth(req.StartTime.UTC()).Add(-24 * time.Hour))
+		req.EndTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-1 * time.Second))
+		req.EndTimeTotalSamePeriod = utils.DayTime(time.Unix(req.StartTimeSamePeriod.Unix()+(req.StartTime.Unix()-req.EndTime.Unix()), 0))
+
+	case utils.OPTION_FILTER_LAST_WEEK:
+		req.StartTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-24 * 7 * time.Hour))
+		req.EndTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-1 * time.Second))
+		req.EndTimeTotalSamePeriod = utils.DayTime(time.Unix(req.StartTimeSamePeriod.Unix()+(req.StartTime.Unix()-req.EndTime.Unix()), 0))
+
+	case utils.OPTION_FILTER_CUSTOM_RANGE:
+		req.StartTimeSamePeriod = utils.DayTime(time.Unix(req.StartTime.Unix()-(req.EndTime.Unix()-req.StartTime.Unix()), 0).UTC())
+		req.EndTimeSamePeriod = utils.DayTime(req.StartTime.UTC().Add(-1 * time.Second).UTC())
+		req.EndTimeTotalSamePeriod = req.EndTimeSamePeriod
+
+	default:
+		return ginext.NewError(http.StatusBadRequest, "Error: Wrong option value")
+	}
+	return nil
 }

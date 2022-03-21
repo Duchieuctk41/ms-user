@@ -1427,6 +1427,66 @@ func (r *RepoPG) UpdateDetailOrderSellerV2(ctx context.Context, order model.Orde
 	return rs, stocks, nil
 }
 
+func (r *RepoPG) OrderDataDell(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.DataSell, error) {
+	rs := model.DataSell{}
+	querySellOrder := ""
+	querySellOrder += `select
+					temp.business_id,
+					coalesce(sum(temp.offline_sell), 0) as offline_sell,
+					coalesce(sum(temp.online_sell), 0) as online_sell
+				from
+					(
+					select
+						o.business_id ,
+						case
+							when create_method = 'seller' then sum(grand_total)
+						end as offline_sell,
+						case
+							when create_method = 'buyer' then sum(grand_total)
+						end as online_sell
+					from
+						orders o
+					where
+						business_id = ?`
+	if req.StartTime != nil && req.EndTime != nil {
+		querySellOrder += ` AND updated_at BETWEEN ? AND ? `
+	}
+	querySellOrder += `group by business_id ,create_method ) 
+		as temp group by business_id`
+	if req.StartTime != nil && req.EndTime != nil {
+		if err := r.DB.Raw(querySellOrder, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return model.DataSell{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(querySellOrder, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.DataSell{}, nil
+		}
+	}
+	if req.Ecom == utils.SHOPEE {
+		queryEcommerceOrder := `select
+									coalesce(sum(grand_total), 0) as ecommerce
+								from
+									ecom_order
+								where
+									business_id = ?`
+		if req.StartTime != nil && req.EndTime != nil {
+			queryEcommerceOrder += ` AND updated_at BETWEEN ? AND ? `
+		}
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(queryEcommerceOrder, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.DataSell{}, nil
+			}
+		} else {
+			if err := r.DB.Raw(queryEcommerceOrder, req.BusinessID).Scan(&rs).Error; err != nil {
+				return model.DataSell{}, nil
+			}
+
+		}
+	}
+
+	return rs, nil
+}
+
 func (r *RepoPG) CountOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error) {
 	rs := model.CountOrderAnalytics{}
 	query := ""
@@ -1542,6 +1602,121 @@ func (r *RepoPG) CountOrderAnalytics(ctx context.Context, req model.GetOrderAnal
 	return rs, nil
 }
 
+func (r *RepoPG) CountOrderEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error) {
+	rs := model.CountOrderAnalytics{}
+	query := ""
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_WEEK || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query += `select temp.business_id,
+					COALESCE(MAX(temp.total_revenue),0) AS total_revenue,
+					COALESCE(MAX(temp.total_cancel),0) AS total_cancel,
+					COALESCE(MAX(temp.count_revenue),0) AS count_revenue,
+					COALESCE(MAX(temp.count_cancel),0) AS count_cancel
+   	from
+   		(select o.business_id ,
+   			case WHEN  state ='complete' then sum(grand_total) end as total_revenue ,
+   			case WHEN  state ='cancel' then sum(grand_total) end as total_cancel ,
+   			case WHEN  state ='complete' then count(*) end as count_revenue,
+   			case WHEN  state ='cancel' then count(*) end as count_cancel 
+  		 from ecom_orders o
+  			where business_id = ?`
+
+		if req.StartTime != nil && req.EndTime != nil {
+			query += ` AND updated_at BETWEEN ? AND ? `
+		}
+		query += `group by business_id ,state ) 
+		as temp group by business_id`
+	} else {
+		query += `select temp.business_id,
+					COALESCE(sum(temp.total_revenue),0) AS total_revenue,
+					COALESCE(sum(temp.last_period_total_revenue),0) AS last_period_total_revenue,
+					COALESCE(sum(temp.total_cancel),0) AS total_cancel,
+					COALESCE(sum(temp.last_period_total_cancel),0) AS last_period_total_cancel,
+					COALESCE(sum(temp.count_revenue),0) AS count_revenue,
+					COALESCE(sum(temp.last_period_count_revenue),0) AS last_period_count_revenue,
+					COALESCE(sum(temp.count_cancel),0) AS count_cancel,
+					COALESCE(sum(temp.last_period_count_cancel),0) AS last_period_count_cancel
+				from
+					  (select o.business_id ,
+						   case WHEN state ='complete' and updated_at  > 'first_date'
+							   then sum(grand_total) end as total_revenue,
+						   case WHEN  state ='complete' and updated_at  < 'per_last_date'
+							   then sum(grand_total) end as last_period_total_revenue,
+						   case WHEN  state ='cancel' and updated_at  > 'first_date' 
+							   then sum(grand_total) end as total_cancel ,
+						   case WHEN  state ='cancel' and updated_at  < 'per_last_date' 
+							  then sum(grand_total) end as last_period_total_cancel ,
+						   case WHEN  state ='complete' and updated_at > 'first_date'
+							  then count(*) end as count_revenue,
+						   case WHEN  state ='complete' and updated_at < 'per_last_date'
+							   then count(*) end as last_period_count_revenue,
+						   case WHEN  state ='cancel' and updated_at  > 'first_date'
+							   then count(*) end as count_cancel,
+						   case WHEN  state ='cancel' and updated_at < 'per_last_date' 
+							   then sum(grand_total) end as last_period_count_cancel
+				   from ecom_order o where business_id = ?
+						  and ((updated_at) > 'per_first_date' AND (updated_at) < 'last_date')
+				  group by business_id ,updated_at,state) as temp group by business_id;`
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountOrderAnalytics{}, nil
+		}
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_WEEK || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.CountOrderAnalytics{}, nil
+			}
+		} else {
+			return model.CountOrderAnalytics{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountOrderAnalytics{}, nil
+		}
+	}
+
+	revenue, err := r.CountEcomBuyer(ctx, model.GetOrderAnalyticsRequest{
+		BusinessID: req.BusinessID,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Type:       req.Type,
+	})
+	if err != nil {
+		return model.CountOrderAnalytics{}, err
+	}
+
+	buyerNew, err := r.CountBuyerEcomNew(ctx, model.GetOrderAnalyticsRequest{
+		BusinessID: req.BusinessID,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+		Type:       req.Type,
+	})
+	if err != nil {
+		return model.CountOrderAnalytics{}, err
+	}
+	rs.TotalBuyerNew = buyerNew.TotalBuyerNew
+	rs.LastPeriodTotalBuyerNew = buyerNew.LastPeriodTotalBuyerNew
+	rs.TotalBuyer = revenue.TotalBuyer
+	rs.LastPeriodTotalBuyer = revenue.LastPeriodTotalBuyer
+	return rs, nil
+}
+
 func (r *RepoPG) CountBuyer(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyer, error) {
 	query := ""
 
@@ -1604,6 +1779,68 @@ func (r *RepoPG) CountBuyer(ctx context.Context, req model.GetOrderAnalyticsRequ
 	return rs, nil
 }
 
+func (r *RepoPG) CountEcomBuyer(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyer, error) {
+	query := ""
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		query += `select count(*) total_buyer from (select contact_id  from ecom_order o
+				where business_id = ?`
+		if req.StartTime != nil && req.EndTime != nil {
+			query += " AND created_at BETWEEN ? AND ? "
+		}
+		query += `group by contact_id ) as temp`
+	} else {
+
+		query += `select
+					COALESCE(count(total_buyer),0) AS total_buyer,
+					COALESCE(count(last_period_total_buyer),0) AS last_period_total_buyer
+				   	from
+					  (select distinct
+						   case WHEN created_at  > 'first_date'
+							   then contact_id end as total_buyer,
+						   case WHEN  created_at  < 'per_last_date'
+							   then contact_id end as last_period_total_buyer						  
+				   	from ecom_order o where business_id = ?
+						  and (created_at > 'per_first_date' AND created_at < 'last_date')
+				  	group by contact_id,created_at) as temp;`
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountBuyer{}, nil
+		}
+	}
+	rs := model.CountBuyer{}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+				return model.CountBuyer{}, nil
+			}
+		} else {
+			return model.CountBuyer{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query, req.BusinessID).Scan(&rs).Error; err != nil {
+			return model.CountBuyer{}, nil
+		}
+	}
+	return rs, nil
+}
+
 func (r *RepoPG) CountBuyerNew(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyerNew, error) {
 	query := ""
 
@@ -1618,7 +1855,7 @@ func (r *RepoPG) CountBuyerNew(ctx context.Context, req model.GetOrderAnalyticsR
 				   contact_id  as last_period_total_buyer
 			   from orders o where business_id = 'business_id_req'
 					and created_at < ? and contact_id is not null 
-	 	 	group by contact_id)`
+	 	 		group by contact_id)`
 
 		query = strings.ReplaceAll(query, "business_id_req", valid.String(req.BusinessID))
 	} else {
@@ -1693,6 +1930,2473 @@ func (r *RepoPG) CountBuyerNew(ctx context.Context, req model.GetOrderAnalyticsR
 		if err := r.DB.Raw(query).Scan(&rs).Error; err != nil {
 			return model.CountBuyerNew{}, nil
 		}
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) CountBuyerEcomNew(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountBuyerNew, error) {
+	query := ""
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		query += `select count (*) as total_buyer_new, null as last_period_total_buyer_new from 
+					(select distinct contact_id as total_buyer_new
+				from ecom_order o where business_id = 'business_id_req'
+					and (created_at > ? AND created_at < ? )
+		 		group by contact_id) temp  
+					where total_buyer_new not IN (
+		 		select distinct
+				   contact_id  as last_period_total_buyer
+			   from ecom_order o where business_id = 'business_id_req'
+					and created_at < ? and contact_id is not null 
+	 	 		group by contact_id)`
+
+		query = strings.ReplaceAll(query, "business_id_req", valid.String(req.BusinessID))
+	} else {
+
+		query += `select total_buyer_new, last_period_total_buyer_new
+					from ( select generate_series(0, 0 ) as index, count (*) as total_buyer_new 
+						from ( select distinct contact_id as total_buyer_new
+							from ecom_order o where business_id = 'req_business_id'
+								and (created_at) > 'first_date'
+								and (created_at) < 'last_date' 
+							group by
+								contact_id) temp
+						where total_buyer_new not in (
+							select distinct contact_id as last_period_total_buyer
+							from ecom_order o
+							where
+								business_id = 'req_business_id'
+								and (created_at) < 'first_date'
+									and contact_id is not null
+								group by
+									contact_id)
+						) temp_order
+					inner join (
+						select generate_series(0, 0 ) as index, count (*) as last_period_total_buyer_new
+						from ( select distinct contact_id as total_buyer_new
+							from ecom_order o where business_id = 'req_business_id'
+								and (created_at) > 'per_first_date'
+								and (created_at) < 'per_last_date' 
+							group by
+								contact_id) temp
+						where total_buyer_new not in ( select distinct contact_id as last_period_total_buyer
+							from ecom_order o
+							where business_id = 'req_business_id'
+								and (created_at) < 'per_first_date'
+									and contact_id is not null
+								group by
+									contact_id)) last_temp_order on
+						temp_order.index = last_temp_order.index`
+
+		query = strings.ReplaceAll(query, "req_business_id", valid.String(req.BusinessID))
+		now := time.Now().Add(time.Duration(-7) * time.Hour)
+		switch req.Type {
+		case utils.OPTION_FILTER_TODAY:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -1).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_WEEK:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, 0, -7).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		case utils.OPTION_FILTER_THIS_MONTH:
+			query = strings.ReplaceAll(query, "per_first_date", req.StartTime.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Add(time.Duration(-7)*time.Hour).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "per_last_date", now.UTC().Add(7*time.Hour).AddDate(0, -1, 0).Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "first_date", req.StartTime.Format("2006-01-02 15:04:05"))
+			query = strings.ReplaceAll(query, "last_date", now.UTC().Add(7*time.Hour).Format("2006-01-02 15:04:05"))
+		default:
+			return model.CountBuyerNew{}, nil
+		}
+	}
+	rs := model.CountBuyerNew{}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE || req.Type == utils.OPTION_FILTER_LAST_MONTH || req.Type == utils.OPTION_FILTER_LAST_WEEK {
+		if req.StartTime != nil && req.EndTime != nil {
+			if err := r.DB.Raw(query, req.StartTime, req.EndTime, req.StartTime).Scan(&rs).Error; err != nil {
+				return model.CountBuyerNew{}, nil
+			}
+		} else {
+			return model.CountBuyerNew{}, nil
+		}
+	} else {
+		if err := r.DB.Raw(query).Scan(&rs).Error; err != nil {
+			return model.CountBuyerNew{}, nil
+		}
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetDetailChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+				select
+					temp_order.index,
+					to_char(temp_order.time, 'HH24:MI:SS') AS time,
+					temp_order.value as value,
+					temp_order_last.value as per_value
+					
+				from
+					(
+					select
+							row_number() over (
+						order by
+							temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				left join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last
+							
+							on
+					temp_order_last.index = temp_order.index
+				order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+					select
+						temp_order.index,
+						to_char(temp_order.time, 'YYYY-MM-DD') as time,
+						temp_order.value as value,
+						temp_order_last.value as per_value
+					from      
+						(
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value as value
+						from	
+							(
+							select
+								date_trunc('day',  'latest_end_time'::date ) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from orders o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order
+					left join (
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value
+						from
+							(
+							select
+								date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from orders o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order_last on
+						temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+				select
+					case
+						when ('latest_end_time'::date - 'first_start_time'::date>'latest_last_end_time'::date - 'first_last_start_time'::date) then temp_order.index
+						else temp_order_last.index
+					end as index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value,
+					temp_order_last.value as per_value
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('day', 'latest_end_time'::date) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				full outer join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('day', 'latest_last_end_time'::date ) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							and deleted_at is null
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last on
+					temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		select
+			row_number() over (
+			order by temp.time) as index,
+			to_char(temp.time, 'YYYY-MM-DD') as time,
+			null as per_value,
+			temp1.value as value
+		from
+			(
+			select
+				date_trunc('day',  'end_time'::date ) - interval '1 day' * n as time
+			from
+				generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+		left join (
+			select
+				DATE_TRUNC('day', updated_at + '7 hour') as time,
+				business_id ,
+				sum(grand_total) as value
+				from orders o
+			where
+				business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+			group by
+				DATE_TRUNC('day', updated_at + '7 hour'),
+				business_id
+			order by
+				DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+			temp.time = temp1.time
+		order by
+			temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetOrderChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+				select
+					temp_order.index,
+					to_char(temp_order.time, 'HH24:MI:SS') AS time,
+					temp_order.value as value,
+					temp_order_last.value as per_value
+					
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				left join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last
+							
+							on
+					temp_order_last.index = temp_order.index
+				order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+						select
+						temp_order.index,
+						to_char(temp_order.time, 'YYYY-MM-DD') as time,
+						temp_order.value as value,
+						temp_order_last.value as per_value
+					from      
+						(
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value as value
+						from
+							(
+							select
+								date_trunc('day',  'latest_end_time'::date ) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								count(*) as value
+								from orders o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order
+					left join (
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value
+						from
+							(
+							select
+								date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								count(*) as value
+								from orders o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order_last on
+						temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+				select
+					case
+						when ('latest_end_time'::date - 'first_start_time'::date>'latest_last_end_time'::date - 'first_last_start_time'::date) then temp_order.index
+						else temp_order_last.index
+					end as index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value,
+					temp_order_last.value as per_value
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('day', 'latest_end_time'::date) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							orders o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				full outer join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('day', 'latest_last_end_time'::date ) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							orders o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							and deleted_at is null
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last on
+					temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		select
+			row_number() over (
+			order by temp.time) as index,
+			to_char(temp.time, 'YYYY-MM-DD') as time,
+			null as per_value,
+			temp1.value as value
+		from
+			(
+			select
+				date_trunc('day',  'end_time'::date ) - interval '1 day' * n as time
+			from
+				generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+		left join (
+			select
+				DATE_TRUNC('day', updated_at + '7 hour') as time,
+				business_id ,
+				count(*) as value
+				from orders o
+			where
+				business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+			group by
+				DATE_TRUNC('day', updated_at + '7 hour'),
+				business_id
+			order by
+				DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+			temp.time = temp1.time
+		order by
+			temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetCustomerChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+			select
+				temp_order.index,
+				to_char(temp_order.time, 'HH24:MI:SS') as time,
+				temp_order.value as value,
+				temp_order_last.value as per_value
+			from
+				(
+				select
+					row_number() over (
+				order by
+					temp.time) as index,
+					temp.time,
+					sum(temp1.value) as value
+				from
+					(
+					select
+						date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+					from
+						generate_series(0, 23 ) as i(n)) temp
+				left join (
+					select
+						time,
+						count(contact_id) as value
+					from
+						(
+						select
+							contact_id,
+							DATE_TRUNC('hour', created_at +'7 hour' ) as time
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+							contact_id,
+							DATE_TRUNC('hour', created_at + '7 hour')) as tem
+					group by
+						time)temp1 on
+					temp.time = temp1.time
+				group by
+					temp.time) temp_order
+			left join (
+				select
+					row_number() over (
+				order by
+					temp.time) as index,
+					temp.time,
+					sum(temp1.value) as value
+				from
+					(
+					select
+						date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+					from
+						generate_series(0, 23 ) as i(n)) temp
+				left join (
+					select
+						time,
+						count(contact_id) as value
+					from
+						(
+						select
+							contact_id,
+							DATE_TRUNC('hour', created_at +'7 hour' ) as time
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+							contact_id,
+							DATE_TRUNC('hour', created_at + '7 hour')) as tem
+					group by
+						time)temp1 on
+					temp.time = temp1.time
+				group by
+					temp.time) temp_order_last on temp_order_last.index = temp_order.index
+				order by
+				temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+			select
+					temp_order.index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value as value,
+					temp_order_last.value as per_value
+			from
+					(
+				select
+						row_number() over (
+				order by
+						temp.time) as index,
+						temp.time,
+						sum(temp1.value) as value
+				from
+						(
+					select
+							date_trunc('day', 'latest_end_time'::date ) - interval '1 day' * n as time
+					from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+				left join (
+					select
+							time,
+							count(contact_id) as value
+					from
+							(
+						select
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour' ) as time
+						from
+								orders o
+						where
+							business_id = ?
+							and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour')) as tem
+					group by
+							time)temp1 on
+						temp.time = temp1.time
+				group by
+						temp.time) temp_order
+			left join (
+				select
+						row_number() over (
+				order by
+						temp.time) as index,
+						temp.time,
+						sum(temp1.value) as value
+				from
+						(
+					select
+							date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+					from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+				left join (
+					select
+							time,
+							count(contact_id) as value
+					from
+							(
+						select
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour' ) as time
+						from
+								orders o
+						where
+							business_id = ? and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour')) as tem
+					group by
+							time)temp1 on
+						temp.time = temp1.time
+				group by
+						temp.time) temp_order_last on
+				temp_order_last.index = temp_order.index
+			order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+			select
+				case
+					when (
+						'latest_end_time' :: date - 'first_start_time' :: date > 'latest_last_end_time' :: date - 'first_last_start_time' :: date
+					) then temp_order.index
+					else temp_order_last.index
+				end as index,
+				to_char(temp_order.time, 'YYYY-MM-DD') as time,
+				temp_order.value as value,
+				temp_order_last.value as per_value
+			from
+				(
+					select
+						row_number() over (
+							order by
+								temp.time
+						) as index,
+						temp.time,
+						sum(temp1.value) as value
+					from
+						(
+							select
+								date_trunc('day', 'latest_end_time' :: date) - interval '1 day' * n as time
+							from
+								generate_series(
+									0,
+									'latest_end_time' :: date - 'first_start_time' :: date
+								) as i(n)
+						) temp
+						left join (
+							select
+								time,
+								count(contact_id) as value
+							from
+								(
+									select
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour') as time
+									from
+										orders o
+									where
+										business_id = ?
+										and deleted_at is null
+										and (
+											created_at between ?
+											and ?
+										)
+									group by
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour')
+								) as tem
+							group by
+								time
+						) temp1 on temp.time = temp1.time
+					group by
+						temp.time
+				) temp_order full
+				outer join (
+					select
+						row_number() over (
+							order by
+								temp.time
+						) as index,
+						temp.time,
+						sum(temp1.value) as value
+					from
+						(
+							select
+								date_trunc('day', 'latest_last_end_time' :: date) - interval '1 day' * n as time
+							from
+								generate_series(
+									0,
+									'latest_last_end_time' :: date - 'first_last_start_time' :: date
+								) as i(n)
+						) temp
+						left join (
+							select
+								time,
+								count(contact_id) as value
+							from
+								(
+									select
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour') as time
+									from
+										orders o
+									where
+										business_id = ?
+										and (
+											created_at between ?
+											and ?
+										)
+									group by
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour')
+								) as tem
+							group by
+								time
+						) temp1 on temp.time = temp1.time
+					group by
+						temp.time
+				) temp_order_last on temp_order_last.index = temp_order.index
+			order by
+				temp_order.time	`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		 		select
+						row_number() over (
+				order by
+						temp.time) as index,
+						temp.time,
+						sum(temp1.value) as value,
+						null as per_value
+				from
+						(
+					select
+							date_trunc('day', 'end_time'::date ) - interval '1 day' * n as time
+					from
+							generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+				left join (
+					select
+							time,
+							count(contact_id) as value
+					from
+							(
+						select
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour' ) as time
+						from
+								orders o
+						where
+							business_id = ?
+							and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour')) as tem
+					group by
+							time)temp1 on
+						temp.time = temp1.time
+				group by
+						temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetCancelChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+				select
+					temp_order.index,
+					to_char(temp_order.time, 'HH24:MI:SS') AS time,
+					temp_order.value as value,
+					temp_order_last.value as per_value
+					
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				left join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last
+							
+							on
+					temp_order_last.index = temp_order.index
+				order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+						select
+						temp_order.index,
+						to_char(temp_order.time, 'YYYY-MM-DD') as time,
+						temp_order.value as value,
+						temp_order_last.value as per_value
+					from      
+						(
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value as value
+						from
+							(
+							select
+								date_trunc('day',  'latest_end_time'::date ) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from orders o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order
+					left join (
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value
+						from
+							(
+							select
+								date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from orders o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order_last on
+						temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+				select
+					case
+						when ('latest_end_time'::date - 'first_start_time'::date>'latest_last_end_time'::date - 'first_last_start_time'::date) then temp_order.index
+						else temp_order_last.index
+					end as index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value,
+					temp_order_last.value as per_value
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('day', 'latest_end_time'::date) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				full outer join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('day', 'latest_last_end_time'::date ) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							orders o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+							and deleted_at is null
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last on
+					temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		select
+			row_number() over (
+			order by temp.time) as index,
+			to_char(temp.time, 'YYYY-MM-DD') as time,
+			null as per_value,
+			temp1.value as value
+		from
+			(
+			select
+				date_trunc('day',  'end_time'::date ) - interval '1 day' * n as time
+			from
+				generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+		left join (
+			select
+				DATE_TRUNC('day', updated_at + '7 hour') as time,
+				business_id ,
+				sum(grand_total) as value
+				from orders o
+			where
+				business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+			group by
+				DATE_TRUNC('day', updated_at + '7 hour'),
+				business_id
+			order by
+				DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+			temp.time = temp1.time
+		order by
+			temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetDetailChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+				select
+					temp_order.index,
+					to_char(temp_order.time, 'HH24:MI:SS') AS time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+					
+				from
+					(
+					select
+							row_number() over (
+						order by
+							temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				left join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last
+							
+							on
+					temp_order_last.index = temp_order.index
+				order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+					select
+						temp_order.index,
+						to_char(temp_order.time, 'YYYY-MM-DD') as time,
+						temp_order.value as value_ecom,
+						temp_order_last.value as per_value_ecom
+					from      
+						(
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value as value
+						from	
+							(
+							select
+								date_trunc('day',  'latest_end_time'::date ) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from ecom_order o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order
+					left join (
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value
+						from
+							(
+							select
+								date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from ecom_order o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order_last on
+						temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+				select
+					case
+						when ('latest_end_time'::date - 'first_start_time'::date>'latest_last_end_time'::date - 'first_last_start_time'::date) then temp_order.index
+						else temp_order_last.index
+					end as index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('day', 'latest_end_time'::date) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				full outer join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('day', 'latest_last_end_time'::date ) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							and deleted_at is null
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last on
+					temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		select
+			row_number() over (
+			order by temp.time) as index,
+			to_char(temp.time, 'YYYY-MM-DD') as time,
+			null as per_value_ecom,
+			temp1.value as value_ecom
+		from
+			(
+			select
+				date_trunc('day',  'end_time'::date ) - interval '1 day' * n as time
+			from
+				generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+		left join (
+			select
+				DATE_TRUNC('day', updated_at + '7 hour') as time,
+				business_id ,
+				sum(grand_total) as value
+				from ecom_order o
+			where
+				business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+			group by
+				DATE_TRUNC('day', updated_at + '7 hour'),
+				business_id
+			order by
+				DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+			temp.time = temp1.time
+		order by
+			temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetOrderChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+				select
+					temp_order.index,
+					to_char(temp_order.time, 'HH24:MI:SS') AS time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+					
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				left join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last
+							
+							on
+					temp_order_last.index = temp_order.index
+				order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+						select
+						temp_order.index,
+						to_char(temp_order.time, 'YYYY-MM-DD') as time,
+						temp_order.value as value_ecom,
+						temp_order_last.value as per_value_ecom
+					from      
+						(
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value as value
+						from
+							(
+							select
+								date_trunc('day',  'latest_end_time'::date ) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								count(*) as value
+								from ecom_order o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order
+					left join (
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value
+						from
+							(
+							select
+								date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								count(*) as value
+								from ecom_order o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order_last on
+						temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+				select
+					case
+						when ('latest_end_time'::date - 'first_start_time'::date>'latest_last_end_time'::date - 'first_last_start_time'::date) then temp_order.index
+						else temp_order_last.index
+					end as index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('day', 'latest_end_time'::date) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							ecom_order o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				full outer join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('day', 'latest_last_end_time'::date ) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							count(*) as value
+						from
+							ecom_order o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+							and deleted_at is null
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last on
+					temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		select
+			row_number() over (
+			order by temp.time) as index,
+			to_char(temp.time, 'YYYY-MM-DD') as time,
+			null as per_value_ecom,
+			temp1.value as value_ecom
+		from
+			(
+			select
+				date_trunc('day',  'end_time'::date ) - interval '1 day' * n as time
+			from
+				generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+		left join (
+			select
+				DATE_TRUNC('day', updated_at + '7 hour') as time,
+				business_id ,
+				count(*) as value
+				from ecom_order o
+			where
+				business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='complete'
+			group by
+				DATE_TRUNC('day', updated_at + '7 hour'),
+				business_id
+			order by
+				DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+			temp.time = temp1.time
+		order by
+			temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetCustomerChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+			select
+				temp_order.index,
+				to_char(temp_order.time, 'HH24:MI:SS') as time,
+				temp_order.value as value_ecom,
+				temp_order_last.value as per_value_ecom
+			from
+				(
+				select
+					row_number() over (
+				order by
+					temp.time) as index,
+					temp.time,
+					sum(temp1.value) as value
+				from
+					(
+					select
+						date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+					from
+						generate_series(0, 23 ) as i(n)) temp
+				left join (
+					select
+						time,
+						count(contact_id) as value
+					from
+						(
+						select
+							contact_id,
+							DATE_TRUNC('hour', created_at +'7 hour' ) as time
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+							contact_id,
+							DATE_TRUNC('hour', created_at + '7 hour')) as tem
+					group by
+						time)temp1 on
+					temp.time = temp1.time
+				group by
+					temp.time) temp_order
+			left join (
+				select
+					row_number() over (
+				order by
+					temp.time) as index,
+					temp.time,
+					sum(temp1.value) as value
+				from
+					(
+					select
+						date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+					from
+						generate_series(0, 23 ) as i(n)) temp
+				left join (
+					select
+						time,
+						count(contact_id) as value
+					from
+						(
+						select
+							contact_id,
+							DATE_TRUNC('hour', created_at +'7 hour' ) as time
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+							contact_id,
+							DATE_TRUNC('hour', created_at + '7 hour')) as tem
+					group by
+						time)temp1 on
+					temp.time = temp1.time
+				group by
+					temp.time) temp_order_last on temp_order_last.index = temp_order.index
+				order by
+				temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+			select
+					temp_order.index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+			from
+					(
+				select
+						row_number() over (
+				order by
+						temp.time) as index,
+						temp.time,
+						sum(temp1.value) as value
+				from
+						(
+					select
+							date_trunc('day', 'latest_end_time'::date ) - interval '1 day' * n as time
+					from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+				left join (
+					select
+							time,
+							count(contact_id) as value
+					from
+							(
+						select
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour' ) as time
+						from
+								ecom_order o
+						where
+							business_id = ?
+							and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour')) as tem
+					group by
+							time)temp1 on
+						temp.time = temp1.time
+				group by
+						temp.time) temp_order
+			left join (
+				select
+						row_number() over (
+				order by
+						temp.time) as index,
+						temp.time,
+						sum(temp1.value) as value
+				from
+						(
+					select
+							date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+					from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+				left join (
+					select
+							time,
+							count(contact_id) as value
+					from
+							(
+						select
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour' ) as time
+						from
+								ecom_order o
+						where
+							business_id = ? and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour')) as tem
+					group by
+							time)temp1 on
+						temp.time = temp1.time
+				group by
+						temp.time) temp_order_last on
+				temp_order_last.index = temp_order.index
+			order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+			select
+				case
+					when (
+						'latest_end_time' :: date - 'first_start_time' :: date > 'latest_last_end_time' :: date - 'first_last_start_time' :: date
+					) then temp_order.index
+					else temp_order_last.index
+				end as index,
+				to_char(temp_order.time, 'YYYY-MM-DD') as time,
+				temp_order.value as value_ecom,
+				temp_order_last.value as per_value_ecom
+			from
+				(
+					select
+						row_number() over (
+							order by
+								temp.time
+						) as index,
+						temp.time,
+						sum(temp1.value) as value
+					from
+						(
+							select
+								date_trunc('day', 'latest_end_time' :: date) - interval '1 day' * n as time
+							from
+								generate_series(
+									0,
+									'latest_end_time' :: date - 'first_start_time' :: date
+								) as i(n)
+						) temp
+						left join (
+							select
+								time,
+								count(contact_id) as value
+							from
+								(
+									select
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour') as time
+									from
+										ecom_order o
+									where
+										business_id = ?
+										and deleted_at is null
+										and (
+											created_at between ?
+											and ?
+										)
+									group by
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour')
+								) as tem
+							group by
+								time
+						) temp1 on temp.time = temp1.time
+					group by
+						temp.time
+				) temp_order full
+				outer join (
+					select
+						row_number() over (
+							order by
+								temp.time
+						) as index,
+						temp.time,
+						sum(temp1.value) as value
+					from
+						(
+							select
+								date_trunc('day', 'latest_last_end_time' :: date) - interval '1 day' * n as time
+							from
+								generate_series(
+									0,
+									'latest_last_end_time' :: date - 'first_last_start_time' :: date
+								) as i(n)
+						) temp
+						left join (
+							select
+								time,
+								count(contact_id) as value
+							from
+								(
+									select
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour') as time
+									from
+										ecom_order o
+									where
+										business_id = ?
+										and (
+											created_at between ?
+											and ?
+										)
+									group by
+										contact_id,
+										DATE_TRUNC('day', created_at + '7 hour')
+								) as tem
+							group by
+								time
+						) temp1 on temp.time = temp1.time
+					group by
+						temp.time
+				) temp_order_last on temp_order_last.index = temp_order.index
+			order by
+				temp_order.time	`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		 		select
+						row_number() over (
+				order by
+						temp.time) as index,
+						temp.time,
+						sum(temp1.value) as value_ecom,
+						null as per_value_ecom
+				from
+						(
+					select
+							date_trunc('day', 'end_time'::date ) - interval '1 day' * n as time
+					from
+							generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+				left join (
+					select
+							time,
+							count(contact_id) as value
+					from
+							(
+						select
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour' ) as time
+						from
+								ecom_order o
+						where
+							business_id = ?
+							and deleted_at is null
+							and (created_at between ? and ?)
+						group by
+								contact_id,
+								DATE_TRUNC('day', created_at + '7 hour')) as tem
+					group by
+							time)temp1 on
+						temp.time = temp1.time
+				group by
+						temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetCancelChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error) {
+	query := ""
+
+	if utils.OPTION_FILTER_TODAY == req.Type {
+		query = `
+				select
+					temp_order.index,
+					to_char(temp_order.time, 'HH24:MI:SS') AS time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+					
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('hour', 'day_to_day'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				left join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('hour', 'day_yesterday'::date) + interval '1 hour' * n as time
+						from
+							generate_series(0, 23 ) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('hour', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+						group by
+							DATE_TRUNC('hour', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('hour', updated_at + '7 hour')) as temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last
+							
+							on
+					temp_order_last.index = temp_order.index
+				order by
+					temp_order.time`
+
+		query = strings.ReplaceAll(query, "day_to_day", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "day_yesterday", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if utils.OPTION_FILTER_THIS_WEEK == req.Type || utils.OPTION_FILTER_LAST_WEEK == req.Type {
+		query = `
+						select
+						temp_order.index,
+						to_char(temp_order.time, 'YYYY-MM-DD') as time,
+						temp_order.value as value_ecom,
+						temp_order_last.value as per_value_ecom
+					from      
+						(
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value as value
+						from
+							(
+							select
+								date_trunc('day',  'latest_end_time'::date ) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_end_time'::date - 'first_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from ecom_order o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order
+					left join (
+						select
+							row_number() over (
+							order by temp.time) as index,
+							temp.time as time,
+							temp1.business_id,
+							temp1.value
+						from
+							(
+							select
+								date_trunc('day', 'latest_last_end_time'::date) - interval '1 day' * n as time
+							from
+								generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date ) as i(n)) temp
+						left join (
+							select
+								DATE_TRUNC('day', updated_at + '7 hour') as time,
+								business_id ,
+								sum(grand_total) as value
+								from ecom_order o
+							where
+								business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+							group by
+								DATE_TRUNC('day', updated_at + '7 hour'),
+								business_id
+							order by
+								DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+							temp.time = temp1.time
+						order by
+							temp.time) temp_order_last on
+						temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfWeek(req.StartTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+
+	}
+	if req.Type == utils.OPTION_FILTER_THIS_MONTH || req.Type == utils.OPTION_FILTER_LAST_MONTH {
+		query = `
+				select
+					case
+						when ('latest_end_time'::date - 'first_start_time'::date>'latest_last_end_time'::date - 'first_last_start_time'::date) then temp_order.index
+						else temp_order_last.index
+					end as index,
+					to_char(temp_order.time, 'YYYY-MM-DD') as time,
+					temp_order.value as value_ecom,
+					temp_order_last.value as per_value_ecom
+				from
+					(
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value as value
+					from
+						(
+						select
+							date_trunc('day', 'latest_end_time'::date) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_end_time'::date - 'first_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order
+				full outer join (
+					select
+						row_number() over (
+					order by
+						temp.time) as index,
+						temp.time as time,
+						temp1.business_id,
+						temp1.value
+					from
+						(
+						select
+							date_trunc('day', 'latest_last_end_time'::date ) - interval '1 day' * n as time
+						from
+							generate_series(0, 'latest_last_end_time'::date - 'first_last_start_time'::date) as i(n)) temp
+					left join (
+						select
+							DATE_TRUNC('day', updated_at + '7 hour') as time,
+							business_id ,
+							sum(grand_total) as value
+						from
+							ecom_order o
+						where
+							business_id = ?  and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+							and deleted_at is null
+						group by
+							DATE_TRUNC('day', updated_at + '7 hour'),
+							business_id
+						order by
+							DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+						temp.time = temp1.time
+					order by
+						temp.time) temp_order_last on
+					temp_order.index = temp_order_last.index`
+
+		query = strings.ReplaceAll(query, "first_start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_end_time", utils.EndOfMonth(req.EndTime.UTC().Add(7*time.Hour)).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "first_last_start_time", req.StartTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "latest_last_end_time", req.EndTimeSamePeriod.UTC().Add(7*time.Hour).Format("2006-01-02"))
+	}
+	if req.Type == utils.OPTION_FILTER_CUSTOM_RANGE {
+		query = `
+		select
+			row_number() over (
+			order by temp.time) as index,
+			to_char(temp.time, 'YYYY-MM-DD') as time,
+			null as per_value_ecom,
+			temp1.value as value_ecom
+		from
+			(
+			select
+				date_trunc('day',  'end_time'::date ) - interval '1 day' * n as time
+			from
+				generate_series(0, 'end_time'::date - 'start_time'::date ) as i(n)) temp
+		left join (
+			select
+				DATE_TRUNC('day', updated_at + '7 hour') as time,
+				business_id ,
+				sum(grand_total) as value
+				from ecom_order o
+			where
+				business_id = ? and deleted_at is null and (updated_at between ? and ?) and state ='cancel'
+			group by
+				DATE_TRUNC('day', updated_at + '7 hour'),
+				business_id
+			order by
+				DATE_TRUNC('day', updated_at + '7 hour')) temp1 on
+			temp.time = temp1.time
+		order by
+			temp.time`
+
+		query = strings.ReplaceAll(query, "end_time", req.EndTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		query = strings.ReplaceAll(query, "start_time", req.StartTime.UTC().Add(7*time.Hour).Format("2006-01-02"))
+		if err := r.DB.Raw(query, req.BusinessID, req.StartTime, req.EndTime).Scan(&rs).Error; err != nil {
+			return nil, err
+		}
+		return rs, nil
+	}
+	if err := r.DB.Raw(query, req.BusinessID, req.StartTimeSamePeriod, req.EndTime, req.BusinessID, req.StartTimeSamePeriod, req.EndTime).Scan(&rs).Error; err != nil {
+		return nil, err
 	}
 	return rs, nil
 }
