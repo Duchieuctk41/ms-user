@@ -55,6 +55,16 @@ type PGInterface interface {
 
 	//analytics
 	CountOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error)
+	CountOrderEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error)
+	OrderDataDell(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.DataSell, error)
+	GetDetailChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetOrderChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetCustomerChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetCancelChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetDetailChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetOrderChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetCustomerChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
+	GetCancelChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
 
 	//
 	CreateOrderV2(ctx context.Context, order *model.Order, tx *gorm.DB) error

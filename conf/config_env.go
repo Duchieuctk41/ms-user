@@ -30,6 +30,7 @@ type AppConfig struct {
 	ApiKeySendinblue         string `env:"API_KEY_SENDINBLUE" envDefault:"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"`
 	BIServerBaseURL          string `env:"BI_SERVER_BASE_URL" envDefault:"http://122.248.233.230:8001"`
 	BIServerToken            string `env:"BI_SERVER_TOKEN" envDefault:"1c26WtGMKNecLzX5BBea-7kYQDQo7XVm3JyeFkKEf-pdpEJtBwiWPhIdWxHupO"`
+	MSEcomAdapter            string `env:"MS_E_COM_ADAPTER" envDefault:"http://localhost:8040"`
 }
 
 var config AppConfig

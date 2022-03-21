@@ -366,6 +366,24 @@ type ListOrderRevenueAnalyticsResponse struct {
 	Meta map[string]interface{} `json:"meta"`
 }
 
+type DataSell struct {
+	OnlineSell  float64 `json:"online_sell"`
+	OfflineSell float64 `json:"offline_sell"`
+	Ecommerce   float64 `json:"ecommerce,omitempty"`
+}
+
+type ResponseAnalytics struct {
+	Id               int       `json:"id"`
+	Type             string    `json:"type"`
+	Amount           float64   `json:"amount"`
+	LastPeriodAmount float64   `json:"last_period_amount"`
+	Data             *DataSell `json:"data,omitempty"`
+}
+
+type AnalyticsResponse struct {
+	Data  interface{} `json:"data"`
+	Chart interface{} `json:"chart"`
+}
 type GetNumberDeliveringParam struct {
 	BusinessID string `json:"business_id" form:"business_id" valid:"Required"`
 	ContactIDs string `json:"contact_ids" form:"contact_ids" valid:"Required"`

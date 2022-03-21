@@ -24,10 +24,20 @@ type GetOrderAnalyticsRequest struct {
 	EndTime                *time.Time `json:"end_time" form:"end_time" valid:"Required"`
 	Type                   string     `json:"type" form:"type"`
 	Option                 string     `json:"option" form:"option"`
+	Ecom                   string     `json:"ecom" form:"ecom"`
 	StartTimeSamePeriod    *time.Time `json:"start_time_same_period,omitempty"`
 	EndTimeSamePeriod      *time.Time `json:"end_time_same_period,omitempty"`
 	EndTimeTotalSamePeriod *time.Time
 	Domain                 string `json:"domain" form:"domain"`
+}
+
+type ChartDataDetail struct {
+	Index        *int     `json:"index"`
+	Time         *string  `json:"time"`
+	Value        *float64 `json:"value"`
+	PerValue     *float64 `json:"per_value"`
+	ValueEcom    *float64 `json:"value_ecom"`
+	PerValueEcom *float64 `json:"per_value_ecom"`
 }
 
 type CountOrderAnalytics struct {

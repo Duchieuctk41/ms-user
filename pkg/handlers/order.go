@@ -1107,7 +1107,7 @@ func (h *OrderHandlers) GetOrderAnalytics(r *ginext.Request) (*ginext.Response, 
 		return nil, err
 	}
 
-	rs, err := h.service.GetOrderAnalytics(r.Context(), req)
+	rs, err := h.service.GetOrderAnalytics(r.Context(), req, userID.String())
 	if err != nil {
 		log.WithError(err).Error("Fail to GetOrderAnalytics")
 		return nil, err
