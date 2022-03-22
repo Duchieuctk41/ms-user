@@ -2152,23 +2152,11 @@ func (s *OrderService) UpdateDetailOrderSeller(ctx context.Context, req model.Up
 			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Số tiền tổng sản phẩm không hợp lệ")
 		}
 
-		// hieucn -02/03/2022 - fix seller self setup delevery_fee
-		deliveryFee = valid.Float64(req.DeliveryFee)
-		//if req.DeliveryMethod != nil {
-		//	switch valid.String(req.DeliveryMethod) {
-		//	case utils.DELIVERY_METHOD_BUYER_PICK_UP:
-		//		if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) > 0 {
-		//			return nil, ginext.NewError(http.StatusBadRequest, "Lỗi: Phí giao hàng phải là 0đ cho trường hợp khách tự tới lấy")
-		//		}
-		//		deliveryFee = 0
-		//		break
-		//	case utils.DELIVERY_METHOD_SELLER_DELIVERY:
-		//		if req.DeliveryFee != nil && valid.Float64(req.DeliveryFee) >= 0 {
-		//			deliveryFee = valid.Float64(req.DeliveryFee)
-		//		}
-		//		break
-		//	}
-		//}
+		if valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+			deliveryFee = 0
+		} else {
+			deliveryFee = valid.Float64(req.DeliveryFee)
+		}
 
 		// Check other discount
 		if valid.Float64(req.OtherDiscount) < 0 || orderGrandTotal-order.PromotionDiscount-valid.Float64(req.OtherDiscount) < 0 {
@@ -4169,6 +4157,13 @@ func (s *OrderService) UpdateDetailOrderSellerV2(ctx context.Context, req model.
 					req.ListOrderItem[i].Price = valid.Float64Pointer(v.ProductNormalPrice)
 				}
 			}
+		}
+
+		// Check valid delivery fee
+		if valid.String(req.DeliveryMethod) == utils.DELIVERY_METHOD_BUYER_PICK_UP {
+			deliveryFee = 0
+		} else {
+			deliveryFee = valid.Float64(req.DeliveryFee)
 		}
 
 		// Check promotion discount
