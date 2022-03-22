@@ -2,7 +2,6 @@ package repo
 
 import (
 	"context"
-	"finan/ms-order-management/pkg/model"
 	"math"
 	"time"
 
@@ -29,77 +28,7 @@ type PGInterface interface {
 	// DB
 	DBWithTimeout(ctx context.Context) (*gorm.DB, context.CancelFunc)
 
-	CreateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
-	CreateOrderItem(ctx context.Context, orderItem model.OrderItem, tx *gorm.DB) (rs model.OrderItem, err error)
-	CountOneStateOrder(ctx context.Context, businessId uuid.UUID, state string, tx *gorm.DB) int
-	CreateOrderTracking(ctx context.Context, orderTracking model.OrderTracking, tx *gorm.DB) (err error)
-	RevenueBusiness(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (rs model.RevenueBusiness, err error)
-	GetContactHaveOrder(ctx context.Context, businessId uuid.UUID, tx *gorm.DB) (string, int, error)
-	GetOneOrder(ctx context.Context, id string, tx *gorm.DB) (rs model.Order, err error)
-	GetOneOrderBuyer(ctx context.Context, id string, tx *gorm.DB) (rs model.OrderBuyerResponse, err error)
-	GetOneOrderRecent(ctx context.Context, buyerID string, tx *gorm.DB) (rs model.Order, err error)
-	UpdateOrder(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
-	UpdateOrderV2(ctx context.Context, order model.Order, tx *gorm.DB) (rs model.Order, err error)
-	GetListOrderEcom(ctx context.Context, req model.OrderEcomRequest, tx *gorm.DB) (rs model.ListOrderEcomResponse, err error)
-	GetAllOrder(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
-	GetCompleteOrders(ctx context.Context, contactID uuid.UUID, tx *gorm.DB) (res model.GetCompleteOrdersResponse, err error)
-	UpdateDetailOrder(ctx context.Context, order model.Order, mapItem map[string]model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
-	UpdateDetailOrderSellerV2(ctx context.Context, order model.Order, req []model.OrderItem, tx *gorm.DB) (rs model.Order, stocks []model.StockRequest, err error)
-	GetOrderTracking(ctx context.Context, req model.OrderTrackingRequest, tx *gorm.DB) (rs model.OrderTrackingResponse, err error)
-	CountOrderState(ctx context.Context, req model.RevenueBusinessParam, tx *gorm.DB) (res model.CountOrderState, err error)
-	GetOrderByContact(ctx context.Context, req model.OrderByContactParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
-	GetAllOrderForExport(ctx context.Context, req model.ExportOrderReportRequest, tx *gorm.DB) (orders []model.Order, err error)
-	GetContactDelivering(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ContactDeliveringResponse, err error)
-	GetNumberDelivering(ctx context.Context, req model.GetNumberDeliveringParam, tx *gorm.DB) (rs []model.ContactDelivering, err error)
-	GetTotalContactDelivery(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.TotalContactDelivery, err error)
-
-	//analytics
-	CountOrderAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error)
-	CountOrderEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.CountOrderAnalytics, error)
-	OrderDataDell(ctx context.Context, req model.GetOrderAnalyticsRequest) (model.DataSell, error)
-	GetDetailChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetOrderChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetCustomerChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetCancelChartAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetDetailChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetOrderChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetCustomerChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-	GetCancelChartEcomAnalytics(ctx context.Context, req model.GetOrderAnalyticsRequest) (rs []model.ChartDataDetail, err error)
-
-	//
-	CreateOrderV2(ctx context.Context, order *model.Order, tx *gorm.DB) error
-	GetlistOrderV2(ctx context.Context, req model.OrderParam, tx *gorm.DB) (rs model.ListOrderResponse, err error)
-
-	OverviewSales(ctx context.Context, req model.OrverviewPandLRequest, tx *gorm.DB) (model.OverviewPandLResponse, error)
-	OverviewCost(ctx context.Context, req model.OrverviewPandLRequest, overviewPandL model.OverviewPandLResponse, tx *gorm.DB) (model.OverviewPandLResponse, error)
-
-	GetListProfitAndLoss(ctx context.Context, req model.ProfitAndLossRequest, tx *gorm.DB) (model.GetListProfitAndLossResponse, error)
-	GetCountQuantityInOrder(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
-	GetCountQuantityInOrderEcom(ctx context.Context, req model.CountQuantityInOrderRequest, tx *gorm.DB) (rs model.CountQuantityInOrderResponse, err error)
-	GetSumOrderCompleteContact(ctx context.Context, req model.GetTotalOrderByBusinessRequest, tx *gorm.DB) (rs []model.GetTotalOrderByBusinessResponse, err error)
-
-	// tutorial flow
-	CountOrderForTutorial(ctx context.Context, creatorID uuid.UUID, tx *gorm.DB) (count int, err error)
-
-	// log history
-	LogHistory(ctx context.Context, history model.History, tx *gorm.DB) (rs model.History, err error)
-	DeleteLogHistory(ctx context.Context, tx *gorm.DB) error
-
-	// ecom
-	UpdateMultiOrderEcom(ctx context.Context, rs []model.OrderEcom, tx *gorm.DB)
-	UpdateMultiEcomOrder(ctx context.Context, rs []model.EcomOrder, tx *gorm.DB)
-	GetStateOrderEcom(ctx context.Context, id string, tx *gorm.DB) (rs model.EcomOrderState, err error)
-
-	// payment_order_history
-	CreatePaymentOrderHistory(ctx context.Context, payment *model.PaymentOrderHistory, tx *gorm.DB) (err error)
-	GetAmountTotalPaymentOrderHistory(ctx context.Context, id string, tx *gorm.DB) (rs float64, err error)
-	GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam, tx *gorm.DB) (rs []*model.PaymentOrderHistoryResponse, err error)
-	//GetListPaymentOrderHistory(ctx context.Context, req model.PaymentOrderHistoryParam, tx *gorm.DB) (rs model.GetListPaymentOrderHistoryResponse, err error)
-
-	//web pro
-	CountOrder(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.OrderTotal, error)
-	OverviewCostPandL(ctx context.Context, req model.OrverviewRequest, tx *gorm.DB) (model.CostTotal, error)
-	GetOrderItemRevenueAnalytics(ctx context.Context, input model.GetOrderRevenueAnalyticsParam, tx *gorm.DB) (rs model.ListOrderRevenueAnalyticsResponse, err error)
+	TestMsUser(ctx context.Context) (err error)
 }
 
 type BaseModel struct {
@@ -148,13 +77,6 @@ func (r *RepoPG) GetPageSize(pageSize int) int {
 
 func (r *RepoPG) GetTotalPages(totalRows, pageSize int) int {
 	return int(math.Ceil(float64(totalRows) / float64(pageSize)))
-}
-
-func (r *RepoPG) GetOrder(sort string) string {
-	if sort == "" {
-		sort = "created_at desc"
-	}
-	return sort
 }
 
 func (r *RepoPG) GetPaginationInfo(query string, tx *gorm.DB, totalRow, page, pageSize int) (rs ginext.BodyMeta, err error) {

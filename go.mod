@@ -1,28 +1,49 @@
-module finan/ms-order-management
+module ms-user
 
-go 1.13
+go 1.18
 
 require (
-	github.com/antihax/optional v1.0.0 // indirect
 	github.com/astaxie/beego v1.12.3
-	github.com/caarlos0/env/v6 v6.6.2
+	github.com/caarlos0/env/v6 v6.9.1
 	github.com/gin-gonic/gin v1.7.2
-	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.2.0
-	github.com/jinzhu/gorm v1.9.16
-	github.com/lib/pq v1.10.2
-	github.com/praslar/lib v0.2.2
-	github.com/sendgrid/rest v2.6.5+incompatible
-	github.com/sendinblue/APIv3-go-library v2.0.0+incompatible
+	github.com/praslar/lib v0.2.4
+	github.com/sendgrid/rest v2.6.9+incompatible
 	github.com/sirupsen/logrus v1.8.1
-	github.com/xuri/excelize/v2 v2.4.1
 	gitlab.com/goxp/cloud0 v1.5.2
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/text v0.3.7
-	google.golang.org/appengine v1.4.0
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
-	gorm.io/datatypes v1.0.5
-	gorm.io/driver/postgres v1.2.3 // indirect
-	gorm.io/driver/sqlserver v1.2.1 // indirect
-	gorm.io/gorm v1.22.4
+	golang.org/x/text v0.3.3
+	gorm.io/gorm v1.21.11
+)
+
+require (
+	github.com/gin-contrib/sse v0.1.0 // indirect
+	github.com/go-errors/errors v1.4.0 // indirect
+	github.com/go-playground/locales v0.13.0 // indirect
+	github.com/go-playground/universal-translator v0.17.0 // indirect
+	github.com/go-playground/validator/v10 v10.6.1 // indirect
+	github.com/golang/protobuf v1.4.2 // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgconn v1.8.1 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.0.6 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
+	github.com/jackc/pgtype v1.7.0 // indirect
+	github.com/jackc/pgx/v4 v4.11.0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.2 // indirect
+	github.com/json-iterator/go v1.1.10 // indirect
+	github.com/leodido/go-urn v1.2.0 // indirect
+	github.com/mattn/go-isatty v0.0.12 // indirect
+	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
+	github.com/shiena/ansicolor v0.0.0-20151119151921-a422bbe96644 // indirect
+	github.com/ugorji/go/codec v1.1.7 // indirect
+	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
+	golang.org/x/sys v0.0.0-20201119102817-f84b799fce68 // indirect
+	google.golang.org/protobuf v1.23.0 // indirect
+	gopkg.in/yaml.v2 v2.2.8 // indirect
+	gorm.io/driver/postgres v1.1.0 // indirect
+	gorm.io/driver/sqlite v1.1.4 // indirect
 )
