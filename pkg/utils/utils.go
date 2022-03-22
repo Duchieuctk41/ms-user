@@ -493,3 +493,79 @@ func GetListSKU(skuIDs []string) (res []model.SkuDetail, err error) {
 	}
 	return tmp.Data, nil
 }
+
+func EndOfWeek(date time.Time) time.Time {
+	return date.AddDate(0, 0, +6)
+}
+
+func EndOfMonth(date time.Time) time.Time {
+	return date.AddDate(0, 1, -date.Day())
+}
+
+func DayTime(i time.Time) *time.Time {
+	if i.IsZero() {
+		return nil
+	} else {
+		return &i
+	}
+}
+
+func BeginningOfMonth(date time.Time) time.Time {
+	return date.AddDate(0, 0, -date.Day()+1)
+}
+
+func ResultFloat(input1 *float64, input2 *float64) *float64 {
+	if input1 != nil && input2 != nil {
+		result := *input1 + *input2
+		return &result
+	}
+	if input1 == nil && input2 != nil {
+		result := *input2
+		return &result
+	}
+	if input1 != nil && input2 == nil {
+		result := *input1
+		return &result
+	}
+	return nil
+}
+
+func CheckBusinessHasEcom(userID string, businessID string) (rs bool, err error) {
+	// Update req quantity
+	header := make(map[string]string)
+	header["x-user-id"] = userID
+	header["x-user-roles"] = strconv.Itoa(ADMIN_ROLE)
+
+	param := map[string]string{}
+	if userID != "" {
+		param["user_id"] = userID
+	}
+	if businessID != "" {
+		param["business_id"] = businessID
+	}
+	param["platform_key"] = SHOPEE
+	type BusinessHasecom struct {
+		ID string `json:"id"`
+	}
+	body, _, err := common.SendRestAPI(conf.LoadEnv().MSEcomAdapter+"/api/v1/business-ecom-shop/get-list-business-has-ecom", rest.Get, header, param, nil)
+	if err != nil {
+		// parsing error
+		tm := struct {
+			Message string `json:"message"`
+		}{}
+		if err = json.Unmarshal([]byte(body), &tm); err != nil {
+			return false, err
+		}
+		return false, fmt.Errorf(tm.Message)
+	}
+	tm := struct {
+		Data []BusinessHasecom `json:"data"`
+	}{}
+	if err = json.Unmarshal([]byte(body), &tm); err != nil {
+		return false, err
+	}
+	if len(tm.Data) == 0 {
+		return false, nil
+	}
+	return true, nil
+}

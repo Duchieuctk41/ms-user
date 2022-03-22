@@ -16,9 +16,10 @@ require (
 	github.com/sendinblue/APIv3-go-library v2.0.0+incompatible
 	github.com/sirupsen/logrus v1.8.1
 	github.com/xuri/excelize/v2 v2.4.1
-	gitlab.com/goxp/cloud0 v1.5.0
+	gitlab.com/goxp/cloud0 v1.5.2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/text v0.3.7
+	google.golang.org/appengine v1.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	gorm.io/datatypes v1.0.5
 	gorm.io/driver/postgres v1.2.3 // indirect
