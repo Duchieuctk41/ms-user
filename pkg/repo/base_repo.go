@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"math"
+	"ms-user/pkg/model"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,8 @@ type PGInterface interface {
 	DBWithTimeout(ctx context.Context) (*gorm.DB, context.CancelFunc)
 
 	TestMsUser(ctx context.Context) (err error)
+	GetOneUserByID(ctx context.Context, email string, tx *gorm.DB) (rs model.User, err error)
+	CreateUser(ctx context.Context, req *model.User, tx *gorm.DB) error
 }
 
 type BaseModel struct {
