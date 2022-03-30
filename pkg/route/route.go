@@ -8,6 +8,8 @@ import (
 	"github.com/caarlos0/env/v6"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/service"
+	"github.com/gin-contrib/cors"
+	"time"
 )
 
 type extraSetting struct {
@@ -43,5 +45,18 @@ func NewService() *Service {
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
 	s.Router.POST("/internal/migrate", migrateHandler.Migrate)
+
+	s.Router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3006"},
+		AllowMethods:     []string{"PUT", "PATCH", "GET", "DELETE"},
+		AllowHeaders:     []string{"Origin"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+				return origin == "http://localhost:3006"
+		},
+		MaxAge: 12 * time.Hour,
+}))
+
 	return s
 }
