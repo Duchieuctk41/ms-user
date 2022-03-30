@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"github.com/praslar/lib/common"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"ms-user/pkg/model"
 	"ms-user/pkg/repo"
@@ -59,14 +61,21 @@ func (s *UserService) CreateUser(ctx context.Context, req model.CreateUserReq) (
 		log.Error("error_400: This account has been existed")
 		return rs, ginext.NewError(http.StatusBadRequest, "This account has been existed")
 	}
+	common.Sync(req, &rs)
 
-	// check password
-	if valid.String(req.Password) != "" && valid.String(req.Password) != valid.String(req.ConfirmPassword) {
-		log.Error("error_400: password & confirm_password do not match")
-		return rs, ginext.NewError(http.StatusBadRequest, "This account has been existed")
+	// verify password
+	if err = utils.VerifyPassword(valid.String(req.Password)); err != nil {
+		return rs, ginext.NewError(http.StatusBadRequest, fmt.Sprintf("Password invalid: %v", err.Error()))
 	}
 
-	common.Sync(req, &rs)
+	// hash password
+	hashPass, err := bcrypt.GenerateFromPassword([]byte(valid.String(req.Password)), bcrypt.DefaultCost)
+	if err != nil {
+		return rs, ginext.NewError(http.StatusBadRequest, "Cannot encode password")
+	} else {
+		rs.Password = string(hashPass)
+	}
+
 	if err = s.repo.CreateUser(ctx, &rs, nil); err != nil {
 		return rs, err
 	}

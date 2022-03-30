@@ -48,6 +48,7 @@ func (r *RepoPG) CreateUser(ctx context.Context, req *model.User, tx *gorm.DB) e
 		log.WithError(err).Error("error_500: error CreateUser - RepoPG")
 		return ginext.NewError(http.StatusInternalServerError, err.Error())
 	}
+	req.Password = ""
 
 	return nil
 }
