@@ -1,6 +1,7 @@
 package route
 
 import (
+	"github.com/gin-contrib/cors"
 	"ms-user/pkg/handlers"
 	"ms-user/pkg/repo"
 	service2 "ms-user/pkg/service"
@@ -8,8 +9,6 @@ import (
 	"github.com/caarlos0/env/v6"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/service"
-	"github.com/gin-contrib/cors"
-	"time"
 )
 
 type extraSetting struct {
@@ -34,7 +33,13 @@ func NewService() *Service {
 		db = db.Debug()
 	}
 	repoPG := repo.NewPGRepo(db)
-
+	s.Router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"PUT", "PATCH", "GET", "DELETE", "POST"},
+		AllowHeaders:     []string{"Origin"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
 	userService := service2.NewUserService(repoPG)
 	userHandle := handlers.NewUserHandlers(userService)
 
@@ -45,18 +50,6 @@ func NewService() *Service {
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
 	s.Router.POST("/internal/migrate", migrateHandler.Migrate)
-
-	s.Router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3006"},
-		AllowMethods:     []string{"PUT", "PATCH", "GET", "DELETE"},
-		AllowHeaders:     []string{"Origin"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-				return origin == "http://localhost:3006"
-		},
-		MaxAge: 12 * time.Hour,
-}))
 
 	return s
 }
