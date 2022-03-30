@@ -3,20 +3,15 @@ module ms-user
 go 1.18
 
 require (
-	github.com/astaxie/beego v1.12.3
 	github.com/caarlos0/env/v6 v6.9.1
+	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.7.2
 	github.com/google/uuid v1.2.0
-	github.com/praslar/lib v0.2.4
-	github.com/sendgrid/rest v2.6.9+incompatible
-	github.com/sirupsen/logrus v1.8.1
 	gitlab.com/goxp/cloud0 v1.5.2
-	golang.org/x/text v0.3.3
 	gorm.io/gorm v1.21.11
 )
 
 require (
-	github.com/gin-contrib/cors v1.3.1 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-errors/errors v1.4.0 // indirect
 	github.com/go-playground/locales v0.13.0 // indirect
@@ -39,11 +34,15 @@ require (
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
-	github.com/shiena/ansicolor v0.0.0-20151119151921-a422bbe96644 // indirect
+	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
 	golang.org/x/sys v0.0.0-20201119102817-f84b799fce68 // indirect
+	golang.org/x/text v0.3.3 // indirect
 	google.golang.org/protobuf v1.23.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 	gorm.io/driver/postgres v1.1.0 // indirect
 	gorm.io/driver/sqlite v1.1.4 // indirect
