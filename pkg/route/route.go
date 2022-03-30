@@ -47,6 +47,9 @@ func NewService() *Service {
 
 	v1Api.GET("/test", ginext.WrapHandler(userHandle.TestMsUser))
 
+	// user
+	v1Api.POST("user/create", ginext.WrapHandler(userHandle.CreateUser))
+
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
 	s.Router.POST("/internal/migrate", migrateHandler.Migrate)

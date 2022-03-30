@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/astaxie/beego v1.12.3 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-errors/errors v1.4.0 // indirect
 	github.com/go-playground/locales v0.13.0 // indirect
@@ -36,6 +37,9 @@ require (
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/praslar/lib v0.2.4 // indirect
+	github.com/sendgrid/rest v2.6.9+incompatible // indirect
+	github.com/shiena/ansicolor v0.0.0-20151119151921-a422bbe96644 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
