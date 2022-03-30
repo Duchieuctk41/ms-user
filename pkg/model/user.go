@@ -10,11 +10,14 @@ type User struct {
 	AccountType string `json:"account_type" gorm:"type:varchar(50);"`
 	Images      string `json:"images" gorm:"column:images; type:varchar(255);"`
 	Link        string `json:"link" gorm:"type:varchar(500)"`
-	Password    string `json:"password,omitempty" gorm:"column:password; type:varchar(255); not null"`
+	Password    string `json:"password,omitempty" gorm:"type:varchar(255); not null;" sql:"-"`
+}
+
+func (User) TableName() string {
+	return "users"
 }
 
 type CreateUserReq struct {
-	Email           *string `json:"email" valid:"Required"`
-	Password        *string `json:"password" valid:"Required"`
-	ConfirmPassword *string `json:"confirm_password" valid:"Required"`
+	Email    *string `json:"email" valid:"Required"`
+	Password *string `json:"password" valid:"Required"`
 }
