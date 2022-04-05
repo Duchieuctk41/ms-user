@@ -1,14 +1,13 @@
 package route
 
 import (
+	"github.com/caarlos0/env/v6"
 	"github.com/gin-contrib/cors"
+	"gitlab.com/goxp/cloud0/ginext"
+	"gitlab.com/goxp/cloud0/service"
 	"ms-user/pkg/handlers"
 	"ms-user/pkg/repo"
 	service2 "ms-user/pkg/service"
-
-	"github.com/caarlos0/env/v6"
-	"gitlab.com/goxp/cloud0/ginext"
-	"gitlab.com/goxp/cloud0/service"
 )
 
 type extraSetting struct {
@@ -49,10 +48,17 @@ func NewService() *Service {
 
 	// user
 	v1Api.POST("user/create", ginext.WrapHandler(userHandle.CreateUser))
+	v1Api.POST("user/login", ginext.WrapHandler(userHandle.Login))
 
 	// Migrate
 	migrateHandler := handlers.NewMigrationHandler(db)
 	s.Router.POST("/internal/migrate", migrateHandler.Migrate)
+
+	// middleware
+	v1Api.Use(userHandle.VerifyTokenHandler())
+	{
+		v1Api.GET("/user/get-one/:id", ginext.WrapHandler(userHandle.GetOneUserByID))
+	}
 
 	return s
 }

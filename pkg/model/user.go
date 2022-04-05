@@ -21,3 +21,8 @@ type CreateUserReq struct {
 	Email    *string `json:"email" valid:"Required"`
 	Password *string `json:"password" valid:"Required"`
 }
+
+type ConfirmLoginResponse struct {
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
+}

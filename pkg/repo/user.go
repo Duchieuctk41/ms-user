@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"gitlab.com/goxp/cloud0/ginext"
 	"gitlab.com/goxp/cloud0/logger"
 	"gorm.io/gorm"
@@ -17,8 +18,8 @@ func (r *RepoPG) TestMsUser(ctx context.Context) (err error) {
 	return nil
 }
 
-func (r *RepoPG) GetOneUserByID(ctx context.Context, email string, tx *gorm.DB) (rs model.User, err error) {
-	log := logger.WithCtx(ctx, "RepoPG.GetOneUserByID")
+func (r *RepoPG) GetOneUserByEmail(ctx context.Context, email string, tx *gorm.DB) (rs model.User, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetOneUserByEmail")
 	var cancel context.CancelFunc
 	if tx == nil {
 		tx, cancel = r.DBWithTimeout(ctx)
@@ -27,10 +28,29 @@ func (r *RepoPG) GetOneUserByID(ctx context.Context, email string, tx *gorm.DB) 
 
 	if err = tx.Model(&model.User{}).Where("email = ?", email).First(&rs).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			log.WithError(err).Error("error_404: record not found in GetOneUserByID - RepoPG")
+			log.WithError(err).Error("error_404: record not found in GetOneUserByEmail - RepoPG")
 			return rs, err
 		}
-		log.WithError(err).Error("error_500: error GetOneUserByID - RepoPG")
+		log.WithError(err).Error("error_500: error GetOneUserByEmail - RepoPG")
+		return rs, ginext.NewError(http.StatusInternalServerError, err.Error())
+	}
+	return rs, nil
+}
+
+func (r *RepoPG) GetOneUserByID(ctx context.Context, ID uuid.UUID, tx *gorm.DB) (rs model.User, err error) {
+	log := logger.WithCtx(ctx, "RepoPG.GetOneUserByEmail")
+	var cancel context.CancelFunc
+	if tx == nil {
+		tx, cancel = r.DBWithTimeout(ctx)
+		defer cancel()
+	}
+
+	if err = tx.Model(&model.User{}).Where("id = ?", ID).First(&rs).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			log.WithError(err).Error("error_404: record not found in GetOneUserByEmail - RepoPG")
+			return rs, err
+		}
+		log.WithError(err).Error("error_500: error GetOneUserByEmail - RepoPG")
 		return rs, ginext.NewError(http.StatusInternalServerError, err.Error())
 	}
 	return rs, nil

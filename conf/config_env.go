@@ -10,12 +10,15 @@ type AppConfig struct {
 	LogFormat string `env:"LOG_FORMAT" envDefault:"text"`
 	DBHost    string `env:"DB_HOST" envDefault:"localhost"`
 	DBPort    string `env:"DB_PORT" envDefault:"5432"`
-	DBUser    string `env:"DB_USER" envDefault:"postgres"`
+	DBUser    string `env:"DB_USER" envDefault:"root"`
 	DBPass    string `env:"DB_PASS" envDefault:"password"`
 	DBName    string `env:"DB_NAME" envDefault:"ms_user_tutorial"`
 	EnableDB  string `env:"ENABLE_DB" envDefault:"true"`
 
-	MSBusinessManagement string `env:"MS_BUSINESS_MANAGEMENT"  envDefault:"http://localhost:8012"`
+	MSBusinessManagement  string `env:"MS_BUSINESS_MANAGEMENT"  envDefault:"http://localhost:8012"`
+	JWTSecret             string `env:"JWT_SECRET" envDefault:"wjrYwmrct9u78c2j"`
+	NumHourExpToken       int    `env:"HOUR_EXPIRE_TOKEN" envDefault:"720"`
+	RefreshTokenTTLInDays int    `env:"REFRESH_TOKEN_TTL_IN_DAYS" envDefault:"365"`
 }
 
 var config AppConfig

@@ -21,6 +21,7 @@ func (h *MigrationHandler) Migrate(ctx *gin.Context) {
 
 	models := []interface{}{
 		&model.User{},
+		&model.RefreshToken{},
 	}
 	for _, m := range models {
 		err := h.db.AutoMigrate(m)
